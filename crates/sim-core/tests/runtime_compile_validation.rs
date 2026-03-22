@@ -86,7 +86,7 @@ fn runtime_compile_validation_rejects_unsupported_force_sources() {
 }
 
 #[test]
-fn runtime_compile_validation_rejects_unsupported_analyzers() {
+fn runtime_compile_validation_rejects_trajectory_analyzers_without_entity_binding() {
     let request = compile_request_with_scene_section(
         "analyzers",
         json!([{ "id": "traj-1", "kind": "trajectory" }]),
@@ -94,11 +94,28 @@ fn runtime_compile_validation_rejects_unsupported_analyzers() {
 
     assert_eq!(
         SimulationBridge::new(1.0 / 60.0).compile_runtime_request(request),
+        Err(BridgeError::IncompleteAnalyzerRecord {
+            id: "traj-1".to_string(),
+            kind: "trajectory".to_string(),
+            missing_field: "entityId".to_string(),
+        })
+    );
+}
+
+#[test]
+fn runtime_compile_validation_rejects_unknown_analyzer_kinds() {
+    let request = compile_request_with_scene_section(
+        "analyzers",
+        json!([{ "id": "probe-1", "kind": "probe", "entityId": "poly-1" }]),
+    );
+
+    assert_eq!(
+        SimulationBridge::new(1.0 / 60.0).compile_runtime_request(request),
         Err(BridgeError::UnsupportedSceneRecord {
             section: "analyzers".to_string(),
             record: SceneKindRecord {
-                id: "traj-1".to_string(),
-                kind: "trajectory".to_string(),
+                id: "probe-1".to_string(),
+                kind: "probe".to_string(),
             },
         })
     );

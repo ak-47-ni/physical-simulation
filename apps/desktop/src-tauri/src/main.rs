@@ -108,6 +108,13 @@ fn with_bridge<T>(
 fn format_bridge_error(error: BridgeError) -> String {
     match error {
         BridgeError::DirtySceneRequiresRebuild => "runtime resume requires rebuild".to_string(),
+        BridgeError::IncompleteAnalyzerRecord {
+            id,
+            kind,
+            missing_field,
+        } => {
+            format!("incomplete analyzer record: {id} ({kind}) is missing {missing_field}")
+        }
         BridgeError::InvalidTimeScale { value } => format!("invalid time scale: {value}"),
         BridgeError::RuntimeNotInitialized => "runtime not initialized".to_string(),
         BridgeError::UnknownAnalyzer { id } => format!("unknown analyzer: {id}"),

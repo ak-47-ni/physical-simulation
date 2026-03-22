@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::analyzer::TrajectorySample;
+use crate::analyzer::{AnalyzerDefinition, TrajectorySample};
 use crate::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use crate::force::ForceSourceDefinition;
 use crate::runtime::{RuntimeFramePayload, RuntimeScene};
@@ -9,6 +9,11 @@ use crate::scene::{compile_scene, CompileSceneRequest, CompiledScene, SceneCompi
 #[derive(Debug, Clone, PartialEq)]
 pub enum BridgeError {
     DirtySceneRequiresRebuild,
+    IncompleteAnalyzerRecord {
+        id: String,
+        kind: String,
+        missing_field: String,
+    },
     InvalidTimeScale {
         value: f64,
     },
@@ -255,7 +260,12 @@ impl RuntimeCompileRequest {
     pub fn into_compile_scene_request(self) -> Result<CompileSceneRequest, BridgeError> {
         reject_unsupported_records("constraints", &self.scene.constraints)?;
         reject_unsupported_records("forceSources", &self.scene.force_sources)?;
-        reject_unsupported_records("analyzers", &self.scene.analyzers)?;
+        let analyzers = self
+            .scene
+            .analyzers
+            .into_iter()
+            .map(SceneAnalyzerRecord::into_analyzer_definition)
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(CompileSceneRequest {
             entities: self
@@ -269,7 +279,7 @@ impl RuntimeCompileRequest {
                 id: "gravity-earth".to_string(),
                 acceleration: Vector2::new(0.0, -9.81),
             }],
-            analyzers: vec![],
+            analyzers,
         })
     }
 }
@@ -296,7 +306,7 @@ pub struct SceneDocumentPayload {
     pub entities: Vec<SceneEntityPayload>,
     pub constraints: Vec<SceneKindRecord>,
     pub force_sources: Vec<SceneKindRecord>,
-    pub analyzers: Vec<SceneKindRecord>,
+    pub analyzers: Vec<SceneAnalyzerRecord>,
     pub annotations: Vec<AnnotationStrokePayload>,
 }
 
@@ -338,6 +348,39 @@ impl SceneEntityPayload {
 pub struct SceneKindRecord {
     pub id: String,
     pub kind: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SceneAnalyzerRecord {
+    pub id: String,
+    pub kind: String,
+    pub entity_id: Option<String>,
+}
+
+impl SceneAnalyzerRecord {
+    fn into_analyzer_definition(self) -> Result<AnalyzerDefinition, BridgeError> {
+        let SceneAnalyzerRecord {
+            id,
+            kind,
+            entity_id,
+        } = self;
+
+        match kind.as_str() {
+            "trajectory" => Ok(AnalyzerDefinition::Trajectory {
+                id: id.clone(),
+                entity_id: entity_id.ok_or_else(|| BridgeError::IncompleteAnalyzerRecord {
+                    id,
+                    kind,
+                    missing_field: "entityId".to_string(),
+                })?,
+            }),
+            _ => Err(BridgeError::UnsupportedSceneRecord {
+                section: "analyzers".to_string(),
+                record: SceneKindRecord { id, kind },
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
