@@ -133,6 +133,10 @@ impl RuntimeScene {
             .find(|analyzer| analyzer.id() == id)
             .map(TrajectoryAnalyzerState::samples)
     }
+
+    pub fn elapsed_time_seconds(&self) -> f64 {
+        self.elapsed_time_seconds
+    }
 }
 
 fn shape_half_extents(shape: &CompiledShape) -> Vector2 {

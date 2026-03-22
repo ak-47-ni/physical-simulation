@@ -1,6 +1,8 @@
 use std::sync::Mutex;
 
-use sim_core::bridge::{BridgeError, RuntimeCompileRequest, SimulationBridge};
+use sim_core::bridge::{
+    BridgeError, BridgeStatusSnapshot, DirtyEditScope, RuntimeCompileRequest, SimulationBridge,
+};
 use sim_core::runtime::RuntimeFramePayload;
 
 const FIXED_STEP_SECONDS: f64 = 1.0 / 60.0;
@@ -57,9 +59,19 @@ fn current_frame(
 }
 
 #[tauri::command]
-fn mark_scene_dirty(state: tauri::State<'_, RuntimeBridgeState>) -> Result<(), String> {
+fn runtime_status(
+    state: tauri::State<'_, RuntimeBridgeState>,
+) -> Result<BridgeStatusSnapshot, String> {
+    with_bridge(state, |bridge| Ok(bridge.status_snapshot()))
+}
+
+#[tauri::command]
+fn mark_scene_dirty(
+    state: tauri::State<'_, RuntimeBridgeState>,
+    scopes: Vec<DirtyEditScope>,
+) -> Result<(), String> {
     with_bridge(state, |bridge| {
-        bridge.mark_dirty();
+        bridge.mark_dirty_scopes(&scopes);
         Ok(())
     })
 }
@@ -92,6 +104,7 @@ pub fn register_runtime_commands<R: tauri::Runtime>(
             step_runtime,
             reset_runtime,
             current_frame,
+            runtime_status,
             mark_scene_dirty
         ])
 }

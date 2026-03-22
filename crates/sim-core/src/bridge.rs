@@ -17,8 +17,32 @@ pub struct SimulationBridge {
     fixed_delta_seconds: f64,
     compiled_scene: Option<CompiledScene>,
     runtime: Option<RuntimeScene>,
-    dirty: bool,
-    running: bool,
+    dirty_scopes: Vec<DirtyEditScope>,
+    status: BridgeStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BridgeStatus {
+    Idle,
+    Running,
+    Paused,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum BridgeBlockReason {
+    RebuildRequired,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BridgeStatusSnapshot {
+    pub status: BridgeStatus,
+    pub current_frame: Option<RuntimeFramePayload>,
+    pub current_time_seconds: f64,
+    pub can_resume: bool,
+    pub block_reason: Option<BridgeBlockReason>,
 }
 
 impl SimulationBridge {
@@ -27,8 +51,8 @@ impl SimulationBridge {
             fixed_delta_seconds: fixed_delta_seconds.max(f64::EPSILON),
             compiled_scene: None,
             runtime: None,
-            dirty: false,
-            running: false,
+            dirty_scopes: Vec::new(),
+            status: BridgeStatus::Idle,
         }
     }
 
@@ -42,8 +66,8 @@ impl SimulationBridge {
 
         self.compiled_scene = Some(compiled_scene);
         self.runtime = Some(runtime);
-        self.dirty = false;
-        self.running = false;
+        self.dirty_scopes.clear();
+        self.status = BridgeStatus::Idle;
 
         Ok(frame)
     }
@@ -57,13 +81,13 @@ impl SimulationBridge {
 
     pub fn start_or_resume(&mut self) -> Result<RuntimeFramePayload, BridgeError> {
         self.guard_runtime_ready()?;
-        self.running = true;
+        self.status = BridgeStatus::Running;
         self.current_frame()
     }
 
     pub fn pause(&mut self) -> Result<RuntimeFramePayload, BridgeError> {
         self.ensure_runtime_initialized()?;
-        self.running = false;
+        self.status = BridgeStatus::Paused;
         self.current_frame()
     }
 
@@ -87,8 +111,8 @@ impl SimulationBridge {
         let frame = runtime.current_frame();
 
         self.runtime = Some(runtime);
-        self.dirty = false;
-        self.running = false;
+        self.dirty_scopes.clear();
+        self.status = BridgeStatus::Idle;
 
         Ok(frame)
     }
@@ -103,20 +127,54 @@ impl SimulationBridge {
     }
 
     pub fn mark_dirty(&mut self) {
-        self.dirty = true;
-        self.running = false;
+        self.mark_dirty_scopes(&[DirtyEditScope::Structure]);
+    }
+
+    pub fn mark_dirty_scopes(&mut self, scopes: &[DirtyEditScope]) {
+        for scope in scopes {
+            if !self.dirty_scopes.contains(scope) {
+                self.dirty_scopes.push(*scope);
+            }
+        }
+
+        self.status = if self.runtime.is_some() {
+            BridgeStatus::Paused
+        } else {
+            BridgeStatus::Idle
+        };
     }
 
     pub fn is_dirty(&self) -> bool {
-        self.dirty
+        self.rebuild_required()
     }
 
     pub fn is_running(&self) -> bool {
-        self.running
+        self.status == BridgeStatus::Running
+    }
+
+    pub fn status_snapshot(&self) -> BridgeStatusSnapshot {
+        let current_time_seconds = self
+            .runtime
+            .as_ref()
+            .map(RuntimeScene::elapsed_time_seconds)
+            .unwrap_or(0.0);
+        let current_frame = self.runtime.as_ref().map(RuntimeScene::current_frame);
+
+        BridgeStatusSnapshot {
+            status: self.status,
+            current_frame,
+            current_time_seconds,
+            can_resume: !self.rebuild_required(),
+            block_reason: if self.rebuild_required() {
+                Some(BridgeBlockReason::RebuildRequired)
+            } else {
+                None
+            },
+        }
     }
 
     fn guard_runtime_ready(&self) -> Result<(), BridgeError> {
-        if self.dirty {
+        if self.rebuild_required() {
             return Err(BridgeError::DirtySceneRequiresRebuild);
         }
 
@@ -129,6 +187,12 @@ impl SimulationBridge {
         } else {
             Err(BridgeError::RuntimeNotInitialized)
         }
+    }
+
+    fn rebuild_required(&self) -> bool {
+        self.dirty_scopes
+            .iter()
+            .any(DirtyEditScope::requires_rebuild)
     }
 }
 
@@ -166,6 +230,12 @@ pub enum DirtyEditScope {
     Physics,
     Analysis,
     Annotation,
+}
+
+impl DirtyEditScope {
+    pub fn requires_rebuild(&self) -> bool {
+        matches!(self, Self::Structure | Self::Physics)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
