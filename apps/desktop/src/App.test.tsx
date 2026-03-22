@@ -75,4 +75,15 @@ describe("App selection sync", () => {
     expect(screen.getByTestId("scene-tree-item-board-2").getAttribute("data-selected")).toBe("true");
     expect(screen.getByText("280, 236")).toBeDefined();
   });
+
+  it("deletes the selected entity from the property panel", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+    fireEvent.click(screen.getByRole("button", { name: /delete entity/i }));
+
+    expect(screen.queryByTestId("scene-entity-board-1")).toBeNull();
+    expect(screen.queryByTestId("scene-tree-item-board-1")).toBeNull();
+    expect(screen.getByText("No entity selected")).toBeDefined();
+  });
 });

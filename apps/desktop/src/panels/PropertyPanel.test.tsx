@@ -11,6 +11,7 @@ afterEach(() => {
 describe("PropertyPanel", () => {
   it("edits selected entity position through numeric inputs", () => {
     const updates: Array<{ x: number; y: number }> = [];
+    const deleted: string[] = [];
 
     render(
       <PropertyPanel
@@ -19,6 +20,9 @@ describe("PropertyPanel", () => {
           showLabels: true,
           showTrajectories: false,
         })}
+        onDeleteSelectedEntity={() => {
+          deleted.push("ball-1");
+        }}
         onUpdateSelectedEntityPosition={(position) => {
           updates.push(position);
         }}
@@ -28,10 +32,12 @@ describe("PropertyPanel", () => {
 
     fireEvent.change(screen.getByLabelText("Position X"), { target: { value: "164" } });
     fireEvent.change(screen.getByLabelText("Position Y"), { target: { value: "214" } });
+    fireEvent.click(screen.getByRole("button", { name: /delete entity/i }));
 
     expect(updates).toEqual([
       { x: 164, y: 176 },
       { x: 132, y: 214 },
     ]);
+    expect(deleted).toEqual(["ball-1"]);
   });
 });

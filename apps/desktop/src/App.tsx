@@ -78,6 +78,20 @@ export function App() {
     handleToolChange("place-body");
   }
 
+  function handleDeleteSelectedEntity() {
+    if (!editorState.selectedEntityId) {
+      return;
+    }
+
+    setEntities((current) =>
+      current.filter((entity) => entity.id !== editorState.selectedEntityId),
+    );
+    setEditorState((current) => ({
+      ...current,
+      selectedEntityId: null,
+    }));
+  }
+
   const selectedEntity = entities.find((entity) => entity.id === editorState.selectedEntityId) ?? null;
 
   return (
@@ -93,6 +107,7 @@ export function App() {
         <div style={{ display: "grid", gap: "16px" }}>
           <PropertyPanel
             display={displaySettings}
+            onDeleteSelectedEntity={handleDeleteSelectedEntity}
             onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
             selectedEntity={selectedEntity}
           />

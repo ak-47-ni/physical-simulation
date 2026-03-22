@@ -5,6 +5,7 @@ import type { EditorSceneEntity } from "../state/editorStore";
 
 type PropertyPanelProps = {
   display: SceneDisplaySettings;
+  onDeleteSelectedEntity: () => void;
   onUpdateSelectedEntityPosition: (position: { x: number; y: number }) => void;
   selectedEntity: EditorSceneEntity | null;
 };
@@ -35,6 +36,17 @@ const inputStyle: CSSProperties = {
   color: "#17304f",
   padding: "8px 10px",
   fontSize: "14px",
+};
+
+const dangerButtonStyle: CSSProperties = {
+  border: "1px solid rgba(196, 77, 77, 0.22)",
+  borderRadius: "10px",
+  background: "#fff3f2",
+  color: "#9f2e2e",
+  padding: "9px 12px",
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
 };
 
 function ReadonlyField(props: { label: string; value: string }) {
@@ -74,7 +86,7 @@ function PositionInput(props: {
 }
 
 export function PropertyPanel(props: PropertyPanelProps) {
-  const { display, onUpdateSelectedEntityPosition, selectedEntity } = props;
+  const { display, onDeleteSelectedEntity, onUpdateSelectedEntityPosition, selectedEntity } = props;
 
   return (
     <div style={{ display: "grid", gap: "16px" }}>
@@ -96,6 +108,9 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 onChange={(y) => onUpdateSelectedEntityPosition({ x: selectedEntity.x, y })}
               />
             </div>
+            <button style={dangerButtonStyle} type="button" onClick={onDeleteSelectedEntity}>
+              Delete entity
+            </button>
           </>
         ) : (
           <span style={{ color: "#55657f", fontSize: "14px" }}>No entity selected</span>
