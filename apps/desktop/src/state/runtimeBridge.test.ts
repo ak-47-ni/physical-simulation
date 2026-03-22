@@ -187,4 +187,67 @@ describe("runtimeBridge", () => {
       currentFrame: null,
     });
   });
+
+  it("reads mock trajectory samples by analyzer id and clears them on reset", async () => {
+    const scene = createEmptySceneDocument();
+    const request = createCompileRequestFromScene(scene, ["analysis"]);
+    const port = createMockRuntimeBridgePort({
+      createFrame: ({ nextFrameNumber }) =>
+        createRuntimeFramePayload({
+          frameNumber: nextFrameNumber,
+          entities: [
+            {
+              entityId: "probe-1",
+              position: { x: nextFrameNumber, y: 2 },
+              rotation: 0,
+              velocity: { x: 1.5, y: -0.5 * nextFrameNumber },
+              acceleration: { x: 0, y: -9.81 },
+            },
+          ],
+        }),
+      createTrajectorySamples: ({ bridge, currentSamplesByAnalyzer }) => ({
+        "traj-1": [
+          ...(currentSamplesByAnalyzer["traj-1"] ?? []),
+          {
+            frameNumber: bridge.currentFrame?.frameNumber ?? 0,
+            timeSeconds: bridge.currentTimeSeconds,
+            position: {
+              x: bridge.currentFrame?.entities[0]?.transform.x ?? 0,
+              y: bridge.currentFrame?.entities[0]?.transform.y ?? 0,
+            },
+            velocity: bridge.currentFrame?.entities[0]?.velocity ?? { x: 0, y: 0 },
+            acceleration: bridge.currentFrame?.entities[0]?.acceleration ?? { x: 0, y: 0 },
+          },
+        ],
+      }),
+    });
+
+    await port.compile(request);
+    await port.step();
+    await port.step();
+
+    await expect(port.readTrajectorySamples("traj-1")).resolves.toEqual([
+      {
+        frameNumber: 1,
+        timeSeconds: 1 / 60,
+        position: { x: 1, y: 2 },
+        velocity: { x: 1.5, y: -0.5 },
+        acceleration: { x: 0, y: -9.81 },
+      },
+      {
+        frameNumber: 2,
+        timeSeconds: 2 / 60,
+        position: { x: 2, y: 2 },
+        velocity: { x: 1.5, y: -1 },
+        acceleration: { x: 0, y: -9.81 },
+      },
+    ]);
+    await expect(port.readTrajectorySamples("missing-analyzer")).rejects.toThrow(
+      /unknown analyzer/i,
+    );
+
+    await port.reset();
+
+    await expect(port.readTrajectorySamples("traj-1")).rejects.toThrow(/unknown analyzer/i);
+  });
 });

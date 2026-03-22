@@ -31,6 +31,14 @@ export type RuntimeFrameView = {
   entities: RuntimeFrameEntityView[];
 };
 
+export type RuntimeTrajectorySample = {
+  frameNumber: number;
+  timeSeconds: number;
+  position: Vector2;
+  velocity: Vector2;
+  acceleration: Vector2;
+};
+
 export type RuntimeBridgeState = {
   status: RuntimeBridgeStatus;
   currentFrame: RuntimeFrameView | null;
@@ -56,12 +64,18 @@ export type RuntimeBridgePort = {
   step: () => Promise<RuntimeBridgePortSnapshot>;
   reset: () => Promise<RuntimeBridgePortSnapshot>;
   setTimeScale: (timeScale: number) => Promise<RuntimeBridgePortSnapshot>;
+  readTrajectorySamples: (analyzerId: string) => Promise<RuntimeTrajectorySample[]>;
 };
 
 export type CreateMockRuntimeBridgePortOptions = {
   createFrame?: (
     input: RuntimeBridgePortSnapshot & { nextFrameNumber: number },
   ) => RuntimeFramePayload | null;
+  createTrajectorySamples?: (input: {
+    bridge: RuntimeBridgeState;
+    frame: RuntimeFramePayload;
+    currentSamplesByAnalyzer: Record<string, RuntimeTrajectorySample[]>;
+  }) => Record<string, RuntimeTrajectorySample[]>;
 };
 
 export function createInitialRuntimeBridgeState(): RuntimeBridgeState {
@@ -193,6 +207,7 @@ export function createMockRuntimeBridgePort(
   options: CreateMockRuntimeBridgePortOptions = {},
 ): RuntimeBridgePort {
   let snapshot = createInitialRuntimeBridgePortSnapshot();
+  let trajectorySamplesByAnalyzer: Record<string, RuntimeTrajectorySample[]> = {};
   const listeners = new Set<(nextSnapshot: RuntimeBridgePortSnapshot) => void>();
 
   function publish(nextSnapshot: RuntimeBridgePortSnapshot) {
@@ -221,14 +236,18 @@ export function createMockRuntimeBridgePort(
       };
     },
     compile: async (request) =>
-      update((currentSnapshot) => ({
-        ...currentSnapshot,
-        bridge: {
-          ...createInitialRuntimeBridgeState(),
-          timeScale: currentSnapshot.bridge.timeScale,
-        },
-        lastCompileRequest: request,
-      })),
+      update((currentSnapshot) => {
+        trajectorySamplesByAnalyzer = {};
+
+        return {
+          ...currentSnapshot,
+          bridge: {
+            ...createInitialRuntimeBridgeState(),
+            timeScale: currentSnapshot.bridge.timeScale,
+          },
+          lastCompileRequest: request,
+        };
+      }),
     start: async () =>
       update((currentSnapshot) => ({
         ...currentSnapshot,
@@ -255,6 +274,12 @@ export function createMockRuntimeBridgePort(
           };
 
         bridge = applyRuntimeFrame(bridge, frame);
+        trajectorySamplesByAnalyzer =
+          options.createTrajectorySamples?.({
+            bridge,
+            frame,
+            currentSamplesByAnalyzer: cloneTrajectorySampleMap(trajectorySamplesByAnalyzer),
+          }) ?? trajectorySamplesByAnalyzer;
 
         return {
           ...currentSnapshot,
@@ -262,16 +287,50 @@ export function createMockRuntimeBridgePort(
         };
       }),
     reset: async () =>
-      update((currentSnapshot) => ({
-        ...currentSnapshot,
-        bridge: resetRuntimeBridge(currentSnapshot.bridge),
-      })),
+      update((currentSnapshot) => {
+        trajectorySamplesByAnalyzer = {};
+
+        return {
+          ...currentSnapshot,
+          bridge: resetRuntimeBridge(currentSnapshot.bridge),
+        };
+      }),
     setTimeScale: async (timeScale) =>
       update((currentSnapshot) => ({
         ...currentSnapshot,
         bridge: setRuntimeBridgeTimeScale(currentSnapshot.bridge, timeScale),
       })),
+    readTrajectorySamples: async (analyzerId) => {
+      const samples = trajectorySamplesByAnalyzer[analyzerId];
+
+      if (!samples) {
+        throw new Error(`unknown analyzer: ${analyzerId}`);
+      }
+
+      return cloneTrajectorySamples(samples);
+    },
   };
+}
+
+function cloneTrajectorySamples(samples: RuntimeTrajectorySample[]): RuntimeTrajectorySample[] {
+  return samples.map((sample) => ({
+    frameNumber: sample.frameNumber,
+    timeSeconds: sample.timeSeconds,
+    position: { ...sample.position },
+    velocity: { ...sample.velocity },
+    acceleration: { ...sample.acceleration },
+  }));
+}
+
+function cloneTrajectorySampleMap(
+  samplesByAnalyzer: Record<string, RuntimeTrajectorySample[]>,
+): Record<string, RuntimeTrajectorySample[]> {
+  return Object.fromEntries(
+    Object.entries(samplesByAnalyzer).map(([analyzerId, samples]) => [
+      analyzerId,
+      cloneTrajectorySamples(samples),
+    ]),
+  );
 }
 
 function cloneSceneDocument(scene: SceneDocument): SceneDocument {

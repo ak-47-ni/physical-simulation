@@ -1,14 +1,7 @@
 import type { Vector2 } from "../../../../packages/scene-schema/src";
 
 import type { AnalyzerMetric, AnalyzerSample } from "./analysisStateMachine";
-
-export type RuntimeTrajectorySample = {
-  frameNumber: number;
-  timeSeconds: number;
-  position: Vector2;
-  velocity: Vector2;
-  acceleration: Vector2;
-};
+import type { RuntimeTrajectorySample } from "../state/runtimeBridge";
 
 type SupportedRuntimeMetric = Exclude<AnalyzerMetric, "energy">;
 
