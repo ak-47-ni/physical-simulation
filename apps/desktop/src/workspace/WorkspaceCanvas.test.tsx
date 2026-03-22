@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { createSceneDisplaySettings } from "../io/sceneFile";
 import { createInitialEditorState } from "../state/editorStore";
 import { WorkspaceCanvas } from "./WorkspaceCanvas";
 
@@ -8,12 +9,24 @@ afterEach(() => {
   cleanup();
 });
 
+function createDisplaySettings(overrides: Parameters<typeof createSceneDisplaySettings>[0] = {}) {
+  return createSceneDisplaySettings({
+    gridVisible: true,
+    showLabels: true,
+    showTrajectories: false,
+    showForceVectors: false,
+    showVelocityVectors: false,
+    ...overrides,
+  });
+}
+
 describe("WorkspaceCanvas", () => {
   it("mounts the center canvas and renders mock scene entities by id", () => {
     const state = createInitialEditorState();
 
     render(
       <WorkspaceCanvas
+        display={createDisplaySettings()}
         entities={[
           {
             id: "ball-1",
@@ -66,6 +79,7 @@ describe("WorkspaceCanvas", () => {
 
     const { rerender } = render(
       <WorkspaceCanvas
+        display={createDisplaySettings()}
         entities={[]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
@@ -85,6 +99,9 @@ describe("WorkspaceCanvas", () => {
 
     rerender(
       <WorkspaceCanvas
+        display={createDisplaySettings({
+          gridVisible: false,
+        })}
         entities={[]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
@@ -118,6 +135,7 @@ describe("WorkspaceCanvas", () => {
 
     render(
       <WorkspaceCanvas
+        display={createDisplaySettings()}
         entities={[
           {
             id: "ball-1",
@@ -174,6 +192,7 @@ describe("WorkspaceCanvas", () => {
 
     render(
       <WorkspaceCanvas
+        display={createDisplaySettings()}
         entities={[
           {
             id: "ball-1",
@@ -216,6 +235,7 @@ describe("WorkspaceCanvas", () => {
 
     render(
       <WorkspaceCanvas
+        display={createDisplaySettings()}
         entities={[
           {
             id: "ball-1",
@@ -273,6 +293,7 @@ describe("WorkspaceCanvas", () => {
 
     render(
       <WorkspaceCanvas
+        display={createDisplaySettings()}
         entities={[
           {
             id: "board-1",
@@ -305,11 +326,68 @@ describe("WorkspaceCanvas", () => {
     expect(screen.queryByTestId("scene-entity-lock-board-1")).toBeNull();
   });
 
+  it("renders labels and teaching vectors according to display settings", () => {
+    const state = createInitialEditorState();
+
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings({
+          showForceVectors: true,
+          showLabels: false,
+          showVelocityVectors: true,
+        })}
+        entities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 12,
+            velocityY: -6,
+          },
+          {
+            id: "board-1",
+            kind: "board",
+            label: "Board 1",
+            x: 320,
+            y: 260,
+            width: 148,
+            height: 24,
+            mass: 5,
+            friction: 0.42,
+            restitution: 0.18,
+            locked: true,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={state}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByText("Ball 1")).toBeNull();
+    expect(screen.getByTestId("scene-velocity-vector-ball-1")).toBeDefined();
+    expect(screen.getByTestId("scene-force-vector-ball-1")).toBeDefined();
+    expect(screen.queryByTestId("scene-force-vector-board-1")).toBeNull();
+  });
+
   it("creates a new entity when place-body mode clicks the workspace stage", () => {
     const created: Array<{ x: number; y: number }> = [];
 
     render(
       <WorkspaceCanvas
+        display={createDisplaySettings()}
         entities={[]}
         onCreateEntity={(position) => {
           created.push(position);

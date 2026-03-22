@@ -1,6 +1,9 @@
 import { useState } from "react";
 
-import { createSceneDisplaySettings } from "./io/sceneFile";
+import {
+  createSceneDisplaySettings,
+  type SceneDisplaySettings,
+} from "./io/sceneFile";
 import { ShellLayout } from "./layout/ShellLayout";
 import { ObjectLibraryPanel } from "./panels/ObjectLibraryPanel";
 import { PropertyPanel } from "./panels/PropertyPanel";
@@ -22,7 +25,7 @@ export function App() {
   const [editorState, setEditorState] = useState(createInitialEditorState);
   const [entities, setEntities] = useState<EditorSceneEntity[]>(createInitialSceneEntities);
   const [selectedLibraryItem, setSelectedLibraryItem] = useState<LibraryBodyKind>("ball");
-  const [displaySettings] = useState(() =>
+  const [displaySettings, setDisplaySettings] = useState(() =>
     createSceneDisplaySettings({
       gridVisible: true,
       showLabels: true,
@@ -42,6 +45,12 @@ export function App() {
       ...current,
       gridVisible: visible,
     }));
+    setDisplaySettings((current) =>
+      createSceneDisplaySettings({
+        ...current,
+        gridVisible: visible,
+      }),
+    );
   }
 
   function handleSelectEntity(entityId: string) {
@@ -169,6 +178,22 @@ export function App() {
     }));
   }
 
+  function handleUpdateDisplaySetting(display: Partial<SceneDisplaySettings>) {
+    setDisplaySettings((current) =>
+      createSceneDisplaySettings({
+        ...current,
+        ...display,
+      }),
+    );
+
+    if (display.gridVisible !== undefined) {
+      setEditorState((current) => ({
+        ...current,
+        gridVisible: display.gridVisible,
+      }));
+    }
+  }
+
   return (
     <ShellLayout
       bottomPane={<span>Transport controls mount point</span>}
@@ -184,6 +209,7 @@ export function App() {
             display={displaySettings}
             onDeleteSelectedEntity={handleDeleteSelectedEntity}
             onDuplicateSelectedEntity={handleDuplicateSelectedEntity}
+            onUpdateDisplaySetting={handleUpdateDisplaySetting}
             onUpdateSelectedEntityLabel={handleUpdateSelectedEntityLabel}
             onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
             onUpdateSelectedEntityPhysics={handleUpdateSelectedEntityPhysics}
@@ -200,6 +226,7 @@ export function App() {
       }
     >
       <WorkspaceCanvas
+        display={displaySettings}
         entities={entities}
         onCreateEntity={handleCreateEntity}
         onGridVisibleChange={handleGridVisibleChange}

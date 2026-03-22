@@ -7,6 +7,7 @@ type PropertyPanelProps = {
   display: SceneDisplaySettings;
   onDeleteSelectedEntity: () => void;
   onDuplicateSelectedEntity: () => void;
+  onUpdateDisplaySetting: (display: Partial<SceneDisplaySettings>) => void;
   onUpdateSelectedEntityLabel: (label: string) => void;
   onUpdateSelectedEntityPosition: (position: { x: number; y: number }) => void;
   onUpdateSelectedEntityPhysics: (physics: Partial<EditorEntityPhysics>) => void;
@@ -160,6 +161,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
     display,
     onDeleteSelectedEntity,
     onDuplicateSelectedEntity,
+    onUpdateDisplaySetting,
     onUpdateSelectedEntityLabel,
     onUpdateSelectedEntityPosition,
     onUpdateSelectedEntityPhysics,
@@ -268,11 +270,30 @@ export function PropertyPanel(props: PropertyPanelProps) {
 
       <section style={cardStyle}>
         <h2 style={sectionLabelStyle}>Display</h2>
-        <ReadonlyField label="Grid" value={display.gridVisible ? "Visible" : "Hidden"} />
-        <ReadonlyField label="Labels" value={display.showLabels ? "On" : "Off"} />
-        <ReadonlyField
-          label="Trajectories"
-          value={display.showTrajectories ? "On" : "Off"}
+        <CheckboxInput
+          label="Show grid"
+          checked={display.gridVisible}
+          onChange={(gridVisible) => onUpdateDisplaySetting({ gridVisible })}
+        />
+        <CheckboxInput
+          label="Show labels"
+          checked={display.showLabels}
+          onChange={(showLabels) => onUpdateDisplaySetting({ showLabels })}
+        />
+        <CheckboxInput
+          label="Show trajectories"
+          checked={display.showTrajectories}
+          onChange={(showTrajectories) => onUpdateDisplaySetting({ showTrajectories })}
+        />
+        <CheckboxInput
+          label="Show velocity vectors"
+          checked={display.showVelocityVectors}
+          onChange={(showVelocityVectors) => onUpdateDisplaySetting({ showVelocityVectors })}
+        />
+        <CheckboxInput
+          label="Show force vectors"
+          checked={display.showForceVectors}
+          onChange={(showForceVectors) => onUpdateDisplaySetting({ showForceVectors })}
         />
       </section>
     </div>

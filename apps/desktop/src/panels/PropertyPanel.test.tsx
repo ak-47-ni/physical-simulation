@@ -30,6 +30,7 @@ describe("PropertyPanel", () => {
         onDuplicateSelectedEntity={() => {
           duplicated.push("ball-1");
         }}
+        onUpdateDisplaySetting={() => undefined}
         onUpdateSelectedEntityLabel={(label) => {
           labelUpdates.push(label);
         }}
@@ -103,6 +104,7 @@ describe("PropertyPanel", () => {
         })}
         onDeleteSelectedEntity={() => undefined}
         onDuplicateSelectedEntity={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
         onUpdateSelectedEntityLabel={() => undefined}
         onUpdateSelectedEntityPosition={() => undefined}
         onUpdateSelectedEntityRadius={() => undefined}
@@ -134,6 +136,45 @@ describe("PropertyPanel", () => {
     expect(sizeUpdates).toEqual([
       { width: 148, height: 18 },
       { width: 120, height: 24 },
+    ]);
+  });
+
+  it("edits display settings toggles", () => {
+    const displayUpdates: Array<Record<string, boolean>> = [];
+
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings({
+          gridVisible: true,
+          showForceVectors: false,
+          showLabels: true,
+          showTrajectories: false,
+          showVelocityVectors: false,
+        })}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onUpdateDisplaySetting={(display) => {
+          displayUpdates.push(display);
+        }}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        selectedEntity={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Show grid"));
+    fireEvent.click(screen.getByLabelText("Show labels"));
+    fireEvent.click(screen.getByLabelText("Show velocity vectors"));
+    fireEvent.click(screen.getByLabelText("Show force vectors"));
+
+    expect(displayUpdates).toEqual([
+      { gridVisible: false },
+      { showLabels: false },
+      { showVelocityVectors: true },
+      { showForceVectors: true },
     ]);
   });
 });

@@ -103,6 +103,26 @@ describe("App selection sync", () => {
     expect(screen.getByTestId("scene-entity-lock-board-1")).toBeDefined();
   });
 
+  it("updates display toggles from the property panel and workspace toolbar", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Velocity Y"), { target: { value: "-6" } });
+    fireEvent.click(screen.getByLabelText("Show labels"));
+    fireEvent.click(screen.getByLabelText("Show velocity vectors"));
+    fireEvent.click(screen.getByLabelText("Show force vectors"));
+
+    expect(screen.getByTestId("scene-entity-ball-1").textContent).toBe("");
+    expect(screen.getByTestId("scene-velocity-vector-ball-1")).toBeDefined();
+    expect(screen.getByTestId("scene-force-vector-ball-1")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /hide grid/i }));
+
+    expect(screen.getByTestId("workspace-canvas").getAttribute("data-grid-visible")).toBe("false");
+    expect((screen.getByLabelText("Show grid") as HTMLInputElement).checked).toBe(false);
+  });
+
   it("creates and selects a new body from place-body mode", () => {
     render(<App />);
 
