@@ -1,4 +1,10 @@
-import type { Vector2 } from "./schema";
+import {
+  cloneSceneDocument,
+  requiresRuntimeRebuild,
+  type DirtyEditScope,
+  type SceneDocument,
+  type Vector2,
+} from "./schema";
 
 export type RuntimeEntityFrame = {
   entityId: string;
@@ -13,6 +19,12 @@ export type RuntimeFramePayload = {
   entities: RuntimeEntityFrame[];
 };
 
+export type RuntimeCompileRequest = {
+  scene: SceneDocument;
+  dirtyScopes: DirtyEditScope[];
+  rebuildRequired: boolean;
+};
+
 export function createRuntimeFramePayload(input: RuntimeFramePayload): RuntimeFramePayload {
   return {
     frameNumber: input.frameNumber,
@@ -22,5 +34,16 @@ export function createRuntimeFramePayload(input: RuntimeFramePayload): RuntimeFr
       velocity: entity.velocity ? { ...entity.velocity } : undefined,
       acceleration: entity.acceleration ? { ...entity.acceleration } : undefined,
     })),
+  };
+}
+
+export function createRuntimeCompileRequest(
+  scene: SceneDocument,
+  dirtyScopes: DirtyEditScope[] = [],
+): RuntimeCompileRequest {
+  return {
+    scene: cloneSceneDocument(scene),
+    dirtyScopes: [...dirtyScopes],
+    rebuildRequired: requiresRuntimeRebuild(dirtyScopes),
   };
 }
