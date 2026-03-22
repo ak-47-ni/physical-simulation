@@ -3,8 +3,14 @@ import { useState } from "react";
 
 import type { AnnotationStroke, Vector2 } from "../../../../packages/scene-schema/src";
 
-type AnnotationLayerStroke = AnnotationStroke & {
+export type AnnotationLayerStroke = AnnotationStroke & {
   color: string;
+};
+
+export type AnnotationLayerState = {
+  strokes: AnnotationLayerStroke[];
+  visible: boolean;
+  activeColor: string;
 };
 
 const palette = [
@@ -38,11 +44,35 @@ const surfaceStyle: CSSProperties = {
   overflow: "hidden",
 };
 
-export function AnnotationLayer() {
-  const [strokes, setStrokes] = useState<AnnotationLayerStroke[]>([]);
-  const [activeColor, setActiveColor] = useState(palette[0].value);
-  const [visible, setVisible] = useState(true);
+type AnnotationLayerProps = {
+  state?: AnnotationLayerState;
+  onStateChange?: (nextState: AnnotationLayerState) => void;
+};
+
+export function createInitialAnnotationLayerState(): AnnotationLayerState {
+  return {
+    strokes: [],
+    visible: true,
+    activeColor: palette[0].value,
+  };
+}
+
+export function AnnotationLayer(props: AnnotationLayerProps = {}) {
+  const [internalState, setInternalState] = useState<AnnotationLayerState>(
+    createInitialAnnotationLayerState,
+  );
   const [draftPoints, setDraftPoints] = useState<Vector2[] | null>(null);
+  const state = props.state ?? internalState;
+  const { activeColor, strokes, visible } = state;
+
+  function updateState(nextState: AnnotationLayerState) {
+    if (props.onStateChange) {
+      props.onStateChange(nextState);
+      return;
+    }
+
+    setInternalState(nextState);
+  }
 
   function toPoint(event: ReactPointerEvent<HTMLDivElement>): Vector2 {
     return {
@@ -72,14 +102,17 @@ export function AnnotationLayer() {
 
     const points = [...draftPoints, toPoint(event)];
 
-    setStrokes((existing) => [
-      ...existing,
-      {
-        id: `stroke-${existing.length}`,
-        color: activeColor,
-        points,
-      },
-    ]);
+    updateState({
+      ...state,
+      strokes: [
+        ...strokes,
+        {
+          id: `stroke-${strokes.length}`,
+          color: activeColor,
+          points,
+        },
+      ],
+    });
     setDraftPoints(null);
   }
 
@@ -97,7 +130,10 @@ export function AnnotationLayer() {
               color: activeColor === entry.value ? "#f8fafc" : "#17304f",
             }}
             onClick={() => {
-              setActiveColor(entry.value);
+              updateState({
+                ...state,
+                activeColor: entry.value,
+              });
             }}
           >
             {entry.label}
@@ -107,7 +143,10 @@ export function AnnotationLayer() {
           type="button"
           style={buttonStyle}
           onClick={() => {
-            setStrokes((current) => current.slice(0, -1));
+            updateState({
+              ...state,
+              strokes: strokes.slice(0, -1),
+            });
           }}
         >
           Erase last stroke
@@ -116,7 +155,10 @@ export function AnnotationLayer() {
           type="button"
           style={buttonStyle}
           onClick={() => {
-            setVisible((current) => !current);
+            updateState({
+              ...state,
+              visible: !visible,
+            });
           }}
         >
           {visible ? "Hide annotations" : "Show annotations"}

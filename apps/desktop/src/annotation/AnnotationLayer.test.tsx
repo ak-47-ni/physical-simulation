@@ -38,4 +38,68 @@ describe("AnnotationLayer", () => {
     expect(screen.getByTestId("annotation-layer").getAttribute("data-visible")).toBe("false");
     expect(screen.queryByTestId("annotation-stroke-0")).toBeNull();
   });
+
+  it("supports controlled annotation state updates", () => {
+    const nextStates: Array<{
+      strokes: Array<{ id: string; points: Array<{ x: number; y: number }>; color: string }>;
+      visible: boolean;
+      activeColor: string;
+    }> = [];
+
+    const { rerender } = render(
+      <AnnotationLayer
+        state={{
+          strokes: [],
+          visible: true,
+          activeColor: "#111827",
+        }}
+        onStateChange={(nextState) => {
+          nextStates.push(nextState);
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /blue ink/i }));
+
+    expect(nextStates.at(-1)?.activeColor).toBe("#2563eb");
+
+    rerender(
+      <AnnotationLayer
+        state={{
+          strokes: [],
+          visible: true,
+          activeColor: "#2563eb",
+        }}
+        onStateChange={(nextState) => {
+          nextStates.push(nextState);
+        }}
+      />,
+    );
+
+    const surface = screen.getByTestId("annotation-layer-surface");
+
+    fireEvent.pointerDown(surface, { clientX: 10, clientY: 12 });
+    fireEvent.pointerMove(surface, { clientX: 30, clientY: 24 });
+    fireEvent.pointerUp(surface, { clientX: 30, clientY: 24 });
+
+    expect(nextStates.at(-1)?.strokes).toHaveLength(1);
+    expect(nextStates.at(-1)?.strokes[0]?.color).toBe("#2563eb");
+
+    rerender(
+      <AnnotationLayer
+        state={{
+          strokes: nextStates.at(-1)?.strokes ?? [],
+          visible: true,
+          activeColor: "#2563eb",
+        }}
+        onStateChange={(nextState) => {
+          nextStates.push(nextState);
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /hide annotations/i }));
+
+    expect(nextStates.at(-1)?.visible).toBe(false);
+  });
 });

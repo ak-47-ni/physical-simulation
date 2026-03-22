@@ -1,7 +1,10 @@
 import { useState } from "react";
 
 import { AnalysisPanel } from "./analysis/AnalysisPanel";
-import { AnnotationLayer } from "./annotation/AnnotationLayer";
+import {
+  AnnotationLayer,
+  createInitialAnnotationLayerState,
+} from "./annotation/AnnotationLayer";
 import { createSceneDisplaySettings } from "./io/sceneFile";
 import { ShellLayout } from "./layout/ShellLayout";
 import { BottomTransportBar } from "./panels/BottomTransportBar";
@@ -26,6 +29,7 @@ import type { EditorTool } from "./workspace/tools";
 export function App() {
   const [editorState, setEditorState] = useState(createInitialEditorState);
   const [runtimeState, setRuntimeState] = useState(createInitialRuntimeBridgeState);
+  const [annotationState, setAnnotationState] = useState(createInitialAnnotationLayerState);
   const [displaySettings, setDisplaySettings] = useState(() =>
     createSceneDisplaySettings({
       gridVisible: true,
@@ -118,7 +122,7 @@ export function App() {
           onToolChange={handleToolChange}
           state={editorState}
         />
-        <AnnotationLayer />
+        <AnnotationLayer state={annotationState} onStateChange={setAnnotationState} />
       </div>
     </ShellLayout>
   );

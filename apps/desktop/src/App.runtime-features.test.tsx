@@ -50,4 +50,12 @@ describe("App runtime features", () => {
 
     expect(trajectoriesLabel.nextSibling?.textContent).toBe("On");
   });
+
+  it("syncs annotation visibility through app state", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /hide annotations/i }));
+
+    expect(screen.getByTestId("annotation-layer").getAttribute("data-visible")).toBe("false");
+  });
 });
