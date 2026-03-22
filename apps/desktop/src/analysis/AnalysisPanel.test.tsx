@@ -114,6 +114,10 @@ describe("AnalysisPanel", () => {
     expect(screen.getByText("Samples in view: 2")).toBeDefined();
     expect(screen.getByText("Latest sample: 4.2 m/s")).toBeDefined();
     expect(screen.getByText("Series points: 2")).toBeDefined();
+    expect(screen.getByText("Key points")).toBeDefined();
+    expect(screen.getByText("Point 1")).toBeDefined();
+    expect(screen.getByText("Delta baseline")).toBeDefined();
+    expect(screen.getByText("+0.4 m/s")).toBeDefined();
   });
 
   it("supports controlled overlay display state updates", () => {

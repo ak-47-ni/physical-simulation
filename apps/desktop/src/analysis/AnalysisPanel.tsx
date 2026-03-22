@@ -4,6 +4,7 @@ import {
   buildAnalyzerChartSeries,
   buildAnalyzerMetricSummaries,
 } from "./analysisSummary";
+import { buildAnalyzerKeyPointRows } from "./analysisKeyPoints";
 import { OverlayLayer } from "./OverlayLayer";
 import {
   ANALYZER_METRICS,
@@ -70,6 +71,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
   const metricSummaries = buildAnalyzerMetricSummaries(state.samples);
   const chartSamples = state.samples.filter((sample) => sample.metric === state.selectedMetric);
   const chartSeries = buildAnalyzerChartSeries(state.samples, state.selectedMetric);
+  const keyPointRows = buildAnalyzerKeyPointRows(state.samples, state.selectedMetric);
   const latestChartSample = chartSamples.at(-1);
   const selectedSummary = metricSummaries.find((summary) => summary.metric === state.selectedMetric);
   const display = props.display ?? {
@@ -210,6 +212,44 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                 No metric summary yet
               </span>
             )}
+            <div
+              style={{
+                display: "grid",
+                gap: "8px",
+                padding: "10px 12px",
+                borderRadius: "12px",
+                background: "#ffffff",
+                border: "1px solid rgba(108, 128, 173, 0.14)",
+              }}
+            >
+              <strong style={{ color: "#17304f" }}>Key points</strong>
+              {keyPointRows.length === 0 ? (
+                <span style={{ color: "#5d6f88", fontSize: "13px" }}>No key points yet</span>
+              ) : (
+                keyPointRows.map((row) => (
+                  <div
+                    key={`${state.selectedMetric}-${row.index}`}
+                    style={{
+                      display: "grid",
+                      gap: "2px",
+                      padding: "8px 10px",
+                      borderRadius: "10px",
+                      background: "#f7f9fd",
+                    }}
+                  >
+                    <strong style={{ color: "#17304f", fontSize: "13px" }}>Point {row.index}</strong>
+                    <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                      {row.label}: {row.value} {row.unit}
+                    </span>
+                    <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                      {row.deltaFromPrevious === null
+                        ? "Delta baseline"
+                        : `${row.deltaFromPrevious > 0 ? "+" : ""}${row.deltaFromPrevious} ${row.unit}`}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         ) : null}
       </section>
