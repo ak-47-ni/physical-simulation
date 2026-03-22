@@ -46,6 +46,7 @@ impl CompiledAnalyzer {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TrajectorySample {
     pub frame_number: u64,
     pub time_seconds: f64,

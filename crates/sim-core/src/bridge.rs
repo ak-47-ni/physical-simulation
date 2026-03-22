@@ -1,14 +1,16 @@
 use serde::{Deserialize, Serialize};
 
+use crate::analyzer::TrajectorySample;
 use crate::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use crate::force::ForceSourceDefinition;
 use crate::runtime::{RuntimeFramePayload, RuntimeScene};
-use crate::scene::{CompileSceneRequest, CompiledScene, SceneCompileError, compile_scene};
+use crate::scene::{compile_scene, CompileSceneRequest, CompiledScene, SceneCompileError};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BridgeError {
     DirtySceneRequiresRebuild,
     RuntimeNotInitialized,
+    UnknownAnalyzer { id: String },
     SceneCompile(SceneCompileError),
 }
 
@@ -124,6 +126,18 @@ impl SimulationBridge {
             .ok_or(BridgeError::RuntimeNotInitialized)?;
 
         Ok(runtime.current_frame())
+    }
+
+    pub fn analyzer_samples(&self, id: &str) -> Result<Vec<TrajectorySample>, BridgeError> {
+        let runtime = self
+            .runtime
+            .as_ref()
+            .ok_or(BridgeError::RuntimeNotInitialized)?;
+
+        runtime
+            .analyzer_samples(id)
+            .map(|samples| samples.to_vec())
+            .ok_or_else(|| BridgeError::UnknownAnalyzer { id: id.to_string() })
     }
 
     pub fn mark_dirty(&mut self) {

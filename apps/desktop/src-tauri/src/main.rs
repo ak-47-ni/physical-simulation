@@ -1,5 +1,6 @@
 use std::sync::Mutex;
 
+use sim_core::analyzer::TrajectorySample;
 use sim_core::bridge::{
     BridgeError, BridgeStatusSnapshot, DirtyEditScope, RuntimeCompileRequest, SimulationBridge,
 };
@@ -59,6 +60,14 @@ fn current_frame(
 }
 
 #[tauri::command]
+fn analyzer_samples(
+    state: tauri::State<'_, RuntimeBridgeState>,
+    analyzer_id: String,
+) -> Result<Vec<TrajectorySample>, String> {
+    with_bridge(state, |bridge| bridge.analyzer_samples(&analyzer_id))
+}
+
+#[tauri::command]
 fn runtime_status(
     state: tauri::State<'_, RuntimeBridgeState>,
 ) -> Result<BridgeStatusSnapshot, String> {
@@ -104,6 +113,7 @@ pub fn register_runtime_commands<R: tauri::Runtime>(
             step_runtime,
             reset_runtime,
             current_frame,
+            analyzer_samples,
             runtime_status,
             mark_scene_dirty
         ])
