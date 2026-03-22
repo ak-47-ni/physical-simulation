@@ -10,7 +10,13 @@ use crate::scene::{compile_scene, CompileSceneRequest, CompiledScene, SceneCompi
 pub enum BridgeError {
     DirtySceneRequiresRebuild,
     RuntimeNotInitialized,
-    UnknownAnalyzer { id: String },
+    UnknownAnalyzer {
+        id: String,
+    },
+    UnsupportedSceneRecord {
+        section: String,
+        record: SceneKindRecord,
+    },
     SceneCompile(SceneCompileError),
 }
 
@@ -78,7 +84,7 @@ impl SimulationBridge {
         &mut self,
         request: RuntimeCompileRequest,
     ) -> Result<RuntimeFramePayload, BridgeError> {
-        self.compile_scene(request.into_compile_scene_request())
+        self.compile_scene(request.into_compile_scene_request()?)
     }
 
     pub fn start_or_resume(&mut self) -> Result<RuntimeFramePayload, BridgeError> {
@@ -219,8 +225,12 @@ pub struct RuntimeCompileRequest {
 }
 
 impl RuntimeCompileRequest {
-    pub fn into_compile_scene_request(self) -> CompileSceneRequest {
-        CompileSceneRequest {
+    pub fn into_compile_scene_request(self) -> Result<CompileSceneRequest, BridgeError> {
+        reject_unsupported_records("constraints", &self.scene.constraints)?;
+        reject_unsupported_records("forceSources", &self.scene.force_sources)?;
+        reject_unsupported_records("analyzers", &self.scene.analyzers)?;
+
+        Ok(CompileSceneRequest {
             entities: self
                 .scene
                 .entities
@@ -233,7 +243,7 @@ impl RuntimeCompileRequest {
                 acceleration: Vector2::new(0.0, -9.81),
             }],
             analyzers: vec![],
-        }
+        })
     }
 }
 
@@ -321,4 +331,18 @@ fn polygon_centroid(points: &[Vector2]) -> Vector2 {
         .fold(Vector2::ZERO, |accumulator, point| accumulator.add(point));
 
     sum.scale(1.0 / points.len() as f64)
+}
+
+fn reject_unsupported_records(
+    section: &str,
+    records: &[SceneKindRecord],
+) -> Result<(), BridgeError> {
+    if let Some(record) = records.first() {
+        return Err(BridgeError::UnsupportedSceneRecord {
+            section: section.to_string(),
+            record: record.clone(),
+        });
+    }
+
+    Ok(())
 }

@@ -98,7 +98,18 @@ fn with_bridge<T>(
 }
 
 fn format_bridge_error(error: BridgeError) -> String {
-    format!("{error:?}")
+    match error {
+        BridgeError::DirtySceneRequiresRebuild => "runtime resume requires rebuild".to_string(),
+        BridgeError::RuntimeNotInitialized => "runtime not initialized".to_string(),
+        BridgeError::UnknownAnalyzer { id } => format!("unknown analyzer: {id}"),
+        BridgeError::UnsupportedSceneRecord { section, record } => {
+            format!(
+                "unsupported runtime compile {section} record: {} ({})",
+                record.id, record.kind
+            )
+        }
+        BridgeError::SceneCompile(source) => format!("scene compile error: {source:?}"),
+    }
 }
 
 pub fn register_runtime_commands<R: tauri::Runtime>(
