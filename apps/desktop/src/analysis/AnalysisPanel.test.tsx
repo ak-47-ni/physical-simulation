@@ -179,4 +179,116 @@ describe("AnalysisPanel", () => {
     expect(screen.getByTestId("velocity-vector-overlay")).toBeDefined();
     expect(screen.getByTestId("force-vector-overlay")).toBeDefined();
   });
+
+  it("supports controlled analysis state updates", () => {
+    const nextStates: Array<{
+      overlays: {
+        showTrajectories: boolean;
+        showVelocityVectors: boolean;
+        showForceVectors: boolean;
+        chartPanelOpen: boolean;
+      };
+      selectedMetric: "displacement" | "velocity" | "acceleration" | "energy";
+      samples: Array<{
+        id: string;
+        label: string;
+        metric: "displacement" | "velocity" | "acceleration" | "energy";
+        value: number;
+        unit: string;
+      }>;
+      draft: {
+        label: string;
+        metric: "displacement" | "velocity" | "acceleration" | "energy";
+        value: string;
+        unit: string;
+      };
+    }> = [];
+
+    const { rerender } = render(
+      <AnalysisPanel
+        state={{
+          overlays: {
+            showTrajectories: false,
+            showVelocityVectors: false,
+            showForceVectors: false,
+            chartPanelOpen: false,
+          },
+          selectedMetric: "displacement",
+          samples: [],
+          draft: {
+            label: "",
+            metric: "displacement",
+            value: "",
+            unit: "",
+          },
+        }}
+        onStateChange={(nextState) => {
+          nextStates.push(nextState);
+        }}
+      />,
+    );
+
+    function rerenderWithLatestState() {
+      rerender(
+        <AnalysisPanel
+          state={nextStates.at(-1)}
+          onStateChange={(nextState) => {
+            nextStates.push(nextState);
+          }}
+        />,
+      );
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: /show trajectories/i }));
+
+    expect(nextStates.at(-1)?.overlays.showTrajectories).toBe(true);
+    rerenderWithLatestState();
+
+    fireEvent.change(screen.getByLabelText(/sample metric/i), {
+      target: { value: "velocity" },
+    });
+    rerenderWithLatestState();
+    fireEvent.change(screen.getByLabelText(/sample label/i), {
+      target: { value: "Probe V" },
+    });
+    rerenderWithLatestState();
+    fireEvent.change(screen.getByLabelText(/sample value/i), {
+      target: { value: "5.1" },
+    });
+    rerenderWithLatestState();
+    fireEvent.change(screen.getByLabelText(/sample unit/i), {
+      target: { value: "m/s" },
+    });
+    rerenderWithLatestState();
+
+    const lastDraftState = nextStates.at(-1);
+
+    expect(lastDraftState?.draft).toEqual({
+      label: "Probe V",
+      metric: "velocity",
+      value: "5.1",
+      unit: "m/s",
+    });
+
+    rerender(
+      <AnalysisPanel
+        state={lastDraftState}
+        onStateChange={(nextState) => {
+          nextStates.push(nextState);
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /accept sample/i }));
+
+    expect(nextStates.at(-1)?.samples).toEqual([
+      {
+        id: "Probe V-1",
+        label: "Probe V",
+        metric: "velocity",
+        value: 5.1,
+        unit: "m/s",
+      },
+    ]);
+  });
 });

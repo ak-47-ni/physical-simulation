@@ -8,6 +8,7 @@ import { buildAnalyzerKeyPointRows } from "./analysisKeyPoints";
 import { OverlayLayer } from "./OverlayLayer";
 import {
   ANALYZER_METRICS,
+  type AnalyzerState,
   formatAnalyzerMetric,
   groupAnalyzerSamples,
   useAnalyzerState,
@@ -52,13 +53,15 @@ const inputStyle: CSSProperties = {
 };
 
 type AnalysisPanelProps = {
+  state?: AnalyzerState;
+  onStateChange?: (nextState: AnalyzerState) => void;
   display?: AnalysisDisplayState;
   onDisplayChange?: (nextDisplay: AnalysisDisplayState) => void;
 };
 
 export function AnalysisPanel(props: AnalysisPanelProps = {}) {
   const {
-    state,
+    state: analysisState,
     acceptSample,
     selectChartMetric,
     toggleChartPanel,
@@ -66,18 +69,28 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
     toggleTrajectories,
     toggleVelocityVectors,
     updateDraft,
-  } = useAnalyzerState();
-  const groupedSamples = groupAnalyzerSamples(state.samples);
-  const metricSummaries = buildAnalyzerMetricSummaries(state.samples);
-  const chartSamples = state.samples.filter((sample) => sample.metric === state.selectedMetric);
-  const chartSeries = buildAnalyzerChartSeries(state.samples, state.selectedMetric);
-  const keyPointRows = buildAnalyzerKeyPointRows(state.samples, state.selectedMetric);
+  } = useAnalyzerState({
+    state: props.state,
+    onStateChange: props.onStateChange,
+  });
+  const groupedSamples = groupAnalyzerSamples(analysisState.samples);
+  const metricSummaries = buildAnalyzerMetricSummaries(analysisState.samples);
+  const chartSamples = analysisState.samples.filter(
+    (sample) => sample.metric === analysisState.selectedMetric,
+  );
+  const chartSeries = buildAnalyzerChartSeries(analysisState.samples, analysisState.selectedMetric);
+  const keyPointRows = buildAnalyzerKeyPointRows(
+    analysisState.samples,
+    analysisState.selectedMetric,
+  );
   const latestChartSample = chartSamples.at(-1);
-  const selectedSummary = metricSummaries.find((summary) => summary.metric === state.selectedMetric);
+  const selectedSummary = metricSummaries.find(
+    (summary) => summary.metric === analysisState.selectedMetric,
+  );
   const display = props.display ?? {
-    showTrajectories: state.overlays.showTrajectories,
-    showVelocityVectors: state.overlays.showVelocityVectors,
-    showForceVectors: state.overlays.showForceVectors,
+    showTrajectories: analysisState.overlays.showTrajectories,
+    showVelocityVectors: analysisState.overlays.showVelocityVectors,
+    showForceVectors: analysisState.overlays.showForceVectors,
   };
 
   function updateDisplay(nextDisplay: AnalysisDisplayState) {
@@ -86,13 +99,13 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
       return;
     }
 
-    if (nextDisplay.showTrajectories !== state.overlays.showTrajectories) {
+    if (nextDisplay.showTrajectories !== analysisState.overlays.showTrajectories) {
       toggleTrajectories();
     }
-    if (nextDisplay.showVelocityVectors !== state.overlays.showVelocityVectors) {
+    if (nextDisplay.showVelocityVectors !== analysisState.overlays.showVelocityVectors) {
       toggleVelocityVectors();
     }
-    if (nextDisplay.showForceVectors !== state.overlays.showForceVectors) {
+    if (nextDisplay.showForceVectors !== analysisState.overlays.showForceVectors) {
       toggleForceVectors();
     }
   }
@@ -140,25 +153,25 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
             {display.showForceVectors ? "Hide force vectors" : "Show force vectors"}
           </button>
           <button type="button" style={buttonStyle} onClick={toggleChartPanel}>
-            {state.overlays.chartPanelOpen ? "Close chart panel" : "Open chart panel"}
+            {analysisState.overlays.chartPanelOpen ? "Close chart panel" : "Open chart panel"}
           </button>
         </div>
 
         <OverlayLayer
           overlays={{
-            ...state.overlays,
+            ...analysisState.overlays,
             ...display,
           }}
         />
 
-        {state.overlays.chartPanelOpen ? (
+        {analysisState.overlays.chartPanelOpen ? (
           <div data-testid="analysis-chart-panel" style={cardStyle}>
             <strong style={{ color: "#17304f" }}>Chart panel</strong>
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-              Samples ready: {state.samples.length}
+              Samples ready: {analysisState.samples.length}
             </span>
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-              Selected metric: {state.selectedMetric}
+              Selected metric: {analysisState.selectedMetric}
             </span>
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>
               Samples in view: {chartSamples.length}
@@ -228,7 +241,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
               ) : (
                 keyPointRows.map((row) => (
                   <div
-                    key={`${state.selectedMetric}-${row.index}`}
+                    key={`${analysisState.selectedMetric}-${row.index}`}
                     style={{
                       display: "grid",
                       gap: "2px",
@@ -262,7 +275,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
             <input
               aria-label="Sample label"
               style={inputStyle}
-              value={state.draft.label}
+              value={analysisState.draft.label}
               onChange={(event) => {
                 updateDraft({ label: event.target.value });
               }}
@@ -273,7 +286,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
             <select
               aria-label="Sample metric"
               style={inputStyle}
-              value={state.draft.metric}
+              value={analysisState.draft.metric}
               onChange={(event) => {
                 updateDraft({ metric: event.target.value as (typeof ANALYZER_METRICS)[number] });
               }}
@@ -290,7 +303,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
             <input
               aria-label="Sample value"
               style={inputStyle}
-              value={state.draft.value}
+              value={analysisState.draft.value}
               onChange={(event) => {
                 updateDraft({ value: event.target.value });
               }}
@@ -301,7 +314,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
             <input
               aria-label="Sample unit"
               style={inputStyle}
-              value={state.draft.unit}
+              value={analysisState.draft.unit}
               onChange={(event) => {
                 updateDraft({ unit: event.target.value });
               }}
