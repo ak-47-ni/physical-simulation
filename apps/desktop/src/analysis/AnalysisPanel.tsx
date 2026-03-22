@@ -1,6 +1,11 @@
 import type { CSSProperties } from "react";
 
 import {
+  buildRuntimeTrajectoryReadout,
+  createAnalyzerSamplesFromTrajectory,
+  type RuntimeTrajectorySample,
+} from "./analysisTrajectorySamples";
+import {
   buildAnalyzerChartSeries,
   buildAnalyzerMetricSummaries,
 } from "./analysisSummary";
@@ -57,6 +62,7 @@ type AnalysisPanelProps = {
   onStateChange?: (nextState: AnalyzerState) => void;
   display?: AnalysisDisplayState;
   onDisplayChange?: (nextDisplay: AnalysisDisplayState) => void;
+  trajectorySamples?: RuntimeTrajectorySample[];
 };
 
 export function AnalysisPanel(props: AnalysisPanelProps = {}) {
@@ -82,6 +88,14 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
   const keyPointRows = buildAnalyzerKeyPointRows(
     analysisState.samples,
     analysisState.selectedMetric,
+  );
+  const runtimeReadout = buildRuntimeTrajectoryReadout(props.trajectorySamples ?? []);
+  const runtimeDerivedSamples = createAnalyzerSamplesFromTrajectory(
+    props.trajectorySamples ?? [],
+    analysisState.selectedMetric,
+  );
+  const runtimeDerivedSummary = buildAnalyzerMetricSummaries(runtimeDerivedSamples).find(
+    (summary) => summary.metric === analysisState.selectedMetric,
   );
   const latestChartSample = chartSamples.at(-1);
   const selectedSummary = metricSummaries.find(
@@ -225,6 +239,45 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                 No metric summary yet
               </span>
             )}
+            {runtimeReadout ? (
+              <div
+                style={{
+                  display: "grid",
+                  gap: "6px",
+                  padding: "10px 12px",
+                  borderRadius: "12px",
+                  background: "#ffffff",
+                  border: "1px solid rgba(108, 128, 173, 0.14)",
+                }}
+              >
+                <strong style={{ color: "#17304f" }}>Runtime trajectory</strong>
+                <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                  Trajectory samples: {props.trajectorySamples?.length ?? 0}
+                </span>
+                <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                  Latest runtime time: {runtimeReadout.timeSeconds.toFixed(2)} s
+                </span>
+                <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                  Latest position: {runtimeReadout.position.x.toFixed(2)},{" "}
+                  {runtimeReadout.position.y.toFixed(2)}
+                </span>
+                {runtimeDerivedSummary ? (
+                  <>
+                    <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                      Runtime-derived points: {runtimeDerivedSamples.length}
+                    </span>
+                    <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                      Runtime latest value: {runtimeDerivedSummary.latestValue.toFixed(2)}{" "}
+                      {runtimeDerivedSummary.unit}
+                    </span>
+                  </>
+                ) : (
+                  <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                    Runtime-derived metric unavailable
+                  </span>
+                )}
+              </div>
+            ) : null}
             <div
               style={{
                 display: "grid",

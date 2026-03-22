@@ -291,4 +291,37 @@ describe("AnalysisPanel", () => {
       },
     ]);
   });
+
+  it("renders runtime trajectory readout and derived chart series from props", () => {
+    render(
+      <AnalysisPanel
+        trajectorySamples={[
+          {
+            frameNumber: 0,
+            timeSeconds: 0,
+            position: { x: 0, y: 3 },
+            velocity: { x: 1.5, y: 0 },
+            acceleration: { x: 0, y: -9.81 },
+          },
+          {
+            frameNumber: 1,
+            timeSeconds: 0.1,
+            position: { x: 0.15, y: 2.95 },
+            velocity: { x: 1.5, y: -0.981 },
+            acceleration: { x: 0, y: -9.81 },
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /open chart panel/i }));
+    fireEvent.click(screen.getByRole("button", { name: /view velocity chart/i }));
+
+    expect(screen.getByText("Runtime trajectory")).toBeDefined();
+    expect(screen.getByText("Trajectory samples: 2")).toBeDefined();
+    expect(screen.getByText("Latest runtime time: 0.10 s")).toBeDefined();
+    expect(screen.getByText("Latest position: 0.15, 2.95")).toBeDefined();
+    expect(screen.getByText("Runtime-derived points: 2")).toBeDefined();
+    expect(screen.getByText("Runtime latest value: 1.79 m/s")).toBeDefined();
+  });
 });
