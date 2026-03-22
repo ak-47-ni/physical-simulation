@@ -120,3 +120,36 @@ fn runtime_compile_validation_rejects_unknown_analyzer_kinds() {
         })
     );
 }
+
+#[test]
+fn runtime_compile_validation_rejects_ball_entities_without_radius() {
+    let request: RuntimeCompileRequest = serde_json::from_value(json!({
+        "scene": {
+            "schemaVersion": 1,
+            "entities": [
+                {
+                    "id": "ball-1",
+                    "kind": "ball",
+                    "x": 120.0,
+                    "y": 140.0
+                }
+            ],
+            "constraints": [],
+            "forceSources": [],
+            "analyzers": [],
+            "annotations": []
+        },
+        "dirtyScopes": ["physics"],
+        "rebuildRequired": true
+    }))
+    .expect("editor-style entity payload should deserialize");
+
+    assert_eq!(
+        SimulationBridge::new(1.0 / 60.0).compile_runtime_request(request),
+        Err(BridgeError::IncompleteEntityRecord {
+            id: "ball-1".to_string(),
+            kind: "ball".to_string(),
+            missing_field: "radius".to_string(),
+        })
+    );
+}

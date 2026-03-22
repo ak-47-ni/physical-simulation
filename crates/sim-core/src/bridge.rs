@@ -14,6 +14,11 @@ pub enum BridgeError {
         kind: String,
         missing_field: String,
     },
+    IncompleteEntityRecord {
+        id: String,
+        kind: String,
+        missing_field: String,
+    },
     InvalidTimeScale {
         value: f64,
     },
@@ -287,7 +292,7 @@ impl RuntimeCompileRequest {
                 .entities
                 .into_iter()
                 .map(SceneEntityPayload::into_entity_definition)
-                .collect(),
+                .collect::<Result<Vec<_>, _>>()?,
             constraints: vec![],
             force_sources: vec![ForceSourceDefinition::Gravity {
                 id: "gravity-earth".to_string(),
@@ -329,31 +334,120 @@ pub struct SceneDocumentPayload {
 pub struct SceneEntityPayload {
     pub id: String,
     pub kind: String,
-    pub points: Vec<Vector2>,
+    pub points: Option<Vec<Vector2>>,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    pub radius: Option<f64>,
+    pub mass: Option<f64>,
+    pub friction: Option<f64>,
+    pub restitution: Option<f64>,
+    pub locked: Option<bool>,
+    pub velocity_x: Option<f64>,
+    pub velocity_y: Option<f64>,
 }
 
 impl SceneEntityPayload {
-    fn into_entity_definition(self) -> EntityDefinition {
-        let centroid = polygon_centroid(&self.points);
-        let local_points = self
-            .points
-            .into_iter()
-            .map(|point| point.sub(centroid))
-            .collect::<Vec<_>>();
+    fn into_entity_definition(self) -> Result<EntityDefinition, BridgeError> {
+        let SceneEntityPayload {
+            id,
+            kind,
+            points,
+            x,
+            y,
+            width,
+            height,
+            radius,
+            mass,
+            friction,
+            restitution,
+            locked,
+            velocity_x,
+            velocity_y,
+        } = self;
 
-        EntityDefinition {
-            id: self.id,
-            shape: ShapeDefinition::ConvexPolygon {
-                points: local_points,
-            },
-            position: centroid,
+        let (shape, position, defaults) = match kind.as_str() {
+            "user-polygon" => {
+                let points = points.ok_or_else(|| BridgeError::IncompleteEntityRecord {
+                    id: id.clone(),
+                    kind: kind.clone(),
+                    missing_field: "points".to_string(),
+                })?;
+                let centroid = polygon_centroid(&points);
+                let local_points = points
+                    .into_iter()
+                    .map(|point| point.sub(centroid))
+                    .collect::<Vec<_>>();
+
+                (
+                    ShapeDefinition::ConvexPolygon {
+                        points: local_points,
+                    },
+                    centroid,
+                    EntityPhysicsDefaults {
+                        mass: 0.0,
+                        friction: 0.6,
+                        restitution: 0.0,
+                        locked: true,
+                    },
+                )
+            }
+            "ball" => {
+                let x = required_scalar(&id, &kind, "x", x)?;
+                let y = required_scalar(&id, &kind, "y", y)?;
+                let radius = required_scalar(&id, &kind, "radius", radius)?;
+
+                (
+                    ShapeDefinition::Ball { radius },
+                    Vector2::new(x + radius, y + radius),
+                    EntityPhysicsDefaults::dynamic(),
+                )
+            }
+            "block" | "board" => {
+                let x = required_scalar(&id, &kind, "x", x)?;
+                let y = required_scalar(&id, &kind, "y", y)?;
+                let width = required_scalar(&id, &kind, "width", width)?;
+                let height = required_scalar(&id, &kind, "height", height)?;
+
+                (
+                    ShapeDefinition::Block { width, height },
+                    Vector2::new(x + width * 0.5, y + height * 0.5),
+                    EntityPhysicsDefaults::dynamic(),
+                )
+            }
+            "polygon" => {
+                let x = required_scalar(&id, &kind, "x", x)?;
+                let y = required_scalar(&id, &kind, "y", y)?;
+                let width = required_scalar(&id, &kind, "width", width)?;
+                let height = required_scalar(&id, &kind, "height", height)?;
+
+                (
+                    ShapeDefinition::ConvexPolygon {
+                        points: rectangle_points(width, height),
+                    },
+                    Vector2::new(x + width * 0.5, y + height * 0.5),
+                    EntityPhysicsDefaults::dynamic(),
+                )
+            }
+            _ => (
+                ShapeDefinition::Unsupported { kind: kind.clone() },
+                Vector2::ZERO,
+                EntityPhysicsDefaults::dynamic(),
+            ),
+        };
+
+        Ok(EntityDefinition {
+            id,
+            shape,
+            position,
             rotation_radians: 0.0,
-            initial_velocity: Vector2::ZERO,
-            mass: 0.0,
-            is_static: true,
-            friction_coefficient: 0.6,
-            restitution_coefficient: 0.0,
-        }
+            initial_velocity: Vector2::new(velocity_x.unwrap_or(0.0), velocity_y.unwrap_or(0.0)),
+            mass: mass.unwrap_or(defaults.mass),
+            is_static: locked.unwrap_or(defaults.locked),
+            friction_coefficient: friction.unwrap_or(defaults.friction),
+            restitution_coefficient: restitution.unwrap_or(defaults.restitution),
+        })
     }
 }
 
@@ -404,6 +498,25 @@ pub struct AnnotationStrokePayload {
     pub points: Vec<Vector2>,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct EntityPhysicsDefaults {
+    mass: f64,
+    friction: f64,
+    restitution: f64,
+    locked: bool,
+}
+
+impl EntityPhysicsDefaults {
+    fn dynamic() -> Self {
+        Self {
+            mass: 1.0,
+            friction: 0.2,
+            restitution: 0.0,
+            locked: false,
+        }
+    }
+}
+
 fn polygon_centroid(points: &[Vector2]) -> Vector2 {
     if points.is_empty() {
         return Vector2::ZERO;
@@ -415,6 +528,15 @@ fn polygon_centroid(points: &[Vector2]) -> Vector2 {
         .fold(Vector2::ZERO, |accumulator, point| accumulator.add(point));
 
     sum.scale(1.0 / points.len() as f64)
+}
+
+fn rectangle_points(width: f64, height: f64) -> Vec<Vector2> {
+    vec![
+        Vector2::new(-width * 0.5, -height * 0.5),
+        Vector2::new(width * 0.5, -height * 0.5),
+        Vector2::new(width * 0.5, height * 0.5),
+        Vector2::new(-width * 0.5, height * 0.5),
+    ]
 }
 
 fn reject_unsupported_records(
@@ -429,4 +551,17 @@ fn reject_unsupported_records(
     }
 
     Ok(())
+}
+
+fn required_scalar(
+    id: &str,
+    kind: &str,
+    field: &str,
+    value: Option<f64>,
+) -> Result<f64, BridgeError> {
+    value.ok_or_else(|| BridgeError::IncompleteEntityRecord {
+        id: id.to_string(),
+        kind: kind.to_string(),
+        missing_field: field.to_string(),
+    })
 }
