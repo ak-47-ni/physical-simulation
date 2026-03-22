@@ -15,7 +15,10 @@ import {
 import {
   createInitialRuntimeBridgeState,
   pauseRuntimeBridge,
+  resetRuntimeBridge,
   resumeRuntimeBridge,
+  setRuntimeBridgeTimeScale,
+  stepRuntimeBridge,
 } from "./state/runtimeBridge";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import type { EditorTool } from "./workspace/tools";
@@ -23,9 +26,7 @@ import type { EditorTool } from "./workspace/tools";
 export function App() {
   const [editorState, setEditorState] = useState(createInitialEditorState);
   const [runtimeState, setRuntimeState] = useState(createInitialRuntimeBridgeState);
-  const [runtimeTimeSeconds, setRuntimeTimeSeconds] = useState(0);
-  const [timeScale, setTimeScale] = useState(1);
-  const [displaySettings] = useState(() =>
+  const [displaySettings, setDisplaySettings] = useState(() =>
     createSceneDisplaySettings({
       gridVisible: true,
       showLabels: true,
@@ -66,32 +67,36 @@ export function App() {
       bottomPane={
         <div style={{ display: "grid", gap: "14px" }}>
           <BottomTransportBar
-            runtime={{
-              ...runtimeState,
-              currentTimeSeconds: runtimeTimeSeconds,
-              timeScale,
-            }}
+            runtime={runtimeState}
             onPause={() => {
               setRuntimeState((current) => pauseRuntimeBridge(current));
             }}
             onReset={() => {
-              setRuntimeState(createInitialRuntimeBridgeState());
-              setRuntimeTimeSeconds(0);
-              setTimeScale(1);
+              setRuntimeState((current) => resetRuntimeBridge(current));
             }}
             onStart={() => {
               setRuntimeState((current) => resumeRuntimeBridge(current));
             }}
             onStep={() => {
-              setRuntimeTimeSeconds((current) =>
-                Number((current + (1 / 60) * timeScale).toFixed(2)),
-              );
+              setRuntimeState((current) => stepRuntimeBridge(current));
             }}
             onTimeScaleChange={(nextScale) => {
-              setTimeScale(nextScale);
+              setRuntimeState((current) => setRuntimeBridgeTimeScale(current, nextScale));
             }}
           />
-          <AnalysisPanel />
+          <AnalysisPanel
+            display={{
+              showTrajectories: displaySettings.showTrajectories,
+              showVelocityVectors: displaySettings.showVelocityVectors,
+              showForceVectors: displaySettings.showForceVectors,
+            }}
+            onDisplayChange={(nextDisplay) => {
+              setDisplaySettings((current) => ({
+                ...current,
+                ...nextDisplay,
+              }));
+            }}
+          />
         </div>
       }
       leftPane={<ObjectLibraryPanel />}

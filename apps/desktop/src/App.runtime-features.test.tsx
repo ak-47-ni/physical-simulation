@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { App } from "./App";
@@ -14,5 +14,40 @@ describe("App runtime features", () => {
     expect(screen.getByTestId("bottom-transport-bar")).toBeDefined();
     expect(screen.getByTestId("analysis-panel")).toBeDefined();
     expect(screen.getByTestId("annotation-layer")).toBeDefined();
+  });
+
+  it("routes transport controls through app runtime state", () => {
+    render(<App />);
+
+    expect(screen.getByText("0.00 s")).toBeDefined();
+    expect(screen.getByText("State: idle")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "2x" }));
+    fireEvent.click(screen.getByRole("button", { name: /step/i }));
+
+    expect(screen.getByText("0.03 s")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /start/i }));
+    expect(screen.getByText("State: running")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /pause/i }));
+    expect(screen.getByText("State: paused")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /reset/i }));
+    expect(screen.getByText("0.00 s")).toBeDefined();
+    expect(screen.getByText("State: idle")).toBeDefined();
+    expect(screen.getByRole("button", { name: "1x" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("syncs analysis overlay toggles back into app display state", () => {
+    render(<App />);
+
+    const trajectoriesLabel = screen.getByText("Trajectories");
+
+    expect(trajectoriesLabel.nextSibling?.textContent).toBe("Off");
+
+    fireEvent.click(screen.getByRole("button", { name: /show trajectories/i }));
+
+    expect(trajectoriesLabel.nextSibling?.textContent).toBe("On");
   });
 });

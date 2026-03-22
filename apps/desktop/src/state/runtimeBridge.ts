@@ -34,6 +34,8 @@ export type RuntimeFrameView = {
 export type RuntimeBridgeState = {
   status: RuntimeBridgeStatus;
   currentFrame: RuntimeFrameView | null;
+  currentTimeSeconds: number;
+  timeScale: number;
   dirtyScopes: DirtyEditScope[];
   rebuildRequired: boolean;
   canResume: boolean;
@@ -44,6 +46,8 @@ export function createInitialRuntimeBridgeState(): RuntimeBridgeState {
   return {
     status: "idle",
     currentFrame: null,
+    currentTimeSeconds: 0,
+    timeScale: 1,
     dirtyScopes: [],
     rebuildRequired: false,
     canResume: true,
@@ -108,6 +112,27 @@ export function markRuntimeBridgeRebuilt(state: RuntimeBridgeState): RuntimeBrid
     canResume: true,
     blockReason: null,
   };
+}
+
+export function setRuntimeBridgeTimeScale(
+  state: RuntimeBridgeState,
+  timeScale: number,
+): RuntimeBridgeState {
+  return {
+    ...state,
+    timeScale,
+  };
+}
+
+export function stepRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState {
+  return {
+    ...state,
+    currentTimeSeconds: state.currentTimeSeconds + (1 / 60) * state.timeScale,
+  };
+}
+
+export function resetRuntimeBridge(_state: RuntimeBridgeState): RuntimeBridgeState {
+  return createInitialRuntimeBridgeState();
 }
 
 export function resumeRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState {

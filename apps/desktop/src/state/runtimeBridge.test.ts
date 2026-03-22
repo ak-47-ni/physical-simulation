@@ -12,7 +12,10 @@ import {
   markRuntimeBridgeRebuilt,
   markRuntimeBridgeSceneDirty,
   pauseRuntimeBridge,
+  resetRuntimeBridge,
   resumeRuntimeBridge,
+  setRuntimeBridgeTimeScale,
+  stepRuntimeBridge,
 } from "./runtimeBridge";
 
 describe("runtimeBridge", () => {
@@ -96,5 +99,26 @@ describe("runtimeBridge", () => {
     expect(rebuilt.canResume).toBe(true);
     expect(rebuilt.blockReason).toBe(null);
     expect(resumed.status).toBe("running");
+  });
+
+  it("tracks time scale, single-step progress, and reset through the bridge state", () => {
+    const initial = createInitialRuntimeBridgeState();
+    const scaled = setRuntimeBridgeTimeScale(initial, 2);
+    const stepped = stepRuntimeBridge(scaled);
+    const resumed = resumeRuntimeBridge(stepped);
+    const paused = pauseRuntimeBridge(resumed);
+    const reset = resetRuntimeBridge(paused);
+
+    expect(initial.currentTimeSeconds).toBe(0);
+    expect(scaled.timeScale).toBe(2);
+    expect(stepped.currentTimeSeconds).toBeCloseTo(1 / 30, 5);
+    expect(resumed.status).toBe("running");
+    expect(paused.status).toBe("paused");
+    expect(reset).toMatchObject({
+      status: "idle",
+      currentTimeSeconds: 0,
+      timeScale: 1,
+      currentFrame: null,
+    });
   });
 });

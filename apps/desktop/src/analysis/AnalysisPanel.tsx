@@ -3,6 +3,12 @@ import type { CSSProperties } from "react";
 import { OverlayLayer } from "./OverlayLayer";
 import { useAnalyzerState } from "./useAnalyzerState";
 
+export type AnalysisDisplayState = {
+  showTrajectories: boolean;
+  showVelocityVectors: boolean;
+  showForceVectors: boolean;
+};
+
 const cardStyle: CSSProperties = {
   display: "grid",
   gap: "12px",
@@ -35,7 +41,12 @@ const inputStyle: CSSProperties = {
   fontSize: "13px",
 };
 
-export function AnalysisPanel() {
+type AnalysisPanelProps = {
+  display?: AnalysisDisplayState;
+  onDisplayChange?: (nextDisplay: AnalysisDisplayState) => void;
+};
+
+export function AnalysisPanel(props: AnalysisPanelProps = {}) {
   const {
     state,
     acceptSample,
@@ -45,29 +56,82 @@ export function AnalysisPanel() {
     toggleVelocityVectors,
     updateDraft,
   } = useAnalyzerState();
+  const display = props.display ?? {
+    showTrajectories: state.overlays.showTrajectories,
+    showVelocityVectors: state.overlays.showVelocityVectors,
+    showForceVectors: state.overlays.showForceVectors,
+  };
+
+  function updateDisplay(nextDisplay: AnalysisDisplayState) {
+    if (props.onDisplayChange) {
+      props.onDisplayChange(nextDisplay);
+      return;
+    }
+
+    if (nextDisplay.showTrajectories !== state.overlays.showTrajectories) {
+      toggleTrajectories();
+    }
+    if (nextDisplay.showVelocityVectors !== state.overlays.showVelocityVectors) {
+      toggleVelocityVectors();
+    }
+    if (nextDisplay.showForceVectors !== state.overlays.showForceVectors) {
+      toggleForceVectors();
+    }
+  }
 
   return (
     <div data-testid="analysis-panel" style={{ display: "grid", gap: "14px" }}>
       <section style={cardStyle}>
         <strong style={{ color: "#17304f" }}>Analysis overlays</strong>
         <div style={rowStyle}>
-          <button type="button" style={buttonStyle} onClick={toggleTrajectories}>
-            {state.overlays.showTrajectories ? "Hide trajectories" : "Show trajectories"}
+          <button
+            type="button"
+            style={buttonStyle}
+            onClick={() => {
+              updateDisplay({
+                ...display,
+                showTrajectories: !display.showTrajectories,
+              });
+            }}
+          >
+            {display.showTrajectories ? "Hide trajectories" : "Show trajectories"}
           </button>
-          <button type="button" style={buttonStyle} onClick={toggleVelocityVectors}>
-            {state.overlays.showVelocityVectors
-              ? "Hide velocity vectors"
-              : "Show velocity vectors"}
+          <button
+            type="button"
+            style={buttonStyle}
+            onClick={() => {
+              updateDisplay({
+                ...display,
+                showVelocityVectors: !display.showVelocityVectors,
+                showForceVectors: display.showForceVectors,
+              });
+            }}
+          >
+            {display.showVelocityVectors ? "Hide velocity vectors" : "Show velocity vectors"}
           </button>
-          <button type="button" style={buttonStyle} onClick={toggleForceVectors}>
-            {state.overlays.showForceVectors ? "Hide force vectors" : "Show force vectors"}
+          <button
+            type="button"
+            style={buttonStyle}
+            onClick={() => {
+              updateDisplay({
+                ...display,
+                showForceVectors: !display.showForceVectors,
+              });
+            }}
+          >
+            {display.showForceVectors ? "Hide force vectors" : "Show force vectors"}
           </button>
           <button type="button" style={buttonStyle} onClick={toggleChartPanel}>
             {state.overlays.chartPanelOpen ? "Close chart panel" : "Open chart panel"}
           </button>
         </div>
 
-        <OverlayLayer overlays={state.overlays} />
+        <OverlayLayer
+          overlays={{
+            ...state.overlays,
+            ...display,
+          }}
+        />
 
         {state.overlays.chartPanelOpen ? (
           <div data-testid="analysis-chart-panel" style={cardStyle}>

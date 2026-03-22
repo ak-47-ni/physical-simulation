@@ -48,4 +48,64 @@ describe("AnalysisPanel", () => {
     expect(screen.getByText("Probe A")).toBeDefined();
     expect(screen.getByText("9.81 m/s^2")).toBeDefined();
   });
+
+  it("supports controlled overlay display state updates", () => {
+    const displayChanges: Array<{
+      showTrajectories: boolean;
+      showVelocityVectors: boolean;
+      showForceVectors: boolean;
+    }> = [];
+
+    const { rerender } = render(
+      <AnalysisPanel
+        display={{
+          showTrajectories: false,
+          showVelocityVectors: false,
+          showForceVectors: false,
+        }}
+        onDisplayChange={(nextDisplay) => {
+          displayChanges.push(nextDisplay);
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /show trajectories/i }));
+    fireEvent.click(screen.getByRole("button", { name: /show velocity vectors/i }));
+    fireEvent.click(screen.getByRole("button", { name: /show force vectors/i }));
+
+    expect(displayChanges).toEqual([
+      {
+        showTrajectories: true,
+        showVelocityVectors: false,
+        showForceVectors: false,
+      },
+      {
+        showTrajectories: false,
+        showVelocityVectors: true,
+        showForceVectors: false,
+      },
+      {
+        showTrajectories: false,
+        showVelocityVectors: false,
+        showForceVectors: true,
+      },
+    ]);
+
+    rerender(
+      <AnalysisPanel
+        display={{
+          showTrajectories: true,
+          showVelocityVectors: true,
+          showForceVectors: true,
+        }}
+        onDisplayChange={(nextDisplay) => {
+          displayChanges.push(nextDisplay);
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("trajectory-overlay")).toBeDefined();
+    expect(screen.getByTestId("velocity-vector-overlay")).toBeDefined();
+    expect(screen.getByTestId("force-vector-overlay")).toBeDefined();
+  });
 });
