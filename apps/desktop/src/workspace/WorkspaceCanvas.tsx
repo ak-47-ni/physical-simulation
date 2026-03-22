@@ -5,6 +5,7 @@ import type { EditorTool } from "./tools";
 
 type WorkspaceCanvasProps = {
   entities: EditorSceneEntity[];
+  onCreateEntity: (position: { x: number; y: number }) => void;
   state: EditorState;
   onToolChange: (tool: EditorTool) => void;
   onGridVisibleChange: (visible: boolean) => void;
@@ -39,7 +40,15 @@ const actionButtonStyle: CSSProperties = {
 };
 
 export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
-  const { entities, state, onGridVisibleChange, onMoveEntity, onSelectEntity, onToolChange } = props;
+  const {
+    entities,
+    onCreateEntity,
+    state,
+    onGridVisibleChange,
+    onMoveEntity,
+    onSelectEntity,
+    onToolChange,
+  } = props;
   const [dragSession, setDragSession] = useState<DragSession | null>(null);
 
   useEffect(() => {
@@ -85,6 +94,19 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     onSelectEntity(entity.id);
   }
 
+  function handleStageClick(event: MouseEvent<HTMLDivElement>) {
+    if (event.target !== event.currentTarget || state.activeTool !== "place-body") {
+      return;
+    }
+
+    const stageBounds = event.currentTarget.getBoundingClientRect();
+
+    onCreateEntity({
+      x: Math.round(event.clientX - stageBounds.left),
+      y: Math.round(event.clientY - stageBounds.top),
+    });
+  }
+
   return (
     <section
       data-grid-visible={String(state.gridVisible)}
@@ -119,6 +141,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       </div>
 
       <div
+        data-testid="workspace-stage"
         style={{
           position: "relative",
           overflow: "hidden",
@@ -129,6 +152,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           backgroundRepeat: "repeat, repeat, no-repeat",
           backgroundSize: state.gridVisible ? "24px 24px, 24px 24px, auto" : "auto",
         }}
+        onClick={handleStageClick}
       >
         <div
           style={{

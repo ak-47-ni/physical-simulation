@@ -5,6 +5,7 @@ import type { EditorSceneEntity } from "../state/editorStore";
 
 type PropertyPanelProps = {
   display: SceneDisplaySettings;
+  onUpdateSelectedEntityPosition: (position: { x: number; y: number }) => void;
   selectedEntity: EditorSceneEntity | null;
 };
 
@@ -25,6 +26,17 @@ const cardStyle: CSSProperties = {
   border: "1px solid rgba(108, 128, 173, 0.14)",
 };
 
+const inputStyle: CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  border: "1px solid rgba(108, 128, 173, 0.18)",
+  borderRadius: "10px",
+  background: "#ffffff",
+  color: "#17304f",
+  padding: "8px 10px",
+  fontSize: "14px",
+};
+
 function ReadonlyField(props: { label: string; value: string }) {
   return (
     <div style={{ display: "grid", gap: "4px" }}>
@@ -34,8 +46,35 @@ function ReadonlyField(props: { label: string; value: string }) {
   );
 }
 
+function PositionInput(props: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label style={{ display: "grid", gap: "4px" }}>
+      <span style={{ color: "#6a7890", fontSize: "12px" }}>{props.label}</span>
+      <input
+        aria-label={props.label}
+        style={inputStyle}
+        type="number"
+        value={props.value}
+        onChange={(event) => {
+          const nextValue = Number(event.target.value);
+
+          if (!Number.isFinite(nextValue)) {
+            return;
+          }
+
+          props.onChange(nextValue);
+        }}
+      />
+    </label>
+  );
+}
+
 export function PropertyPanel(props: PropertyPanelProps) {
-  const { display, selectedEntity } = props;
+  const { display, onUpdateSelectedEntityPosition, selectedEntity } = props;
 
   return (
     <div style={{ display: "grid", gap: "16px" }}>
@@ -45,6 +84,18 @@ export function PropertyPanel(props: PropertyPanelProps) {
           <>
             <ReadonlyField label="Entity" value={selectedEntity.label} />
             <ReadonlyField label="Position" value={`${selectedEntity.x}, ${selectedEntity.y}`} />
+            <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+              <PositionInput
+                label="Position X"
+                value={selectedEntity.x}
+                onChange={(x) => onUpdateSelectedEntityPosition({ x, y: selectedEntity.y })}
+              />
+              <PositionInput
+                label="Position Y"
+                value={selectedEntity.y}
+                onChange={(y) => onUpdateSelectedEntityPosition({ x: selectedEntity.x, y })}
+              />
+            </div>
           </>
         ) : (
           <span style={{ color: "#55657f", fontSize: "14px" }}>No entity selected</span>

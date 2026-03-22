@@ -39,4 +39,29 @@ describe("App selection sync", () => {
     expect(ball.style.top).toBe("220px");
     expect(screen.getByText("168, 220")).toBeDefined();
   });
+
+  it("updates entity positions from the property panel", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+    fireEvent.change(screen.getByLabelText("Position X"), { target: { value: "340" } });
+    fireEvent.change(screen.getByLabelText("Position Y"), { target: { value: "290" } });
+
+    const board = screen.getByTestId("scene-entity-board-1") as HTMLElement;
+
+    expect(board.style.left).toBe("340px");
+    expect(board.style.top).toBe("290px");
+    expect(screen.getByText("340, 290")).toBeDefined();
+  });
+
+  it("creates and selects a new body from place-body mode", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /place body tool/i }));
+    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 248, clientY: 204 });
+
+    expect(screen.getByTestId("scene-entity-ball-2")).toBeDefined();
+    expect(screen.getByTestId("scene-tree-item-ball-2").getAttribute("data-selected")).toBe("true");
+    expect(screen.getByText("248, 204")).toBeDefined();
+  });
 });

@@ -18,6 +18,7 @@ describe("WorkspaceCanvas", () => {
           { id: "ball-1", label: "Ball 1", x: 120, y: 180 },
           { id: "board-1", label: "Board 1", x: 320, y: 260 },
         ]}
+        onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         state={state}
         onGridVisibleChange={() => undefined}
@@ -39,6 +40,7 @@ describe("WorkspaceCanvas", () => {
     const { rerender } = render(
       <WorkspaceCanvas
         entities={[]}
+        onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         state={state}
         onGridVisibleChange={(visible) => {
@@ -57,6 +59,7 @@ describe("WorkspaceCanvas", () => {
     rerender(
       <WorkspaceCanvas
         entities={[]}
+        onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         state={{
           ...state,
@@ -92,6 +95,7 @@ describe("WorkspaceCanvas", () => {
           { id: "ball-1", label: "Ball 1", x: 120, y: 180 },
           { id: "board-1", label: "Board 1", x: 320, y: 260 },
         ]}
+        onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         state={state}
         onGridVisibleChange={() => undefined}
@@ -117,6 +121,7 @@ describe("WorkspaceCanvas", () => {
     render(
       <WorkspaceCanvas
         entities={[{ id: "ball-1", label: "Ball 1", x: 120, y: 180 }]}
+        onCreateEntity={() => undefined}
         onMoveEntity={(id, position) => {
           moves.push({ id, ...position });
         }}
@@ -132,5 +137,30 @@ describe("WorkspaceCanvas", () => {
     fireEvent.mouseUp(window);
 
     expect(moves).toEqual([{ id: "ball-1", x: 150, y: 222 }]);
+  });
+
+  it("creates a new entity when place-body mode clicks the workspace stage", () => {
+    const created: Array<{ x: number; y: number }> = [];
+
+    render(
+      <WorkspaceCanvas
+        entities={[]}
+        onCreateEntity={(position) => {
+          created.push(position);
+        }}
+        onMoveEntity={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-body",
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 248, clientY: 204 });
+
+    expect(created).toEqual([{ x: 248, y: 204 }]);
   });
 });

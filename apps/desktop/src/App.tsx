@@ -6,6 +6,7 @@ import { ObjectLibraryPanel } from "./panels/ObjectLibraryPanel";
 import { PropertyPanel } from "./panels/PropertyPanel";
 import { SceneTreePanel } from "./panels/SceneTreePanel";
 import {
+  createPlacedBallEntity,
   createInitialEditorState,
   createInitialSceneEntities,
   type EditorSceneEntity,
@@ -54,6 +55,22 @@ export function App() {
     handleSelectEntity(entityId);
   }
 
+  function handleUpdateSelectedEntityPosition(position: { x: number; y: number }) {
+    if (!editorState.selectedEntityId) {
+      return;
+    }
+
+    handleMoveEntity(editorState.selectedEntityId, position);
+  }
+
+  function handleCreateEntity(position: { x: number; y: number }) {
+    setEntities((current) => {
+      const nextEntity = createPlacedBallEntity(current, position);
+      handleSelectEntity(nextEntity.id);
+      return [...current, nextEntity];
+    });
+  }
+
   const selectedEntity = entities.find((entity) => entity.id === editorState.selectedEntityId) ?? null;
 
   return (
@@ -62,7 +79,11 @@ export function App() {
       leftPane={<ObjectLibraryPanel />}
       rightPane={
         <div style={{ display: "grid", gap: "16px" }}>
-          <PropertyPanel display={displaySettings} selectedEntity={selectedEntity} />
+          <PropertyPanel
+            display={displaySettings}
+            onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
+            selectedEntity={selectedEntity}
+          />
           <SceneTreePanel
             entities={entities}
             onSelect={handleSelectEntity}
@@ -73,6 +94,7 @@ export function App() {
     >
       <WorkspaceCanvas
         entities={entities}
+        onCreateEntity={handleCreateEntity}
         onGridVisibleChange={handleGridVisibleChange}
         onMoveEntity={handleMoveEntity}
         onSelectEntity={handleSelectEntity}
