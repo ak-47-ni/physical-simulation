@@ -158,6 +158,20 @@ impl SimulationBridge {
             .ok_or_else(|| BridgeError::UnknownAnalyzer { id: id.to_string() })
     }
 
+    pub fn read_trajectory_samples(&self, id: &str) -> Result<Vec<TrajectorySample>, BridgeError> {
+        let samples = self.analyzer_samples(id)?;
+        let runtime_samples = samples
+            .into_iter()
+            .filter(|sample| sample.frame_number > 0)
+            .collect::<Vec<_>>();
+
+        if runtime_samples.is_empty() {
+            return Err(BridgeError::UnknownAnalyzer { id: id.to_string() });
+        }
+
+        Ok(runtime_samples)
+    }
+
     pub fn set_time_scale(&mut self, time_scale: f64) -> Result<BridgeStatusSnapshot, BridgeError> {
         if !time_scale.is_finite() || time_scale <= 0.0 {
             return Err(BridgeError::InvalidTimeScale { value: time_scale });

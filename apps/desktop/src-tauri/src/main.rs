@@ -68,6 +68,14 @@ fn analyzer_samples(
 }
 
 #[tauri::command]
+fn read_trajectory_samples(
+    state: tauri::State<'_, RuntimeBridgeState>,
+    analyzer_id: String,
+) -> Result<Vec<TrajectorySample>, String> {
+    with_bridge(state, |bridge| bridge.read_trajectory_samples(&analyzer_id))
+}
+
+#[tauri::command]
 fn set_runtime_time_scale(
     state: tauri::State<'_, RuntimeBridgeState>,
     time_scale: f64,
@@ -141,6 +149,7 @@ pub fn register_runtime_commands<R: tauri::Runtime>(
             reset_runtime,
             current_frame,
             analyzer_samples,
+            read_trajectory_samples,
             set_runtime_time_scale,
             runtime_status,
             mark_scene_dirty
