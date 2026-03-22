@@ -1,0 +1,8 @@
+{
+  "name": "scene-schema",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  }
+}

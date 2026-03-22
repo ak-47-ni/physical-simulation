@@ -1,0 +1,12 @@
+{
+  "name": "physics-sandbox",
+  "private": true,
+  "packageManager": "pnpm@10.30.2",
+  "scripts": {
+    "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
