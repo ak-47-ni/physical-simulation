@@ -6,12 +6,14 @@ import { ObjectLibraryPanel } from "./panels/ObjectLibraryPanel";
 import { PropertyPanel } from "./panels/PropertyPanel";
 import { SceneTreePanel } from "./panels/SceneTreePanel";
 import {
+  createDuplicatedEntity,
   createPlacedBodyEntity,
   createInitialEditorState,
   createInitialSceneEntities,
   type EditorSceneEntity,
   type LibraryBodyKind,
 } from "./state/editorStore";
+import { useEditorHotkeys } from "./state/useEditorHotkeys";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import type { EditorTool } from "./workspace/tools";
 
@@ -94,6 +96,23 @@ export function App() {
 
   const selectedEntity = entities.find((entity) => entity.id === editorState.selectedEntityId) ?? null;
 
+  function handleDuplicateSelectedEntity() {
+    if (!selectedEntity) {
+      return;
+    }
+
+    const nextEntity = createDuplicatedEntity(entities, selectedEntity);
+
+    setEntities((current) => [...current, nextEntity]);
+    handleSelectEntity(nextEntity.id);
+  }
+
+  useEditorHotkeys({
+    onDeleteSelectedEntity: handleDeleteSelectedEntity,
+    onDuplicateSelectedEntity: handleDuplicateSelectedEntity,
+    selectedEntityId: editorState.selectedEntityId,
+  });
+
   return (
     <ShellLayout
       bottomPane={<span>Transport controls mount point</span>}
@@ -108,6 +127,7 @@ export function App() {
           <PropertyPanel
             display={displaySettings}
             onDeleteSelectedEntity={handleDeleteSelectedEntity}
+            onDuplicateSelectedEntity={handleDuplicateSelectedEntity}
             onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
             selectedEntity={selectedEntity}
           />

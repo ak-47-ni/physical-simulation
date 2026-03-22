@@ -6,6 +6,7 @@ import type { EditorSceneEntity } from "../state/editorStore";
 type PropertyPanelProps = {
   display: SceneDisplaySettings;
   onDeleteSelectedEntity: () => void;
+  onDuplicateSelectedEntity: () => void;
   onUpdateSelectedEntityPosition: (position: { x: number; y: number }) => void;
   selectedEntity: EditorSceneEntity | null;
 };
@@ -49,6 +50,17 @@ const dangerButtonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
+const actionButtonStyle: CSSProperties = {
+  border: "1px solid rgba(108, 128, 173, 0.22)",
+  borderRadius: "10px",
+  background: "#ffffff",
+  color: "#17304f",
+  padding: "9px 12px",
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
 function ReadonlyField(props: { label: string; value: string }) {
   return (
     <div style={{ display: "grid", gap: "4px" }}>
@@ -86,7 +98,13 @@ function PositionInput(props: {
 }
 
 export function PropertyPanel(props: PropertyPanelProps) {
-  const { display, onDeleteSelectedEntity, onUpdateSelectedEntityPosition, selectedEntity } = props;
+  const {
+    display,
+    onDeleteSelectedEntity,
+    onDuplicateSelectedEntity,
+    onUpdateSelectedEntityPosition,
+    selectedEntity,
+  } = props;
 
   return (
     <div style={{ display: "grid", gap: "16px" }}>
@@ -108,9 +126,14 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 onChange={(y) => onUpdateSelectedEntityPosition({ x: selectedEntity.x, y })}
               />
             </div>
-            <button style={dangerButtonStyle} type="button" onClick={onDeleteSelectedEntity}>
-              Delete entity
-            </button>
+            <div style={{ display: "grid", gap: "8px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+              <button style={actionButtonStyle} type="button" onClick={onDuplicateSelectedEntity}>
+                Duplicate entity
+              </button>
+              <button style={dangerButtonStyle} type="button" onClick={onDeleteSelectedEntity}>
+                Delete entity
+              </button>
+            </div>
           </>
         ) : (
           <span style={{ color: "#55657f", fontSize: "14px" }}>No entity selected</span>

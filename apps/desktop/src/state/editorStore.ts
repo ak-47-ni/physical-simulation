@@ -15,6 +15,8 @@ export type EditorState = {
   selectedEntityId: string | null;
 };
 
+const DUPLICATE_OFFSET = 24;
+
 export function createInitialEditorState(): EditorState {
   return {
     activeTool: "select",
@@ -37,6 +39,15 @@ const BODY_LABELS: Record<LibraryBodyKind, string> = {
   polygon: "Polygon",
 };
 
+function isLibraryBodyKind(value: string): value is LibraryBodyKind {
+  return value in BODY_LABELS;
+}
+
+function inferBodyKind(entityId: string): LibraryBodyKind | null {
+  const [kind] = entityId.split("-");
+  return isLibraryBodyKind(kind) ? kind : null;
+}
+
 export function createPlacedBodyEntity(
   entities: EditorSceneEntity[],
   kind: LibraryBodyKind,
@@ -50,5 +61,30 @@ export function createPlacedBodyEntity(
     label: `${BODY_LABELS[kind]} ${nextIndex}`,
     x: position.x,
     y: position.y,
+  };
+}
+
+export function createDuplicatedEntity(
+  entities: EditorSceneEntity[],
+  entity: EditorSceneEntity,
+): EditorSceneEntity {
+  const duplicatedPosition = {
+    x: entity.x + DUPLICATE_OFFSET,
+    y: entity.y + DUPLICATE_OFFSET,
+  };
+  const kind = inferBodyKind(entity.id);
+
+  if (kind) {
+    return createPlacedBodyEntity(entities, kind, duplicatedPosition);
+  }
+
+  const nextIndex =
+    entities.filter((candidate) => candidate.id.startsWith(`${entity.id}-copy-`)).length + 1;
+
+  return {
+    id: `${entity.id}-copy-${nextIndex}`,
+    label: `${entity.label} Copy ${nextIndex}`,
+    x: duplicatedPosition.x,
+    y: duplicatedPosition.y,
   };
 }
