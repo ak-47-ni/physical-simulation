@@ -68,6 +68,14 @@ fn analyzer_samples(
 }
 
 #[tauri::command]
+fn set_runtime_time_scale(
+    state: tauri::State<'_, RuntimeBridgeState>,
+    time_scale: f64,
+) -> Result<BridgeStatusSnapshot, String> {
+    with_bridge(state, |bridge| bridge.set_time_scale(time_scale))
+}
+
+#[tauri::command]
 fn runtime_status(
     state: tauri::State<'_, RuntimeBridgeState>,
 ) -> Result<BridgeStatusSnapshot, String> {
@@ -100,6 +108,7 @@ fn with_bridge<T>(
 fn format_bridge_error(error: BridgeError) -> String {
     match error {
         BridgeError::DirtySceneRequiresRebuild => "runtime resume requires rebuild".to_string(),
+        BridgeError::InvalidTimeScale { value } => format!("invalid time scale: {value}"),
         BridgeError::RuntimeNotInitialized => "runtime not initialized".to_string(),
         BridgeError::UnknownAnalyzer { id } => format!("unknown analyzer: {id}"),
         BridgeError::UnsupportedSceneRecord { section, record } => {
@@ -125,6 +134,7 @@ pub fn register_runtime_commands<R: tauri::Runtime>(
             reset_runtime,
             current_frame,
             analyzer_samples,
+            set_runtime_time_scale,
             runtime_status,
             mark_scene_dirty
         ])

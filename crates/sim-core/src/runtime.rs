@@ -1,7 +1,7 @@
 use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySample};
 use crate::entity::{CompiledShape, Vector2};
 use crate::scene::CompiledScene;
-use crate::solver::{RuntimeBodyState, step_bodies};
+use crate::solver::{step_bodies, RuntimeBodyState};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -136,6 +136,10 @@ impl RuntimeScene {
 
     pub fn elapsed_time_seconds(&self) -> f64 {
         self.elapsed_time_seconds
+    }
+
+    pub fn set_fixed_delta_seconds(&mut self, fixed_delta_seconds: f64) {
+        self.fixed_delta_seconds = fixed_delta_seconds.max(f64::EPSILON);
     }
 }
 

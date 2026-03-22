@@ -9,6 +9,9 @@ use crate::scene::{compile_scene, CompileSceneRequest, CompiledScene, SceneCompi
 #[derive(Debug, Clone, PartialEq)]
 pub enum BridgeError {
     DirtySceneRequiresRebuild,
+    InvalidTimeScale {
+        value: f64,
+    },
     RuntimeNotInitialized,
     UnknownAnalyzer {
         id: String,
@@ -22,7 +25,8 @@ pub enum BridgeError {
 
 #[derive(Debug, Clone)]
 pub struct SimulationBridge {
-    fixed_delta_seconds: f64,
+    base_delta_seconds: f64,
+    time_scale: f64,
     compiled_scene: Option<CompiledScene>,
     runtime: Option<RuntimeScene>,
     dirty_scopes: Vec<DirtyEditScope>,
@@ -49,6 +53,7 @@ pub struct BridgeStatusSnapshot {
     pub status: BridgeStatus,
     pub current_frame: Option<RuntimeFramePayload>,
     pub current_time_seconds: f64,
+    pub time_scale: f64,
     pub can_resume: bool,
     pub block_reason: Option<BridgeBlockReason>,
 }
@@ -56,7 +61,8 @@ pub struct BridgeStatusSnapshot {
 impl SimulationBridge {
     pub fn new(fixed_delta_seconds: f64) -> Self {
         Self {
-            fixed_delta_seconds: fixed_delta_seconds.max(f64::EPSILON),
+            base_delta_seconds: fixed_delta_seconds.max(f64::EPSILON),
+            time_scale: 1.0,
             compiled_scene: None,
             runtime: None,
             dirty_scopes: Vec::new(),
@@ -69,7 +75,7 @@ impl SimulationBridge {
         request: CompileSceneRequest,
     ) -> Result<RuntimeFramePayload, BridgeError> {
         let compiled_scene = compile_scene(&request).map_err(BridgeError::SceneCompile)?;
-        let runtime = RuntimeScene::new(compiled_scene.clone(), self.fixed_delta_seconds);
+        let runtime = RuntimeScene::new(compiled_scene.clone(), self.step_delta_seconds());
         let frame = runtime.current_frame();
 
         self.compiled_scene = Some(compiled_scene);
@@ -115,7 +121,7 @@ impl SimulationBridge {
             .compiled_scene
             .clone()
             .ok_or(BridgeError::RuntimeNotInitialized)?;
-        let runtime = RuntimeScene::new(compiled_scene, self.fixed_delta_seconds);
+        let runtime = RuntimeScene::new(compiled_scene, self.step_delta_seconds());
         let frame = runtime.current_frame();
 
         self.runtime = Some(runtime);
@@ -144,6 +150,21 @@ impl SimulationBridge {
             .analyzer_samples(id)
             .map(|samples| samples.to_vec())
             .ok_or_else(|| BridgeError::UnknownAnalyzer { id: id.to_string() })
+    }
+
+    pub fn set_time_scale(&mut self, time_scale: f64) -> Result<BridgeStatusSnapshot, BridgeError> {
+        if !time_scale.is_finite() || time_scale <= 0.0 {
+            return Err(BridgeError::InvalidTimeScale { value: time_scale });
+        }
+
+        self.time_scale = time_scale;
+
+        let step_delta_seconds = self.step_delta_seconds();
+        if let Some(runtime) = self.runtime.as_mut() {
+            runtime.set_fixed_delta_seconds(step_delta_seconds);
+        }
+
+        Ok(self.status_snapshot())
     }
 
     pub fn mark_dirty(&mut self) {
@@ -184,6 +205,7 @@ impl SimulationBridge {
             status: self.status,
             current_frame,
             current_time_seconds,
+            time_scale: self.time_scale,
             can_resume: !self.rebuild_required(),
             block_reason: if self.rebuild_required() {
                 Some(BridgeBlockReason::RebuildRequired)
@@ -213,6 +235,10 @@ impl SimulationBridge {
         self.dirty_scopes
             .iter()
             .any(DirtyEditScope::requires_rebuild)
+    }
+
+    fn step_delta_seconds(&self) -> f64 {
+        (self.base_delta_seconds * self.time_scale).max(f64::EPSILON)
     }
 }
 
