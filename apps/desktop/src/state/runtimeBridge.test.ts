@@ -7,6 +7,7 @@ import {
 } from "../../../../packages/scene-schema/src";
 import {
   applyRuntimeFrame,
+  createMockRuntimeBridgePort,
   createCompileRequestFromScene,
   createInitialRuntimeBridgeState,
   markRuntimeBridgeRebuilt,
@@ -115,6 +116,71 @@ describe("runtimeBridge", () => {
     expect(resumed.status).toBe("running");
     expect(paused.status).toBe("paused");
     expect(reset).toMatchObject({
+      status: "idle",
+      currentTimeSeconds: 0,
+      timeScale: 1,
+      currentFrame: null,
+    });
+  });
+
+  it("provides a mock runtime bridge port with subscribable command snapshots", async () => {
+    const scene = createEmptySceneDocument();
+    const request = createCompileRequestFromScene(scene, ["analysis"]);
+    const snapshots = [];
+    const port = createMockRuntimeBridgePort({
+      createFrame: ({ nextFrameNumber }) =>
+        createRuntimeFramePayload({
+          frameNumber: nextFrameNumber,
+          entities: [
+            {
+              entityId: "probe-1",
+              position: { x: nextFrameNumber, y: 2 },
+              rotation: 0,
+              velocity: { x: 1, y: 0 },
+            },
+          ],
+        }),
+    });
+
+    const unsubscribe = port.subscribe((snapshot) => {
+      snapshots.push(snapshot);
+    });
+
+    await port.compile(request);
+    await port.setTimeScale(0.5);
+    await port.start();
+    await port.step();
+    await port.pause();
+
+    expect(port.getSnapshot().lastCompileRequest).toEqual(request);
+    expect(snapshots.at(-1)?.bridge.status).toBe("paused");
+
+    const steppedSnapshot = snapshots.find((snapshot) => snapshot.bridge.currentFrame !== null);
+
+    expect(steppedSnapshot?.bridge.currentTimeSeconds).toBeCloseTo(1 / 120, 5);
+    expect(steppedSnapshot?.bridge.currentFrame).toEqual({
+      frameNumber: 1,
+      entities: [
+        {
+          id: "probe-1",
+          transform: {
+            x: 1,
+            y: 2,
+            rotation: 0,
+          },
+          velocity: { x: 1, y: 0 },
+          acceleration: undefined,
+        },
+      ],
+    });
+
+    const snapshotCountBeforeReset = snapshots.length;
+
+    unsubscribe();
+    await port.reset();
+
+    expect(snapshots).toHaveLength(snapshotCountBeforeReset);
+    expect(port.getSnapshot().bridge).toMatchObject({
       status: "idle",
       currentTimeSeconds: 0,
       timeScale: 1,

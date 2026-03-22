@@ -42,6 +42,28 @@ export type RuntimeBridgeState = {
   blockReason: RuntimeBridgeBlockReason;
 };
 
+export type RuntimeBridgePortSnapshot = {
+  bridge: RuntimeBridgeState;
+  lastCompileRequest: RuntimeCompileRequest | null;
+};
+
+export type RuntimeBridgePort = {
+  getSnapshot: () => RuntimeBridgePortSnapshot;
+  subscribe: (listener: (snapshot: RuntimeBridgePortSnapshot) => void) => () => void;
+  compile: (request: RuntimeCompileRequest) => Promise<RuntimeBridgePortSnapshot>;
+  start: () => Promise<RuntimeBridgePortSnapshot>;
+  pause: () => Promise<RuntimeBridgePortSnapshot>;
+  step: () => Promise<RuntimeBridgePortSnapshot>;
+  reset: () => Promise<RuntimeBridgePortSnapshot>;
+  setTimeScale: (timeScale: number) => Promise<RuntimeBridgePortSnapshot>;
+};
+
+export type CreateMockRuntimeBridgePortOptions = {
+  createFrame?: (
+    input: RuntimeBridgePortSnapshot & { nextFrameNumber: number },
+  ) => RuntimeFramePayload | null;
+};
+
 export function createInitialRuntimeBridgeState(): RuntimeBridgeState {
   return {
     status: "idle",
@@ -52,6 +74,13 @@ export function createInitialRuntimeBridgeState(): RuntimeBridgeState {
     rebuildRequired: false,
     canResume: true,
     blockReason: null,
+  };
+}
+
+export function createInitialRuntimeBridgePortSnapshot(): RuntimeBridgePortSnapshot {
+  return {
+    bridge: createInitialRuntimeBridgeState(),
+    lastCompileRequest: null,
   };
 }
 
@@ -157,6 +186,91 @@ export function pauseRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeStat
   return {
     ...state,
     status: "paused",
+  };
+}
+
+export function createMockRuntimeBridgePort(
+  options: CreateMockRuntimeBridgePortOptions = {},
+): RuntimeBridgePort {
+  let snapshot = createInitialRuntimeBridgePortSnapshot();
+  const listeners = new Set<(nextSnapshot: RuntimeBridgePortSnapshot) => void>();
+
+  function publish(nextSnapshot: RuntimeBridgePortSnapshot) {
+    snapshot = nextSnapshot;
+
+    for (const listener of listeners) {
+      listener(snapshot);
+    }
+
+    return snapshot;
+  }
+
+  function update(
+    updater: (currentSnapshot: RuntimeBridgePortSnapshot) => RuntimeBridgePortSnapshot,
+  ) {
+    return publish(updater(snapshot));
+  }
+
+  return {
+    getSnapshot: () => snapshot,
+    subscribe: (listener) => {
+      listeners.add(listener);
+
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    compile: async (request) =>
+      update((currentSnapshot) => ({
+        ...currentSnapshot,
+        bridge: {
+          ...createInitialRuntimeBridgeState(),
+          timeScale: currentSnapshot.bridge.timeScale,
+        },
+        lastCompileRequest: request,
+      })),
+    start: async () =>
+      update((currentSnapshot) => ({
+        ...currentSnapshot,
+        bridge: resumeRuntimeBridge(currentSnapshot.bridge),
+      })),
+    pause: async () =>
+      update((currentSnapshot) => ({
+        ...currentSnapshot,
+        bridge: pauseRuntimeBridge(currentSnapshot.bridge),
+      })),
+    step: async () =>
+      update((currentSnapshot) => {
+        let bridge = stepRuntimeBridge(currentSnapshot.bridge);
+        const nextFrameNumber = (bridge.currentFrame?.frameNumber ?? 0) + 1;
+        const frame =
+          options.createFrame?.({
+            ...currentSnapshot,
+            bridge,
+            nextFrameNumber,
+          }) ??
+          {
+            frameNumber: nextFrameNumber,
+            entities: [],
+          };
+
+        bridge = applyRuntimeFrame(bridge, frame);
+
+        return {
+          ...currentSnapshot,
+          bridge,
+        };
+      }),
+    reset: async () =>
+      update((currentSnapshot) => ({
+        ...currentSnapshot,
+        bridge: resetRuntimeBridge(currentSnapshot.bridge),
+      })),
+    setTimeScale: async (timeScale) =>
+      update((currentSnapshot) => ({
+        ...currentSnapshot,
+        bridge: setRuntimeBridgeTimeScale(currentSnapshot.bridge, timeScale),
+      })),
   };
 }
 
