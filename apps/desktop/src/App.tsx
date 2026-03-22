@@ -1,16 +1,30 @@
 import { useState } from "react";
 
+import { AnalysisPanel } from "./analysis/AnalysisPanel";
+import { AnnotationLayer } from "./annotation/AnnotationLayer";
 import { createSceneDisplaySettings } from "./io/sceneFile";
 import { ShellLayout } from "./layout/ShellLayout";
+import { BottomTransportBar } from "./panels/BottomTransportBar";
 import { ObjectLibraryPanel } from "./panels/ObjectLibraryPanel";
 import { PropertyPanel } from "./panels/PropertyPanel";
 import { SceneTreePanel } from "./panels/SceneTreePanel";
-import { createInitialEditorState, type EditorSceneEntity } from "./state/editorStore";
+import {
+  createInitialEditorState,
+  type EditorSceneEntity,
+} from "./state/editorStore";
+import {
+  createInitialRuntimeBridgeState,
+  pauseRuntimeBridge,
+  resumeRuntimeBridge,
+} from "./state/runtimeBridge";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import type { EditorTool } from "./workspace/tools";
 
 export function App() {
   const [editorState, setEditorState] = useState(createInitialEditorState);
+  const [runtimeState, setRuntimeState] = useState(createInitialRuntimeBridgeState);
+  const [runtimeTimeSeconds, setRuntimeTimeSeconds] = useState(0);
+  const [timeScale, setTimeScale] = useState(1);
   const [displaySettings] = useState(() =>
     createSceneDisplaySettings({
       gridVisible: true,
@@ -49,7 +63,37 @@ export function App() {
 
   return (
     <ShellLayout
-      bottomPane={<span>Transport controls mount point</span>}
+      bottomPane={
+        <div style={{ display: "grid", gap: "14px" }}>
+          <BottomTransportBar
+            runtime={{
+              ...runtimeState,
+              currentTimeSeconds: runtimeTimeSeconds,
+              timeScale,
+            }}
+            onPause={() => {
+              setRuntimeState((current) => pauseRuntimeBridge(current));
+            }}
+            onReset={() => {
+              setRuntimeState(createInitialRuntimeBridgeState());
+              setRuntimeTimeSeconds(0);
+              setTimeScale(1);
+            }}
+            onStart={() => {
+              setRuntimeState((current) => resumeRuntimeBridge(current));
+            }}
+            onStep={() => {
+              setRuntimeTimeSeconds((current) =>
+                Number((current + (1 / 60) * timeScale).toFixed(2)),
+              );
+            }}
+            onTimeScaleChange={(nextScale) => {
+              setTimeScale(nextScale);
+            }}
+          />
+          <AnalysisPanel />
+        </div>
+      }
       leftPane={<ObjectLibraryPanel />}
       rightPane={
         <div style={{ display: "grid", gap: "16px" }}>
@@ -62,12 +106,15 @@ export function App() {
         </div>
       }
     >
-      <WorkspaceCanvas
-        entities={sampleEntities}
-        onGridVisibleChange={handleGridVisibleChange}
-        onToolChange={handleToolChange}
-        state={editorState}
-      />
+      <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr) auto", gap: "14px" }}>
+        <WorkspaceCanvas
+          entities={sampleEntities}
+          onGridVisibleChange={handleGridVisibleChange}
+          onToolChange={handleToolChange}
+          state={editorState}
+        />
+        <AnnotationLayer />
+      </div>
     </ShellLayout>
   );
 }
