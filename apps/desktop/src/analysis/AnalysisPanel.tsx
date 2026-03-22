@@ -94,26 +94,28 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
   const trajectorySamples = props.trajectorySamples ?? runtimeTrajectoryState.trajectorySamples;
   const groupedSamples = groupAnalyzerSamples(analysisState.samples);
   const metricSummaries = buildAnalyzerMetricSummaries(analysisState.samples);
-  const chartSamples = analysisState.samples.filter(
+  const manualChartSamples = analysisState.samples.filter(
     (sample) => sample.metric === analysisState.selectedMetric,
-  );
-  const chartSeries = buildAnalyzerChartSeries(analysisState.samples, analysisState.selectedMetric);
-  const keyPointRows = buildAnalyzerKeyPointRows(
-    analysisState.samples,
-    analysisState.selectedMetric,
   );
   const runtimeReadout = buildRuntimeTrajectoryReadout(trajectorySamples);
   const runtimeDerivedSamples = createAnalyzerSamplesFromTrajectory(
     trajectorySamples,
     analysisState.selectedMetric,
   );
+  const chartSamples =
+    manualChartSamples.length > 0 ? manualChartSamples : runtimeDerivedSamples;
+  const chartSeries = buildAnalyzerChartSeries(chartSamples, analysisState.selectedMetric);
+  const keyPointRows = buildAnalyzerKeyPointRows(chartSamples, analysisState.selectedMetric);
   const runtimeDerivedSummary = buildAnalyzerMetricSummaries(runtimeDerivedSamples).find(
     (summary) => summary.metric === analysisState.selectedMetric,
   );
+  const availableSampleCount =
+    analysisState.samples.length > 0 ? analysisState.samples.length : runtimeDerivedSamples.length;
   const latestChartSample = chartSamples.at(-1);
   const selectedSummary = metricSummaries.find(
     (summary) => summary.metric === analysisState.selectedMetric,
   );
+  const chartSummary = selectedSummary ?? runtimeDerivedSummary;
   const display = props.display ?? {
     showTrajectories: analysisState.overlays.showTrajectories,
     showVelocityVectors: analysisState.overlays.showVelocityVectors,
@@ -195,7 +197,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
           <div data-testid="analysis-chart-panel" style={cardStyle}>
             <strong style={{ color: "#17304f" }}>Chart panel</strong>
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-              Samples ready: {analysisState.samples.length}
+              Samples ready: {availableSampleCount}
             </span>
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>
               Selected metric: {analysisState.selectedMetric}
@@ -222,7 +224,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                 ? `Latest sample: ${latestChartSample.value} ${latestChartSample.unit}`
                 : "Latest sample: none"}
             </span>
-            {selectedSummary ? (
+            {chartSummary ? (
               <div
                 style={{
                   display: "grid",
@@ -234,14 +236,13 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                 }}
               >
                 <strong style={{ color: "#17304f" }}>
-                  {formatAnalyzerMetric(selectedSummary.metric)} overview
+                  {formatAnalyzerMetric(chartSummary.metric)} overview
                 </strong>
                 <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                  Latest: {selectedSummary.latestValue} {selectedSummary.unit}
+                  Latest: {chartSummary.latestValue} {chartSummary.unit}
                 </span>
                 <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                  Range: {selectedSummary.minValue} to {selectedSummary.maxValue}{" "}
-                  {selectedSummary.unit}
+                  Range: {chartSummary.minValue} to {chartSummary.maxValue} {chartSummary.unit}
                 </span>
                 <span style={{ color: "#5d6f88", fontSize: "13px" }}>
                   Series points: {chartSeries.length}

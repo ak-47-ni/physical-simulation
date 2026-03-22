@@ -373,6 +373,12 @@ describe("AnalysisPanel", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Trajectory samples: 2")).toBeDefined();
+      expect(screen.getByText("Velocity overview")).toBeDefined();
+      expect(screen.getByText("Samples in view: 2")).toBeDefined();
+      expect(screen.getByText("Series points: 2")).toBeDefined();
+      expect(screen.getByText("Latest sample: 1.8028 m/s")).toBeDefined();
+      expect(screen.getByText("Point 2")).toBeDefined();
+      expect(screen.getByText("+0.2217 m/s")).toBeDefined();
       expect(screen.getByText("Runtime latest value: 1.80 m/s")).toBeDefined();
     });
   });
