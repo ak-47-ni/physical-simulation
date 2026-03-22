@@ -2,13 +2,22 @@ import type { EditorTool } from "../workspace/tools";
 
 export type LibraryBodyKind = "ball" | "block" | "board" | "polygon";
 
+export type EditorEntityPhysics = {
+  mass: number;
+  friction: number;
+  restitution: number;
+  locked: boolean;
+  velocityX: number;
+  velocityY: number;
+};
+
 type BaseEditorSceneEntity = {
   id: string;
   kind: LibraryBodyKind;
   label: string;
   x: number;
   y: number;
-};
+} & EditorEntityPhysics;
 
 export type BallSceneEntity = BaseEditorSceneEntity & {
   kind: "ball";
@@ -41,8 +50,25 @@ export function createInitialEditorState(): EditorState {
 
 export function createInitialSceneEntities(): EditorSceneEntity[] {
   return [
-    { id: "ball-1", kind: "ball", label: "Ball 1", x: 132, y: 176, radius: 24 },
-    { id: "board-1", kind: "board", label: "Board 1", x: 318, y: 272, width: 120, height: 18 },
+    {
+      id: "ball-1",
+      kind: "ball",
+      label: "Ball 1",
+      x: 132,
+      y: 176,
+      radius: 24,
+      ...BODY_PHYSICS_DEFAULTS.ball,
+    },
+    {
+      id: "board-1",
+      kind: "board",
+      label: "Board 1",
+      x: 318,
+      y: 272,
+      width: 120,
+      height: 18,
+      ...BODY_PHYSICS_DEFAULTS.board,
+    },
   ];
 }
 
@@ -59,6 +85,41 @@ const BODY_DEFAULTS = {
   board: { width: 120, height: 18 },
   polygon: { width: 76, height: 76 },
 } as const;
+
+const BODY_PHYSICS_DEFAULTS: Record<LibraryBodyKind, EditorEntityPhysics> = {
+  ball: {
+    mass: 1.2,
+    friction: 0.14,
+    restitution: 0.82,
+    locked: false,
+    velocityX: 0,
+    velocityY: 0,
+  },
+  block: {
+    mass: 2.8,
+    friction: 0.36,
+    restitution: 0.24,
+    locked: false,
+    velocityX: 0,
+    velocityY: 0,
+  },
+  board: {
+    mass: 5,
+    friction: 0.42,
+    restitution: 0.18,
+    locked: false,
+    velocityX: 0,
+    velocityY: 0,
+  },
+  polygon: {
+    mass: 2.2,
+    friction: 0.28,
+    restitution: 0.22,
+    locked: false,
+    velocityX: 0,
+    velocityY: 0,
+  },
+};
 
 function isLibraryBodyKind(value: string): value is LibraryBodyKind {
   return value in BODY_LABELS;
@@ -85,6 +146,7 @@ export function createPlacedBodyEntity(
     label: `${BODY_LABELS[kind]} ${nextIndex}`,
     x: position.x,
     y: position.y,
+    ...BODY_PHYSICS_DEFAULTS[kind],
   } as const;
 
   if (kind === "ball") {

@@ -10,6 +10,7 @@ import {
   createPlacedBodyEntity,
   createInitialEditorState,
   createInitialSceneEntities,
+  type EditorEntityPhysics,
   type EditorSceneEntity,
   type LibraryBodyKind,
 } from "./state/editorStore";
@@ -161,6 +162,13 @@ export function App() {
     });
   }
 
+  function handleUpdateSelectedEntityPhysics(physics: Partial<EditorEntityPhysics>) {
+    updateSelectedEntity((entity) => ({
+      ...entity,
+      ...physics,
+    }));
+  }
+
   return (
     <ShellLayout
       bottomPane={<span>Transport controls mount point</span>}
@@ -178,6 +186,7 @@ export function App() {
             onDuplicateSelectedEntity={handleDuplicateSelectedEntity}
             onUpdateSelectedEntityLabel={handleUpdateSelectedEntityLabel}
             onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
+            onUpdateSelectedEntityPhysics={handleUpdateSelectedEntityPhysics}
             onUpdateSelectedEntityRadius={handleUpdateSelectedEntityRadius}
             onUpdateSelectedEntitySize={handleUpdateSelectedEntitySize}
             selectedEntity={selectedEntity}

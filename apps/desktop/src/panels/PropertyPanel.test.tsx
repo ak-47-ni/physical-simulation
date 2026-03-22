@@ -13,6 +13,7 @@ describe("PropertyPanel", () => {
     const updates: Array<{ x: number; y: number }> = [];
     const labelUpdates: string[] = [];
     const radiusUpdates: number[] = [];
+    const physicsUpdates: Array<Record<string, number | boolean>> = [];
     const deleted: string[] = [];
     const duplicated: string[] = [];
 
@@ -38,8 +39,24 @@ describe("PropertyPanel", () => {
         onUpdateSelectedEntityRadius={(radius) => {
           radiusUpdates.push(radius);
         }}
+        onUpdateSelectedEntityPhysics={(physics) => {
+          physicsUpdates.push(physics);
+        }}
         onUpdateSelectedEntitySize={() => undefined}
-        selectedEntity={{ id: "ball-1", kind: "ball", label: "Ball 1", x: 132, y: 176, radius: 26 }}
+        selectedEntity={{
+          id: "ball-1",
+          kind: "ball",
+          label: "Ball 1",
+          x: 132,
+          y: 176,
+          radius: 26,
+          mass: 1.2,
+          friction: 0.14,
+          restitution: 0.82,
+          locked: false,
+          velocityX: 4,
+          velocityY: -2,
+        }}
       />,
     );
 
@@ -47,6 +64,12 @@ describe("PropertyPanel", () => {
     fireEvent.change(screen.getByLabelText("Position X"), { target: { value: "164" } });
     fireEvent.change(screen.getByLabelText("Position Y"), { target: { value: "214" } });
     fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "30" } });
+    fireEvent.change(screen.getByLabelText("Mass"), { target: { value: "1.8" } });
+    fireEvent.change(screen.getByLabelText("Friction"), { target: { value: "0.2" } });
+    fireEvent.change(screen.getByLabelText("Restitution"), { target: { value: "0.9" } });
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "12" } });
+    fireEvent.change(screen.getByLabelText("Velocity Y"), { target: { value: "-8" } });
+    fireEvent.click(screen.getByLabelText("Locked in simulation"));
     fireEvent.click(screen.getByRole("button", { name: /duplicate entity/i }));
     fireEvent.click(screen.getByRole("button", { name: /delete entity/i }));
 
@@ -56,6 +79,14 @@ describe("PropertyPanel", () => {
       { x: 132, y: 214 },
     ]);
     expect(radiusUpdates).toEqual([30]);
+    expect(physicsUpdates).toEqual([
+      { mass: 1.8 },
+      { friction: 0.2 },
+      { restitution: 0.9 },
+      { velocityX: 12 },
+      { velocityY: -8 },
+      { locked: true },
+    ]);
     expect(duplicated).toEqual(["ball-1"]);
     expect(deleted).toEqual(["ball-1"]);
   });
@@ -75,6 +106,7 @@ describe("PropertyPanel", () => {
         onUpdateSelectedEntityLabel={() => undefined}
         onUpdateSelectedEntityPosition={() => undefined}
         onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
         onUpdateSelectedEntitySize={(size) => {
           sizeUpdates.push(size);
         }}
@@ -86,6 +118,12 @@ describe("PropertyPanel", () => {
           y: 272,
           width: 120,
           height: 18,
+          mass: 5,
+          friction: 0.42,
+          restitution: 0.18,
+          locked: false,
+          velocityX: 0,
+          velocityY: 0,
         }}
       />,
     );

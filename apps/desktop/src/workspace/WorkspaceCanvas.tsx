@@ -57,6 +57,7 @@ function getEntityVisualStyle(
     placeItems: "center",
     overflow: "hidden",
     padding: 0,
+    boxShadow: entity.locked ? "0 0 0 2px rgba(245, 181, 62, 0.45)" : "none",
   };
 
   if (entity.kind === "ball") {
@@ -204,6 +205,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           <button
             key={entity.id}
             aria-label={`Select ${entity.label}`}
+            data-locked={String(entity.locked)}
             data-selected={String(state.selectedEntityId === entity.id)}
             data-testid={`scene-entity-${entity.id}`}
             type="button"
@@ -211,6 +213,25 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             style={getEntityVisualStyle(entity, state.selectedEntityId === entity.id)}
             onMouseDown={(event) => beginEntityDrag(entity, event)}
           >
+            {entity.locked ? (
+              <span
+                data-testid={`scene-entity-lock-${entity.id}`}
+                style={{
+                  position: "absolute",
+                  top: "2px",
+                  right: "4px",
+                  borderRadius: "999px",
+                  background: "rgba(245, 181, 62, 0.92)",
+                  color: "#17304f",
+                  fontSize: "9px",
+                  fontWeight: 700,
+                  lineHeight: 1,
+                  padding: "2px 4px",
+                }}
+              >
+                FIX
+              </span>
+            ) : null}
             {entity.label}
           </button>
         ))}

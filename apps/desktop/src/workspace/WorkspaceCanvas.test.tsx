@@ -15,8 +15,35 @@ describe("WorkspaceCanvas", () => {
     render(
       <WorkspaceCanvas
         entities={[
-          { id: "ball-1", kind: "ball", label: "Ball 1", x: 120, y: 180, radius: 24 },
-          { id: "board-1", kind: "board", label: "Board 1", x: 320, y: 260, width: 120, height: 18 },
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+          {
+            id: "board-1",
+            kind: "board",
+            label: "Board 1",
+            x: 320,
+            y: 260,
+            width: 120,
+            height: 18,
+            mass: 5,
+            friction: 0.42,
+            restitution: 0.18,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
         ]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
@@ -92,8 +119,35 @@ describe("WorkspaceCanvas", () => {
     render(
       <WorkspaceCanvas
         entities={[
-          { id: "ball-1", kind: "ball", label: "Ball 1", x: 120, y: 180, radius: 24 },
-          { id: "board-1", kind: "board", label: "Board 1", x: 320, y: 260, width: 120, height: 18 },
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+          {
+            id: "board-1",
+            kind: "board",
+            label: "Board 1",
+            x: 320,
+            y: 260,
+            width: 120,
+            height: 18,
+            mass: 5,
+            friction: 0.42,
+            restitution: 0.18,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
         ]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
@@ -120,7 +174,22 @@ describe("WorkspaceCanvas", () => {
 
     render(
       <WorkspaceCanvas
-        entities={[{ id: "ball-1", kind: "ball", label: "Ball 1", x: 120, y: 180, radius: 24 }]}
+        entities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
         onCreateEntity={() => undefined}
         onMoveEntity={(id, position) => {
           moves.push({ id, ...position });
@@ -148,8 +217,35 @@ describe("WorkspaceCanvas", () => {
     render(
       <WorkspaceCanvas
         entities={[
-          { id: "ball-1", kind: "ball", label: "Ball 1", x: 120, y: 180, radius: 30 },
-          { id: "board-1", kind: "board", label: "Board 1", x: 320, y: 260, width: 148, height: 24 },
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 30,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+          {
+            id: "board-1",
+            kind: "board",
+            label: "Board 1",
+            x: 320,
+            y: 260,
+            width: 148,
+            height: 24,
+            mass: 5,
+            friction: 0.42,
+            restitution: 0.18,
+            locked: true,
+            velocityX: 0,
+            velocityY: 0,
+          },
         ]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
@@ -168,6 +264,45 @@ describe("WorkspaceCanvas", () => {
     expect(ball.style.borderRadius).toBe("999px");
     expect(board.style.width).toBe("148px");
     expect(board.style.height).toBe("24px");
+    expect(board.getAttribute("data-locked")).toBe("true");
+    expect(screen.getByTestId("scene-entity-lock-board-1")).toBeDefined();
+  });
+
+  it("shows no lock marker for movable entities", () => {
+    const state = createInitialEditorState();
+
+    render(
+      <WorkspaceCanvas
+        entities={[
+          {
+            id: "board-1",
+            kind: "board",
+            label: "Board 1",
+            x: 320,
+            y: 260,
+            width: 148,
+            height: 24,
+            mass: 5,
+            friction: 0.42,
+            restitution: 0.18,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={state}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    const board = screen.getByTestId("scene-entity-board-1") as HTMLElement;
+
+    expect(board.getAttribute("data-locked")).toBe("false");
+    expect(screen.queryByTestId("scene-entity-lock-board-1")).toBeNull();
   });
 
   it("creates a new entity when place-body mode clicks the workspace stage", () => {

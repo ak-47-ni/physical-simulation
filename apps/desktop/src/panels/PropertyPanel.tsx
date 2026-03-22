@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
 import type { SceneDisplaySettings } from "../io/sceneFile";
-import type { EditorSceneEntity } from "../state/editorStore";
+import type { EditorEntityPhysics, EditorSceneEntity } from "../state/editorStore";
 
 type PropertyPanelProps = {
   display: SceneDisplaySettings;
@@ -9,6 +9,7 @@ type PropertyPanelProps = {
   onDuplicateSelectedEntity: () => void;
   onUpdateSelectedEntityLabel: (label: string) => void;
   onUpdateSelectedEntityPosition: (position: { x: number; y: number }) => void;
+  onUpdateSelectedEntityPhysics: (physics: Partial<EditorEntityPhysics>) => void;
   onUpdateSelectedEntityRadius: (radius: number) => void;
   onUpdateSelectedEntitySize: (size: { width: number; height: number }) => void;
   selectedEntity: EditorSceneEntity | null;
@@ -126,6 +127,34 @@ function TextInput(props: {
   );
 }
 
+function CheckboxInput(props: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "8px",
+        color: "#17304f",
+        fontSize: "13px",
+      }}
+    >
+      <input
+        aria-label={props.label}
+        checked={props.checked}
+        type="checkbox"
+        onChange={(event) => {
+          props.onChange(event.target.checked);
+        }}
+      />
+      {props.label}
+    </label>
+  );
+}
+
 export function PropertyPanel(props: PropertyPanelProps) {
   const {
     display,
@@ -133,6 +162,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
     onDuplicateSelectedEntity,
     onUpdateSelectedEntityLabel,
     onUpdateSelectedEntityPosition,
+    onUpdateSelectedEntityPhysics,
     onUpdateSelectedEntityRadius,
     onUpdateSelectedEntitySize,
     selectedEntity,
@@ -188,6 +218,40 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 />
               </div>
             )}
+            <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+              <PositionInput
+                label="Mass"
+                value={selectedEntity.mass}
+                onChange={(mass) => onUpdateSelectedEntityPhysics({ mass })}
+              />
+              <PositionInput
+                label="Friction"
+                value={selectedEntity.friction}
+                onChange={(friction) => onUpdateSelectedEntityPhysics({ friction })}
+              />
+              <PositionInput
+                label="Restitution"
+                value={selectedEntity.restitution}
+                onChange={(restitution) => onUpdateSelectedEntityPhysics({ restitution })}
+              />
+              <CheckboxInput
+                label="Locked in simulation"
+                checked={selectedEntity.locked}
+                onChange={(locked) => onUpdateSelectedEntityPhysics({ locked })}
+              />
+            </div>
+            <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+              <PositionInput
+                label="Velocity X"
+                value={selectedEntity.velocityX}
+                onChange={(velocityX) => onUpdateSelectedEntityPhysics({ velocityX })}
+              />
+              <PositionInput
+                label="Velocity Y"
+                value={selectedEntity.velocityY}
+                onChange={(velocityY) => onUpdateSelectedEntityPhysics({ velocityY })}
+              />
+            </div>
             <div style={{ display: "grid", gap: "8px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
               <button style={actionButtonStyle} type="button" onClick={onDuplicateSelectedEntity}>
                 Duplicate entity
