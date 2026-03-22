@@ -1,7 +1,8 @@
 use crate::entity::Vector2;
 use crate::solver::RuntimeBodyState;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AnalyzerDefinition {
     Trajectory { id: String, entity_id: String },
 }
@@ -44,7 +45,7 @@ impl CompiledAnalyzer {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TrajectorySample {
     pub frame_number: u64,
     pub time_seconds: f64,

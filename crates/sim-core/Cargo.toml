@@ -3,6 +3,9 @@ name = "sim-core"
 version = "0.1.0"
 edition = "2024"
 
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
 [lib]
 name = "sim_core"
 path = "src/lib.rs"

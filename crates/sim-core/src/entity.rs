@@ -1,4 +1,6 @@
-#[derive(Debug, Clone, Copy, PartialEq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Vector2 {
     pub x: f64,
     pub y: f64,
@@ -42,7 +44,7 @@ impl Vector2 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ShapeDefinition {
     Ball { radius: f64 },
     Block { width: f64, height: f64 },
@@ -61,7 +63,7 @@ impl ShapeDefinition {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EntityDefinition {
     pub id: String,
     pub shape: ShapeDefinition,

@@ -2,8 +2,9 @@ use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySampl
 use crate::entity::{CompiledShape, Vector2};
 use crate::scene::CompiledScene;
 use crate::solver::{RuntimeBodyState, step_bodies};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeEntityFrame {
     pub entity_id: String,
     pub position: Vector2,
@@ -12,7 +13,7 @@ pub struct RuntimeEntityFrame {
     pub acceleration: Vector2,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RuntimeFramePayload {
     pub frame_number: u64,
     pub entities: Vec<RuntimeEntityFrame>,

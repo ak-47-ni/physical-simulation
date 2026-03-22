@@ -1,4 +1,5 @@
 pub mod analyzer;
+pub mod bridge;
 pub mod constraint;
 pub mod entity;
 pub mod force;

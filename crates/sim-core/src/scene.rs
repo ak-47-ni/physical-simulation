@@ -6,8 +6,9 @@ use crate::entity::{
     CompiledEntity, CompiledShape, EntityDefinition, ShapeDefinition, is_convex_polygon,
 };
 use crate::force::{ForceSourceDefinition, GravityForce};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompileSceneRequest {
     pub entities: Vec<EntityDefinition>,
     pub constraints: Vec<ConstraintDefinition>,
