@@ -1,8 +1,7 @@
 use std::sync::Mutex;
 
-use sim_core::bridge::{BridgeError, SimulationBridge};
+use sim_core::bridge::{BridgeError, RuntimeCompileRequest, SimulationBridge};
 use sim_core::runtime::RuntimeFramePayload;
-use sim_core::scene::CompileSceneRequest;
 
 const FIXED_STEP_SECONDS: f64 = 1.0 / 60.0;
 
@@ -15,50 +14,50 @@ impl Default for RuntimeBridgeState {
 }
 
 #[tauri::command]
-fn compile_scene_command(
+fn compile_scene(
     state: tauri::State<'_, RuntimeBridgeState>,
-    request: CompileSceneRequest,
+    request: RuntimeCompileRequest,
 ) -> Result<RuntimeFramePayload, String> {
-    with_bridge(state, |bridge| bridge.compile_scene(request))
+    with_bridge(state, |bridge| bridge.compile_runtime_request(request))
 }
 
 #[tauri::command]
-fn start_runtime_command(
+fn start_runtime(
     state: tauri::State<'_, RuntimeBridgeState>,
 ) -> Result<RuntimeFramePayload, String> {
     with_bridge(state, SimulationBridge::start_or_resume)
 }
 
 #[tauri::command]
-fn pause_runtime_command(
+fn pause_runtime(
     state: tauri::State<'_, RuntimeBridgeState>,
 ) -> Result<RuntimeFramePayload, String> {
     with_bridge(state, SimulationBridge::pause)
 }
 
 #[tauri::command]
-fn step_runtime_command(
+fn step_runtime(
     state: tauri::State<'_, RuntimeBridgeState>,
 ) -> Result<RuntimeFramePayload, String> {
     with_bridge(state, SimulationBridge::step)
 }
 
 #[tauri::command]
-fn reset_runtime_command(
+fn reset_runtime(
     state: tauri::State<'_, RuntimeBridgeState>,
 ) -> Result<RuntimeFramePayload, String> {
     with_bridge(state, SimulationBridge::reset)
 }
 
 #[tauri::command]
-fn current_frame_command(
+fn current_frame(
     state: tauri::State<'_, RuntimeBridgeState>,
 ) -> Result<RuntimeFramePayload, String> {
     with_bridge(state, |bridge| bridge.current_frame())
 }
 
 #[tauri::command]
-fn mark_scene_dirty_command(state: tauri::State<'_, RuntimeBridgeState>) -> Result<(), String> {
+fn mark_scene_dirty(state: tauri::State<'_, RuntimeBridgeState>) -> Result<(), String> {
     with_bridge(state, |bridge| {
         bridge.mark_dirty();
         Ok(())
@@ -87,13 +86,13 @@ pub fn register_runtime_commands<R: tauri::Runtime>(
     builder
         .manage(RuntimeBridgeState::default())
         .invoke_handler(tauri::generate_handler![
-            compile_scene_command,
-            start_runtime_command,
-            pause_runtime_command,
-            step_runtime_command,
-            reset_runtime_command,
-            current_frame_command,
-            mark_scene_dirty_command
+            compile_scene,
+            start_runtime,
+            pause_runtime,
+            step_runtime,
+            reset_runtime,
+            current_frame,
+            mark_scene_dirty
         ])
 }
 
