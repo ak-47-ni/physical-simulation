@@ -1,4 +1,5 @@
-use sim_core::bridge::{BridgeBlockReason, BridgeStatus, SimulationBridge};
+use serde_json::json;
+use sim_core::bridge::{BridgeBlockReason, BridgeStatus, DirtyEditScope, SimulationBridge};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::scene::CompileSceneRequest;
@@ -78,6 +79,22 @@ fn bridge_status_tracks_running_paused_and_dirty_states() {
     bridge.mark_dirty();
     let dirty = bridge.status_snapshot();
     assert_eq!(dirty.status, BridgeStatus::Paused);
+    assert_eq!(dirty.dirty_scopes, vec![DirtyEditScope::Structure]);
+    assert!(dirty.rebuild_required);
     assert!(!dirty.can_resume);
     assert_eq!(dirty.block_reason, Some(BridgeBlockReason::RebuildRequired));
+}
+
+#[test]
+fn bridge_status_snapshot_serializes_dirty_scope_metadata_with_frontend_keys() {
+    let mut bridge = SimulationBridge::new(0.1);
+    bridge
+        .compile_scene(runtime_scene_request())
+        .expect("scene should compile");
+    bridge.mark_dirty_scopes(&[DirtyEditScope::Analysis, DirtyEditScope::Physics]);
+
+    let value = serde_json::to_value(bridge.status_snapshot()).expect("snapshot should serialize");
+
+    assert_eq!(value["dirtyScopes"], json!(["analysis", "physics"]));
+    assert_eq!(value["rebuildRequired"], json!(true));
 }

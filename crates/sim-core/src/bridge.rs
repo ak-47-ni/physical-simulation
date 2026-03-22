@@ -64,6 +64,8 @@ pub struct BridgeStatusSnapshot {
     pub current_frame: Option<RuntimeFramePayload>,
     pub current_time_seconds: f64,
     pub time_scale: f64,
+    pub dirty_scopes: Vec<DirtyEditScope>,
+    pub rebuild_required: bool,
     pub can_resume: bool,
     pub block_reason: Option<BridgeBlockReason>,
 }
@@ -219,6 +221,7 @@ impl SimulationBridge {
     }
 
     pub fn status_snapshot(&self) -> BridgeStatusSnapshot {
+        let rebuild_required = self.rebuild_required();
         let current_time_seconds = self
             .runtime
             .as_ref()
@@ -231,8 +234,10 @@ impl SimulationBridge {
             current_frame,
             current_time_seconds,
             time_scale: self.time_scale,
-            can_resume: !self.rebuild_required(),
-            block_reason: if self.rebuild_required() {
+            dirty_scopes: self.dirty_scopes.clone(),
+            rebuild_required,
+            can_resume: !rebuild_required,
+            block_reason: if rebuild_required {
                 Some(BridgeBlockReason::RebuildRequired)
             } else {
                 None
