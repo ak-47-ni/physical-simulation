@@ -121,6 +121,7 @@ impl SimulationBridge {
             .compiled_scene
             .clone()
             .ok_or(BridgeError::RuntimeNotInitialized)?;
+        self.time_scale = 1.0;
         let runtime = RuntimeScene::new(compiled_scene, self.step_delta_seconds());
         let frame = runtime.current_frame();
 

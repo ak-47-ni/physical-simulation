@@ -99,3 +99,28 @@ fn bridge_time_scale_status_snapshot_serializes_with_frontend_key() {
 
     assert_eq!(value["timeScale"], json!(0.25));
 }
+
+#[test]
+fn bridge_time_scale_reset_restores_default_scale() {
+    let mut bridge = SimulationBridge::new(0.1);
+    bridge
+        .compile_scene(runtime_scene_request())
+        .expect("scene should compile");
+    bridge
+        .set_time_scale(2.0)
+        .expect("double-speed time scale should be accepted");
+    bridge.step().expect("step at double-speed should succeed");
+
+    bridge.reset().expect("reset should succeed");
+    let snapshot = bridge.status_snapshot();
+
+    assert_eq!(snapshot.time_scale, 1.0);
+    assert_eq!(snapshot.current_time_seconds, 0.0);
+    assert_eq!(
+        snapshot
+            .current_frame
+            .as_ref()
+            .map(|frame| frame.frame_number),
+        Some(0)
+    );
+}
