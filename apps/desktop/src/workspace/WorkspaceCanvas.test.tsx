@@ -20,6 +20,7 @@ describe("WorkspaceCanvas", () => {
         ]}
         state={state}
         onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
         onToolChange={() => undefined}
       />,
     );
@@ -41,6 +42,7 @@ describe("WorkspaceCanvas", () => {
         onGridVisibleChange={(visible) => {
           gridChanges.push(visible);
         }}
+        onSelectEntity={() => undefined}
         onToolChange={(tool) => {
           toolChanges.push(tool);
         }}
@@ -61,6 +63,7 @@ describe("WorkspaceCanvas", () => {
         onGridVisibleChange={(visible) => {
           gridChanges.push(visible);
         }}
+        onSelectEntity={() => undefined}
         onToolChange={(tool) => {
           toolChanges.push(tool);
         }}
@@ -71,5 +74,35 @@ describe("WorkspaceCanvas", () => {
     expect(gridChanges).toEqual([false]);
     expect(screen.getByTestId("workspace-canvas").getAttribute("data-tool")).toBe("pan");
     expect(screen.getByTestId("workspace-canvas").getAttribute("data-grid-visible")).toBe("false");
+  });
+
+  it("marks selected entities and notifies when a workspace entity is clicked", () => {
+    const selectedEntityIds: string[] = [];
+    const state = {
+      ...createInitialEditorState(),
+      selectedEntityId: "board-1",
+    };
+
+    render(
+      <WorkspaceCanvas
+        entities={[
+          { id: "ball-1", label: "Ball 1", x: 120, y: 180 },
+          { id: "board-1", label: "Board 1", x: 320, y: 260 },
+        ]}
+        state={state}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={(entityId) => {
+          selectedEntityIds.push(entityId);
+        }}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    expect(screen.getByTestId("scene-entity-board-1").getAttribute("data-selected")).toBe("true");
+    expect(screen.getByTestId("scene-entity-ball-1").getAttribute("data-selected")).toBe("false");
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+
+    expect(selectedEntityIds).toEqual(["ball-1"]);
   });
 });

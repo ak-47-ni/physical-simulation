@@ -8,6 +8,7 @@ type WorkspaceCanvasProps = {
   state: EditorState;
   onToolChange: (tool: EditorTool) => void;
   onGridVisibleChange: (visible: boolean) => void;
+  onSelectEntity: (entityId: string) => void;
 };
 
 const toolbarStyle: CSSProperties = {
@@ -29,7 +30,7 @@ const actionButtonStyle: CSSProperties = {
 };
 
 export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
-  const { entities, state, onGridVisibleChange, onToolChange } = props;
+  const { entities, state, onGridVisibleChange, onSelectEntity, onToolChange } = props;
 
   return (
     <section
@@ -86,22 +87,29 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
         />
 
         {entities.map((entity) => (
-          <div
+          <button
             key={entity.id}
+            aria-label={`Select ${entity.label}`}
+            data-selected={String(state.selectedEntityId === entity.id)}
             data-testid={`scene-entity-${entity.id}`}
+            type="button"
+            onClick={() => onSelectEntity(entity.id)}
             style={{
               position: "absolute",
               left: `${entity.x}px`,
               top: `${entity.y}px`,
               padding: "6px 10px",
               borderRadius: "999px",
-              background: "rgba(17, 37, 64, 0.88)",
+              border: "1px solid rgba(17, 37, 64, 0.16)",
+              background:
+                state.selectedEntityId === entity.id ? "#2457a6" : "rgba(17, 37, 64, 0.88)",
               color: "#f7fbff",
               fontSize: "12px",
+              cursor: "pointer",
             }}
           >
             {entity.label}
-          </div>
+          </button>
         ))}
       </div>
     </section>

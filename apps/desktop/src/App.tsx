@@ -65,6 +65,7 @@ export function App() {
       <WorkspaceCanvas
         entities={sampleEntities}
         onGridVisibleChange={handleGridVisibleChange}
+        onSelectEntity={handleSelectEntity}
         onToolChange={handleToolChange}
         state={editorState}
       />
