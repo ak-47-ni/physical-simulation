@@ -151,7 +151,7 @@ type ResizeSession = {
 
 export function ShellLayout(props: ShellLayoutProps) {
   const { children, leftPane, rightPane, bottomPane } = props;
-  const { layout, resizePane, togglePane } = usePaneLayout();
+  const { layout, resetLayout, resizePane, togglePane } = usePaneLayout();
   const [activeResize, setActiveResize] = useState<ResizeSession | null>(null);
 
   useEffect(() => {
@@ -223,10 +223,13 @@ export function ShellLayout(props: ShellLayoutProps) {
             </div>
             <h1 style={{ margin: "6px 0 0", fontSize: "24px" }}>Desktop Editor Shell</h1>
           </div>
-          <div style={{ display: "flex", gap: "10px", color: "#516276", fontSize: "14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "#516276", fontSize: "14px" }}>
             <span>Canvas-first</span>
             <span>Resizable panes</span>
             <span>Worker C mount-ready</span>
+            <button style={buttonStyle} type="button" onClick={resetLayout}>
+              Reset layout
+            </button>
           </div>
         </header>
 

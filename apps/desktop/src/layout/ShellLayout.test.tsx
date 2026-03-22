@@ -83,4 +83,19 @@ describe("ShellLayout", () => {
     expect(screen.getByTestId("shell-bottom-pane").getAttribute("data-size")).toBe("182");
     expect(screen.getByTestId("shell-right-pane").getAttribute("data-collapsed")).toBe("true");
   });
+
+  it("resets pane layout back to defaults", () => {
+    render(<App />);
+
+    fireEvent.mouseDown(screen.getByTestId("shell-resize-left"), { clientX: 280 });
+    fireEvent.mouseMove(window, { clientX: 348 });
+    fireEvent.mouseUp(window);
+
+    fireEvent.click(screen.getByRole("button", { name: /hide inspector/i }));
+    fireEvent.click(screen.getByRole("button", { name: /reset layout/i }));
+
+    expect(screen.getByTestId("shell-left-pane").getAttribute("data-size")).toBe("280");
+    expect(screen.getByTestId("shell-right-pane").getAttribute("data-size")).toBe("320");
+    expect(screen.getByTestId("shell-right-pane").getAttribute("data-collapsed")).toBe("false");
+  });
 });

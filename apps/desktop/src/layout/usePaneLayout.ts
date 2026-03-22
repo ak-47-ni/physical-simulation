@@ -22,6 +22,14 @@ const PANE_LIMITS: Record<PaneKey, { min: number; max: number }> = {
   bottom: { min: 112, max: 260 },
 };
 
+function createDefaultLayout(): PaneLayoutState {
+  return {
+    left: { ...DEFAULT_LAYOUT.left },
+    right: { ...DEFAULT_LAYOUT.right },
+    bottom: { ...DEFAULT_LAYOUT.bottom },
+  };
+}
+
 function clampPaneSize(pane: PaneKey, size: number) {
   const limits = PANE_LIMITS[pane];
 
@@ -48,13 +56,13 @@ function sanitizePaneState(pane: PaneKey, value: unknown): PaneState {
 
 function loadStoredLayout(): PaneLayoutState {
   if (typeof window === "undefined") {
-    return DEFAULT_LAYOUT;
+    return createDefaultLayout();
   }
 
   const rawLayout = window.localStorage.getItem(PANE_LAYOUT_STORAGE_KEY);
 
   if (!rawLayout) {
-    return DEFAULT_LAYOUT;
+    return createDefaultLayout();
   }
 
   try {
@@ -66,7 +74,7 @@ function loadStoredLayout(): PaneLayoutState {
       bottom: sanitizePaneState("bottom", parsed.bottom),
     };
   } catch {
-    return DEFAULT_LAYOUT;
+    return createDefaultLayout();
   }
 }
 
@@ -97,9 +105,14 @@ export function usePaneLayout() {
     }));
   }, []);
 
+  const resetLayout = useCallback(() => {
+    setLayout(createDefaultLayout());
+  }, []);
+
   return {
     layout,
     resizePane,
+    resetLayout,
     togglePane,
   };
 }
