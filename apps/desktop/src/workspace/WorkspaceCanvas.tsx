@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type MouseEvent } from "react";
 
 import type { EditorSceneEntity, EditorState } from "../state/editorStore";
 import type { EditorTool } from "./tools";
@@ -8,7 +8,16 @@ type WorkspaceCanvasProps = {
   state: EditorState;
   onToolChange: (tool: EditorTool) => void;
   onGridVisibleChange: (visible: boolean) => void;
+  onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
   onSelectEntity: (entityId: string) => void;
+};
+
+type DragSession = {
+  entityId: string;
+  originX: number;
+  originY: number;
+  startClientX: number;
+  startClientY: number;
 };
 
 const toolbarStyle: CSSProperties = {
@@ -30,7 +39,51 @@ const actionButtonStyle: CSSProperties = {
 };
 
 export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
-  const { entities, state, onGridVisibleChange, onSelectEntity, onToolChange } = props;
+  const { entities, state, onGridVisibleChange, onMoveEntity, onSelectEntity, onToolChange } = props;
+  const [dragSession, setDragSession] = useState<DragSession | null>(null);
+
+  useEffect(() => {
+    if (!dragSession) {
+      return undefined;
+    }
+
+    function handleMouseMove(event: globalThis.MouseEvent) {
+      const deltaX = event.clientX - dragSession.startClientX;
+      const deltaY = event.clientY - dragSession.startClientY;
+
+      onMoveEntity(dragSession.entityId, {
+        x: Math.round(dragSession.originX + deltaX),
+        y: Math.round(dragSession.originY + deltaY),
+      });
+    }
+
+    function handleMouseUp() {
+      setDragSession(null);
+    }
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [dragSession, onMoveEntity]);
+
+  function beginEntityDrag(entity: EditorSceneEntity, event: MouseEvent<HTMLButtonElement>) {
+    if (state.activeTool !== "select") {
+      return;
+    }
+
+    setDragSession({
+      entityId: entity.id,
+      originX: entity.x,
+      originY: entity.y,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+    });
+    onSelectEntity(entity.id);
+  }
 
   return (
     <section
@@ -106,7 +159,9 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
               color: "#f7fbff",
               fontSize: "12px",
               cursor: "pointer",
+              userSelect: "none",
             }}
+            onMouseDown={(event) => beginEntityDrag(entity, event)}
           >
             {entity.label}
           </button>

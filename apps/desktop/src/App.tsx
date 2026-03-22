@@ -5,12 +5,17 @@ import { ShellLayout } from "./layout/ShellLayout";
 import { ObjectLibraryPanel } from "./panels/ObjectLibraryPanel";
 import { PropertyPanel } from "./panels/PropertyPanel";
 import { SceneTreePanel } from "./panels/SceneTreePanel";
-import { createInitialEditorState, type EditorSceneEntity } from "./state/editorStore";
+import {
+  createInitialEditorState,
+  createInitialSceneEntities,
+  type EditorSceneEntity,
+} from "./state/editorStore";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import type { EditorTool } from "./workspace/tools";
 
 export function App() {
   const [editorState, setEditorState] = useState(createInitialEditorState);
+  const [entities, setEntities] = useState<EditorSceneEntity[]>(createInitialSceneEntities);
   const [displaySettings] = useState(() =>
     createSceneDisplaySettings({
       gridVisible: true,
@@ -18,10 +23,6 @@ export function App() {
       showTrajectories: false,
     }),
   );
-  const sampleEntities: EditorSceneEntity[] = [
-    { id: "ball-1", label: "Ball 1", x: 132, y: 176 },
-    { id: "board-1", label: "Board 1", x: 318, y: 272 },
-  ];
 
   function handleToolChange(tool: EditorTool) {
     setEditorState((current) => ({
@@ -44,8 +45,16 @@ export function App() {
     }));
   }
 
-  const selectedEntity =
-    sampleEntities.find((entity) => entity.id === editorState.selectedEntityId) ?? null;
+  function handleMoveEntity(entityId: string, position: { x: number; y: number }) {
+    setEntities((current) =>
+      current.map((entity) =>
+        entity.id === entityId ? { ...entity, x: position.x, y: position.y } : entity,
+      ),
+    );
+    handleSelectEntity(entityId);
+  }
+
+  const selectedEntity = entities.find((entity) => entity.id === editorState.selectedEntityId) ?? null;
 
   return (
     <ShellLayout
@@ -55,7 +64,7 @@ export function App() {
         <div style={{ display: "grid", gap: "16px" }}>
           <PropertyPanel display={displaySettings} selectedEntity={selectedEntity} />
           <SceneTreePanel
-            entities={sampleEntities}
+            entities={entities}
             onSelect={handleSelectEntity}
             selectedEntityId={editorState.selectedEntityId}
           />
@@ -63,8 +72,9 @@ export function App() {
       }
     >
       <WorkspaceCanvas
-        entities={sampleEntities}
+        entities={entities}
         onGridVisibleChange={handleGridVisibleChange}
+        onMoveEntity={handleMoveEntity}
         onSelectEntity={handleSelectEntity}
         onToolChange={handleToolChange}
         state={editorState}

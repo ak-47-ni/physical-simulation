@@ -20,3 +20,10 @@ export function createInitialEditorState(): EditorState {
     selectedEntityId: null,
   };
 }
+
+export function createInitialSceneEntities(): EditorSceneEntity[] {
+  return [
+    { id: "ball-1", label: "Ball 1", x: 132, y: 176 },
+    { id: "board-1", label: "Board 1", x: 318, y: 272 },
+  ];
+}

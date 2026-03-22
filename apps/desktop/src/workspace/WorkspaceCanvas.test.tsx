@@ -18,6 +18,7 @@ describe("WorkspaceCanvas", () => {
           { id: "ball-1", label: "Ball 1", x: 120, y: 180 },
           { id: "board-1", label: "Board 1", x: 320, y: 260 },
         ]}
+        onMoveEntity={() => undefined}
         state={state}
         onGridVisibleChange={() => undefined}
         onSelectEntity={() => undefined}
@@ -38,6 +39,7 @@ describe("WorkspaceCanvas", () => {
     const { rerender } = render(
       <WorkspaceCanvas
         entities={[]}
+        onMoveEntity={() => undefined}
         state={state}
         onGridVisibleChange={(visible) => {
           gridChanges.push(visible);
@@ -55,6 +57,7 @@ describe("WorkspaceCanvas", () => {
     rerender(
       <WorkspaceCanvas
         entities={[]}
+        onMoveEntity={() => undefined}
         state={{
           ...state,
           activeTool: "pan",
@@ -89,6 +92,7 @@ describe("WorkspaceCanvas", () => {
           { id: "ball-1", label: "Ball 1", x: 120, y: 180 },
           { id: "board-1", label: "Board 1", x: 320, y: 260 },
         ]}
+        onMoveEntity={() => undefined}
         state={state}
         onGridVisibleChange={() => undefined}
         onSelectEntity={(entityId) => {
@@ -104,5 +108,29 @@ describe("WorkspaceCanvas", () => {
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
 
     expect(selectedEntityIds).toEqual(["ball-1"]);
+  });
+
+  it("reports updated entity positions while dragging in select mode", () => {
+    const moves: Array<{ id: string; x: number; y: number }> = [];
+    const state = createInitialEditorState();
+
+    render(
+      <WorkspaceCanvas
+        entities={[{ id: "ball-1", label: "Ball 1", x: 120, y: 180 }]}
+        onMoveEntity={(id, position) => {
+          moves.push({ id, ...position });
+        }}
+        state={state}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    fireEvent.mouseDown(screen.getByTestId("scene-entity-ball-1"), { clientX: 120, clientY: 180 });
+    fireEvent.mouseMove(window, { clientX: 150, clientY: 222 });
+    fireEvent.mouseUp(window);
+
+    expect(moves).toEqual([{ id: "ball-1", x: 150, y: 222 }]);
   });
 });
