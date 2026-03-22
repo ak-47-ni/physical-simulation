@@ -1,6 +1,11 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { createEmptySceneDocument } from "../../../../packages/scene-schema/src";
+import {
+  createCompileRequestFromScene,
+  createMockRuntimeBridgePort,
+} from "../state/runtimeBridge";
 import { AnalysisPanel } from "./AnalysisPanel";
 
 afterEach(() => {
@@ -323,5 +328,52 @@ describe("AnalysisPanel", () => {
     expect(screen.getByText("Latest position: 0.15, 2.95")).toBeDefined();
     expect(screen.getByText("Runtime-derived points: 2")).toBeDefined();
     expect(screen.getByText("Runtime latest value: 1.79 m/s")).toBeDefined();
+  });
+
+  it("loads runtime trajectory samples from runtime port props", async () => {
+    const port = createMockRuntimeBridgePort({
+      createFrame: ({ nextFrameNumber }) => ({
+        frameNumber: nextFrameNumber,
+        entities: [
+          {
+            entityId: "probe-1",
+            position: { x: nextFrameNumber, y: 2 },
+            rotation: 0,
+            velocity: { x: 1.5, y: -0.5 * nextFrameNumber },
+            acceleration: { x: 0, y: -9.81 },
+          },
+        ],
+      }),
+      createTrajectorySamples: ({ bridge, currentSamplesByAnalyzer }) => ({
+        "traj-1": [
+          ...(currentSamplesByAnalyzer["traj-1"] ?? []),
+          {
+            frameNumber: bridge.currentFrame?.frameNumber ?? 0,
+            timeSeconds: bridge.currentTimeSeconds,
+            position: {
+              x: bridge.currentFrame?.entities[0]?.transform.x ?? 0,
+              y: bridge.currentFrame?.entities[0]?.transform.y ?? 0,
+            },
+            velocity: bridge.currentFrame?.entities[0]?.velocity ?? { x: 0, y: 0 },
+            acceleration: bridge.currentFrame?.entities[0]?.acceleration ?? { x: 0, y: 0 },
+          },
+        ],
+      }),
+    });
+    const request = createCompileRequestFromScene(createEmptySceneDocument(), ["analysis"]);
+
+    render(<AnalysisPanel runtimePort={port} analyzerId="traj-1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /open chart panel/i }));
+    fireEvent.click(screen.getByRole("button", { name: /view velocity chart/i }));
+
+    await port.compile(request);
+    await port.step();
+    await port.step();
+
+    await waitFor(() => {
+      expect(screen.getByText("Trajectory samples: 2")).toBeDefined();
+      expect(screen.getByText("Runtime latest value: 1.80 m/s")).toBeDefined();
+    });
   });
 });

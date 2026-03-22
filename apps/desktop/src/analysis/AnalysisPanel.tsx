@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 
+import type { RuntimeBridgePort } from "../state/runtimeBridge";
 import {
   buildRuntimeTrajectoryReadout,
   createAnalyzerSamplesFromTrajectory,
@@ -18,6 +19,7 @@ import {
   groupAnalyzerSamples,
   useAnalyzerState,
 } from "./useAnalyzerState";
+import { useRuntimeTrajectorySamples } from "./useRuntimeTrajectorySamples";
 
 export type AnalysisDisplayState = {
   showTrajectories: boolean;
@@ -63,6 +65,8 @@ type AnalysisPanelProps = {
   display?: AnalysisDisplayState;
   onDisplayChange?: (nextDisplay: AnalysisDisplayState) => void;
   trajectorySamples?: RuntimeTrajectorySample[];
+  runtimePort?: RuntimeBridgePort;
+  analyzerId?: string;
 };
 
 export function AnalysisPanel(props: AnalysisPanelProps = {}) {
@@ -79,6 +83,15 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
     state: props.state,
     onStateChange: props.onStateChange,
   });
+  const runtimeTrajectoryState = useRuntimeTrajectorySamples(
+    props.trajectorySamples
+      ? {}
+      : {
+          runtimePort: props.runtimePort,
+          analyzerId: props.analyzerId,
+        },
+  );
+  const trajectorySamples = props.trajectorySamples ?? runtimeTrajectoryState.trajectorySamples;
   const groupedSamples = groupAnalyzerSamples(analysisState.samples);
   const metricSummaries = buildAnalyzerMetricSummaries(analysisState.samples);
   const chartSamples = analysisState.samples.filter(
@@ -89,9 +102,9 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
     analysisState.samples,
     analysisState.selectedMetric,
   );
-  const runtimeReadout = buildRuntimeTrajectoryReadout(props.trajectorySamples ?? []);
+  const runtimeReadout = buildRuntimeTrajectoryReadout(trajectorySamples);
   const runtimeDerivedSamples = createAnalyzerSamplesFromTrajectory(
-    props.trajectorySamples ?? [],
+    trajectorySamples,
     analysisState.selectedMetric,
   );
   const runtimeDerivedSummary = buildAnalyzerMetricSummaries(runtimeDerivedSamples).find(
@@ -252,7 +265,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
               >
                 <strong style={{ color: "#17304f" }}>Runtime trajectory</strong>
                 <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                  Trajectory samples: {props.trajectorySamples?.length ?? 0}
+                  Trajectory samples: {trajectorySamples.length}
                 </span>
                 <span style={{ color: "#5d6f88", fontSize: "13px" }}>
                   Latest runtime time: {runtimeReadout.timeSeconds.toFixed(2)} s
