@@ -69,6 +69,12 @@ const bottomPaneStyle: CSSProperties = {
   minHeight: "84px",
 };
 
+const COLLAPSED_PANE_SIZE: Record<PaneKey, number> = {
+  left: 72,
+  right: 72,
+  bottom: 56,
+};
+
 const resizeHandleStyle: CSSProperties = {
   position: "relative",
   borderRadius: "999px",
@@ -88,17 +94,19 @@ const buttonStyle: CSSProperties = {
 function PaneCard(props: {
   title: string;
   collapsed: boolean;
+  collapsedSize: number;
   size: number;
   onToggle: () => void;
   toggleLabel: string;
   testId: string;
   children?: ReactNode;
 }) {
-  const { title, collapsed, size, onToggle, toggleLabel, testId, children } = props;
+  const { title, collapsed, collapsedSize, size, onToggle, toggleLabel, testId, children } = props;
 
   return (
     <section
       data-collapsed={collapsed}
+      data-collapsed-size={String(collapsedSize)}
       data-size={String(size)}
       data-testid={testId}
       style={{
@@ -107,9 +115,17 @@ function PaneCard(props: {
       }}
     >
       <div style={panelHeaderStyle}>
-        <strong>{title}</strong>
+        <strong
+          style={{
+            fontSize: collapsed ? "11px" : "14px",
+            letterSpacing: collapsed ? "0.08em" : undefined,
+            textTransform: collapsed ? "uppercase" : undefined,
+          }}
+        >
+          {collapsed ? title.slice(0, 3) : title}
+        </strong>
         <button style={buttonStyle} type="button" onClick={onToggle}>
-          {toggleLabel}
+          {collapsed ? "Show" : toggleLabel}
         </button>
       </div>
       <div
@@ -179,18 +195,20 @@ export function ShellLayout(props: ShellLayoutProps) {
     });
   }
 
+  const leftPaneSize = layout.left.collapsed ? COLLAPSED_PANE_SIZE.left : layout.left.size;
+  const rightPaneSize = layout.right.collapsed ? COLLAPSED_PANE_SIZE.right : layout.right.size;
+  const bottomPaneSize = layout.bottom.collapsed ? COLLAPSED_PANE_SIZE.bottom : layout.bottom.size;
+
   const shellStyle: CSSProperties = {
     display: "grid",
-    gridTemplateRows: `72px minmax(0, 1fr) 10px ${
-      layout.bottom.collapsed ? "auto" : `${layout.bottom.size}px`
-    }`,
+    gridTemplateRows: `72px minmax(0, 1fr) 10px ${bottomPaneSize}px`,
     gap: "14px",
     minHeight: "calc(100vh - 40px)",
   };
 
   const contentRowStyle: CSSProperties = {
     display: "grid",
-    gridTemplateColumns: `${layout.left.size}px 10px minmax(0, 1fr) 10px ${layout.right.size}px`,
+    gridTemplateColumns: `${leftPaneSize}px 10px minmax(0, 1fr) 10px ${rightPaneSize}px`,
     gap: "14px",
     minHeight: "0",
   };
@@ -215,6 +233,7 @@ export function ShellLayout(props: ShellLayoutProps) {
         <div style={contentRowStyle}>
           <PaneCard
             collapsed={layout.left.collapsed}
+            collapsedSize={COLLAPSED_PANE_SIZE.left}
             onToggle={() => togglePane("left")}
             size={layout.left.size}
             testId="shell-left-pane"
@@ -250,6 +269,7 @@ export function ShellLayout(props: ShellLayoutProps) {
 
           <PaneCard
             collapsed={layout.right.collapsed}
+            collapsedSize={COLLAPSED_PANE_SIZE.right}
             onToggle={() => togglePane("right")}
             size={layout.right.size}
             testId="shell-right-pane"
@@ -273,6 +293,7 @@ export function ShellLayout(props: ShellLayoutProps) {
         <div style={bottomPaneStyle}>
           <PaneCard
             collapsed={layout.bottom.collapsed}
+            collapsedSize={COLLAPSED_PANE_SIZE.bottom}
             onToggle={() => togglePane("bottom")}
             size={layout.bottom.size}
             testId="shell-bottom-pane"

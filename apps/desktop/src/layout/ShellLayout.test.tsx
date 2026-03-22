@@ -48,4 +48,16 @@ describe("ShellLayout", () => {
     expect(screen.getByTestId("shell-right-pane").getAttribute("data-size")).toBe("360");
     expect(screen.getByTestId("shell-bottom-pane").getAttribute("data-size")).toBe("168");
   });
+
+  it("releases workspace space when panes are collapsed", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /hide library/i }));
+    fireEvent.click(screen.getByRole("button", { name: /hide inspector/i }));
+    fireEvent.click(screen.getByRole("button", { name: /hide transport/i }));
+
+    expect(screen.getByTestId("shell-left-pane").getAttribute("data-collapsed-size")).toBe("72");
+    expect(screen.getByTestId("shell-right-pane").getAttribute("data-collapsed-size")).toBe("72");
+    expect(screen.getByTestId("shell-bottom-pane").getAttribute("data-collapsed-size")).toBe("56");
+  });
 });
