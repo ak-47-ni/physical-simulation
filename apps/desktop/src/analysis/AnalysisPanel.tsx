@@ -1,5 +1,9 @@
 import type { CSSProperties } from "react";
 
+import {
+  buildAnalyzerChartSeries,
+  buildAnalyzerMetricSummaries,
+} from "./analysisSummary";
 import { OverlayLayer } from "./OverlayLayer";
 import {
   ANALYZER_METRICS,
@@ -63,8 +67,11 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
     updateDraft,
   } = useAnalyzerState();
   const groupedSamples = groupAnalyzerSamples(state.samples);
+  const metricSummaries = buildAnalyzerMetricSummaries(state.samples);
   const chartSamples = state.samples.filter((sample) => sample.metric === state.selectedMetric);
+  const chartSeries = buildAnalyzerChartSeries(state.samples, state.selectedMetric);
   const latestChartSample = chartSamples.at(-1);
+  const selectedSummary = metricSummaries.find((summary) => summary.metric === state.selectedMetric);
   const display = props.display ?? {
     showTrajectories: state.overlays.showTrajectories,
     showVelocityVectors: state.overlays.showVelocityVectors,
@@ -173,6 +180,36 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                 ? `Latest sample: ${latestChartSample.value} ${latestChartSample.unit}`
                 : "Latest sample: none"}
             </span>
+            {selectedSummary ? (
+              <div
+                style={{
+                  display: "grid",
+                  gap: "6px",
+                  padding: "10px 12px",
+                  borderRadius: "12px",
+                  background: "#ffffff",
+                  border: "1px solid rgba(108, 128, 173, 0.14)",
+                }}
+              >
+                <strong style={{ color: "#17304f" }}>
+                  {formatAnalyzerMetric(selectedSummary.metric)} overview
+                </strong>
+                <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                  Latest: {selectedSummary.latestValue} {selectedSummary.unit}
+                </span>
+                <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                  Range: {selectedSummary.minValue} to {selectedSummary.maxValue}{" "}
+                  {selectedSummary.unit}
+                </span>
+                <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                  Series points: {chartSeries.length}
+                </span>
+              </div>
+            ) : (
+              <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                No metric summary yet
+              </span>
+            )}
           </div>
         ) : null}
       </section>

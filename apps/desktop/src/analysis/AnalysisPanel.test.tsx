@@ -61,6 +61,20 @@ describe("AnalysisPanel", () => {
       target: { value: "velocity" },
     });
     fireEvent.change(screen.getByLabelText(/sample label/i), {
+      target: { value: "Probe V1" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample value/i), {
+      target: { value: "3.8" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample unit/i), {
+      target: { value: "m/s" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /accept sample/i }));
+
+    fireEvent.change(screen.getByLabelText(/sample metric/i), {
+      target: { value: "velocity" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample label/i), {
       target: { value: "Probe V" },
     });
     fireEvent.change(screen.getByLabelText(/sample value/i), {
@@ -85,16 +99,21 @@ describe("AnalysisPanel", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /accept sample/i }));
 
-    expect(screen.getByText("Velocity samples (1)")).toBeDefined();
+    expect(screen.getByText("Velocity samples (2)")).toBeDefined();
     expect(screen.getByText("Energy samples (1)")).toBeDefined();
+    expect(screen.getByText("Probe V1")).toBeDefined();
     expect(screen.getByText("Probe V")).toBeDefined();
     expect(screen.getByText("Probe E")).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: /view velocity chart/i }));
 
+    expect(screen.getByText("Velocity overview")).toBeDefined();
+    expect(screen.getByText("Latest: 4.2 m/s")).toBeDefined();
+    expect(screen.getByText("Range: 3.8 to 4.2 m/s")).toBeDefined();
     expect(screen.getByText("Selected metric: velocity")).toBeDefined();
-    expect(screen.getByText("Samples in view: 1")).toBeDefined();
+    expect(screen.getByText("Samples in view: 2")).toBeDefined();
     expect(screen.getByText("Latest sample: 4.2 m/s")).toBeDefined();
+    expect(screen.getByText("Series points: 2")).toBeDefined();
   });
 
   it("supports controlled overlay display state updates", () => {
