@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import type {
   RuntimeBridgePort,
+  RuntimeBridgePortSnapshot,
   RuntimeTrajectorySample,
 } from "../state/runtimeBridge";
 
@@ -23,6 +24,19 @@ const IDLE_STATE: RuntimeTrajectorySamplesState = {
   status: "idle",
   error: null,
 };
+
+function shouldWaitForRuntimeSamples(
+  error: unknown,
+  snapshot: RuntimeBridgePortSnapshot,
+): boolean {
+  const message = error instanceof Error ? error.message : "";
+
+  if (!/unknown analyzer|runtime not initialized/i.test(message)) {
+    return false;
+  }
+
+  return (snapshot.bridge.currentFrame?.frameNumber ?? 0) === 0;
+}
 
 export function useRuntimeTrajectorySamples(
   options: UseRuntimeTrajectorySamplesOptions = {},
@@ -64,6 +78,15 @@ export function useRuntimeTrajectorySamples(
         });
       } catch (error) {
         if (disposed || nextRequestId !== requestId) {
+          return;
+        }
+
+        if (shouldWaitForRuntimeSamples(error, options.runtimePort.getSnapshot())) {
+          setState({
+            trajectorySamples: [],
+            status: "loading",
+            error: null,
+          });
           return;
         }
 
