@@ -6,10 +6,11 @@ import { ObjectLibraryPanel } from "./panels/ObjectLibraryPanel";
 import { PropertyPanel } from "./panels/PropertyPanel";
 import { SceneTreePanel } from "./panels/SceneTreePanel";
 import {
-  createPlacedBallEntity,
+  createPlacedBodyEntity,
   createInitialEditorState,
   createInitialSceneEntities,
   type EditorSceneEntity,
+  type LibraryBodyKind,
 } from "./state/editorStore";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import type { EditorTool } from "./workspace/tools";
@@ -17,6 +18,7 @@ import type { EditorTool } from "./workspace/tools";
 export function App() {
   const [editorState, setEditorState] = useState(createInitialEditorState);
   const [entities, setEntities] = useState<EditorSceneEntity[]>(createInitialSceneEntities);
+  const [selectedLibraryItem, setSelectedLibraryItem] = useState<LibraryBodyKind>("ball");
   const [displaySettings] = useState(() =>
     createSceneDisplaySettings({
       gridVisible: true,
@@ -65,10 +67,15 @@ export function App() {
 
   function handleCreateEntity(position: { x: number; y: number }) {
     setEntities((current) => {
-      const nextEntity = createPlacedBallEntity(current, position);
+      const nextEntity = createPlacedBodyEntity(current, selectedLibraryItem, position);
       handleSelectEntity(nextEntity.id);
       return [...current, nextEntity];
     });
+  }
+
+  function handleSelectLibraryItem(itemId: LibraryBodyKind) {
+    setSelectedLibraryItem(itemId);
+    handleToolChange("place-body");
   }
 
   const selectedEntity = entities.find((entity) => entity.id === editorState.selectedEntityId) ?? null;
@@ -76,7 +83,12 @@ export function App() {
   return (
     <ShellLayout
       bottomPane={<span>Transport controls mount point</span>}
-      leftPane={<ObjectLibraryPanel />}
+      leftPane={
+        <ObjectLibraryPanel
+          onSelectItem={handleSelectLibraryItem}
+          selectedItemId={selectedLibraryItem}
+        />
+      }
       rightPane={
         <div style={{ display: "grid", gap: "16px" }}>
           <PropertyPanel

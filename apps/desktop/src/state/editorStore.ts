@@ -1,5 +1,7 @@
 import type { EditorTool } from "../workspace/tools";
 
+export type LibraryBodyKind = "ball" | "block" | "board" | "polygon";
+
 export type EditorSceneEntity = {
   id: string;
   label: string;
@@ -28,16 +30,24 @@ export function createInitialSceneEntities(): EditorSceneEntity[] {
   ];
 }
 
-export function createPlacedBallEntity(
+const BODY_LABELS: Record<LibraryBodyKind, string> = {
+  ball: "Ball",
+  block: "Block",
+  board: "Board",
+  polygon: "Polygon",
+};
+
+export function createPlacedBodyEntity(
   entities: EditorSceneEntity[],
+  kind: LibraryBodyKind,
   position: { x: number; y: number },
 ): EditorSceneEntity {
-  const nextBallIndex =
-    entities.filter((entity) => entity.id.startsWith("ball-")).length + 1;
+  const nextIndex =
+    entities.filter((entity) => entity.id.startsWith(`${kind}-`)).length + 1;
 
   return {
-    id: `ball-${nextBallIndex}`,
-    label: `Ball ${nextBallIndex}`,
+    id: `${kind}-${nextIndex}`,
+    label: `${BODY_LABELS[kind]} ${nextIndex}`,
     x: position.x,
     y: position.y,
   };

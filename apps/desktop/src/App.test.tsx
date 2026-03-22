@@ -64,4 +64,15 @@ describe("App selection sync", () => {
     expect(screen.getByTestId("scene-tree-item-ball-2").getAttribute("data-selected")).toBe("true");
     expect(screen.getByText("248, 204")).toBeDefined();
   });
+
+  it("creates the selected library body kind when placing", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Board" }));
+    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 280, clientY: 236 });
+
+    expect(screen.getByTestId("scene-entity-board-2")).toBeDefined();
+    expect(screen.getByTestId("scene-tree-item-board-2").getAttribute("data-selected")).toBe("true");
+    expect(screen.getByText("280, 236")).toBeDefined();
+  });
 });

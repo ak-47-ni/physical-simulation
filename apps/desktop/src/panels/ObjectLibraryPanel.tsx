@@ -1,5 +1,12 @@
 import type { CSSProperties } from "react";
 
+import type { LibraryBodyKind } from "../state/editorStore";
+
+type ObjectLibraryPanelProps = {
+  onSelectItem: (itemId: LibraryBodyKind) => void;
+  selectedItemId: LibraryBodyKind;
+};
+
 const headingStyle: CSSProperties = {
   margin: 0,
   fontSize: "12px",
@@ -24,10 +31,20 @@ const chipStyle: CSSProperties = {
   border: "1px solid rgba(108, 128, 173, 0.14)",
 };
 
+const buttonChipStyle: CSSProperties = {
+  ...chipStyle,
+  cursor: "pointer",
+};
+
 const groups = [
   {
     title: "Bodies",
-    items: ["Ball", "Block", "Board", "Polygon"],
+    items: [
+      { id: "ball", label: "Ball" },
+      { id: "block", label: "Block" },
+      { id: "board", label: "Board" },
+      { id: "polygon", label: "Polygon" },
+    ] satisfies Array<{ id: LibraryBodyKind; label: string }>,
   },
   {
     title: "Constraints",
@@ -39,18 +56,36 @@ const groups = [
   },
 ];
 
-export function ObjectLibraryPanel() {
+export function ObjectLibraryPanel(props: ObjectLibraryPanelProps) {
+  const { onSelectItem, selectedItemId } = props;
+
   return (
     <div style={{ display: "grid", gap: "18px" }}>
       {groups.map((group) => (
         <section key={group.title} style={groupStyle}>
           <h2 style={headingStyle}>{group.title}</h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-            {group.items.map((item) => (
-              <span key={item} style={chipStyle}>
-                {item}
-              </span>
-            ))}
+            {group.title === "Bodies"
+              ? group.items.map((item) => (
+                  <button
+                    key={item.id}
+                    data-selected={String(selectedItemId === item.id)}
+                    data-testid={`library-item-${item.id}`}
+                    style={{
+                      ...buttonChipStyle,
+                      background: selectedItemId === item.id ? "#dbe8ff" : chipStyle.background,
+                    }}
+                    type="button"
+                    onClick={() => onSelectItem(item.id)}
+                  >
+                    {item.label}
+                  </button>
+                ))
+              : group.items.map((item) => (
+                  <span key={item} style={chipStyle}>
+                    {item}
+                  </span>
+                ))}
           </div>
         </section>
       ))}
