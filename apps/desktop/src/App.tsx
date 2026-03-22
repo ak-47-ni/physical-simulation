@@ -59,6 +59,20 @@ export function App() {
     handleSelectEntity(entityId);
   }
 
+  function updateSelectedEntity(
+    updater: (entity: EditorSceneEntity) => EditorSceneEntity,
+  ) {
+    if (!editorState.selectedEntityId) {
+      return;
+    }
+
+    setEntities((current) =>
+      current.map((entity) =>
+        entity.id === editorState.selectedEntityId ? updater(entity) : entity,
+      ),
+    );
+  }
+
   function handleUpdateSelectedEntityPosition(position: { x: number; y: number }) {
     if (!editorState.selectedEntityId) {
       return;
@@ -113,6 +127,40 @@ export function App() {
     selectedEntityId: editorState.selectedEntityId,
   });
 
+  function handleUpdateSelectedEntityLabel(label: string) {
+    updateSelectedEntity((entity) => ({
+      ...entity,
+      label,
+    }));
+  }
+
+  function handleUpdateSelectedEntityRadius(radius: number) {
+    updateSelectedEntity((entity) => {
+      if (entity.kind !== "ball") {
+        return entity;
+      }
+
+      return {
+        ...entity,
+        radius,
+      };
+    });
+  }
+
+  function handleUpdateSelectedEntitySize(size: { width: number; height: number }) {
+    updateSelectedEntity((entity) => {
+      if (entity.kind === "ball") {
+        return entity;
+      }
+
+      return {
+        ...entity,
+        width: size.width,
+        height: size.height,
+      };
+    });
+  }
+
   return (
     <ShellLayout
       bottomPane={<span>Transport controls mount point</span>}
@@ -128,7 +176,10 @@ export function App() {
             display={displaySettings}
             onDeleteSelectedEntity={handleDeleteSelectedEntity}
             onDuplicateSelectedEntity={handleDuplicateSelectedEntity}
+            onUpdateSelectedEntityLabel={handleUpdateSelectedEntityLabel}
             onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
+            onUpdateSelectedEntityRadius={handleUpdateSelectedEntityRadius}
+            onUpdateSelectedEntitySize={handleUpdateSelectedEntitySize}
             selectedEntity={selectedEntity}
           />
           <SceneTreePanel

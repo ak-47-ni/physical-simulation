@@ -7,7 +7,10 @@ type PropertyPanelProps = {
   display: SceneDisplaySettings;
   onDeleteSelectedEntity: () => void;
   onDuplicateSelectedEntity: () => void;
+  onUpdateSelectedEntityLabel: (label: string) => void;
   onUpdateSelectedEntityPosition: (position: { x: number; y: number }) => void;
+  onUpdateSelectedEntityRadius: (radius: number) => void;
+  onUpdateSelectedEntitySize: (size: { width: number; height: number }) => void;
   selectedEntity: EditorSceneEntity | null;
 };
 
@@ -37,6 +40,11 @@ const inputStyle: CSSProperties = {
   color: "#17304f",
   padding: "8px 10px",
   fontSize: "14px",
+};
+
+const textInputStyle: CSSProperties = {
+  ...inputStyle,
+  appearance: "none",
 };
 
 const dangerButtonStyle: CSSProperties = {
@@ -97,12 +105,36 @@ function PositionInput(props: {
   );
 }
 
+function TextInput(props: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label style={{ display: "grid", gap: "4px" }}>
+      <span style={{ color: "#6a7890", fontSize: "12px" }}>{props.label}</span>
+      <input
+        aria-label={props.label}
+        style={textInputStyle}
+        type="text"
+        value={props.value}
+        onChange={(event) => {
+          props.onChange(event.target.value);
+        }}
+      />
+    </label>
+  );
+}
+
 export function PropertyPanel(props: PropertyPanelProps) {
   const {
     display,
     onDeleteSelectedEntity,
     onDuplicateSelectedEntity,
+    onUpdateSelectedEntityLabel,
     onUpdateSelectedEntityPosition,
+    onUpdateSelectedEntityRadius,
+    onUpdateSelectedEntitySize,
     selectedEntity,
   } = props;
 
@@ -112,7 +144,11 @@ export function PropertyPanel(props: PropertyPanelProps) {
         <h2 style={sectionLabelStyle}>Selection</h2>
         {selectedEntity ? (
           <>
-            <ReadonlyField label="Entity" value={selectedEntity.label} />
+            <TextInput
+              label="Entity name"
+              value={selectedEntity.label}
+              onChange={onUpdateSelectedEntityLabel}
+            />
             <ReadonlyField label="Position" value={`${selectedEntity.x}, ${selectedEntity.y}`} />
             <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
               <PositionInput
@@ -126,6 +162,32 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 onChange={(y) => onUpdateSelectedEntityPosition({ x: selectedEntity.x, y })}
               />
             </div>
+            {selectedEntity.kind === "ball" ? (
+              <PositionInput
+                label="Radius"
+                value={selectedEntity.radius}
+                onChange={onUpdateSelectedEntityRadius}
+              />
+            ) : (
+              <div
+                style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}
+              >
+                <PositionInput
+                  label="Width"
+                  value={selectedEntity.width}
+                  onChange={(width) =>
+                    onUpdateSelectedEntitySize({ width, height: selectedEntity.height })
+                  }
+                />
+                <PositionInput
+                  label="Height"
+                  value={selectedEntity.height}
+                  onChange={(height) =>
+                    onUpdateSelectedEntitySize({ width: selectedEntity.width, height })
+                  }
+                />
+              </div>
+            )}
             <div style={{ display: "grid", gap: "8px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
               <button style={actionButtonStyle} type="button" onClick={onDuplicateSelectedEntity}>
                 Duplicate entity

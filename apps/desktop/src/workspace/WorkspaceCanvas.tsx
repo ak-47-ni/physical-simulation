@@ -39,6 +39,43 @@ const actionButtonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
+function getEntityVisualStyle(
+  entity: EditorSceneEntity,
+  isSelected: boolean,
+): CSSProperties {
+  const baseStyle: CSSProperties = {
+    position: "absolute",
+    left: `${entity.x}px`,
+    top: `${entity.y}px`,
+    border: "1px solid rgba(17, 37, 64, 0.16)",
+    background: isSelected ? "#2457a6" : "rgba(17, 37, 64, 0.88)",
+    color: "#f7fbff",
+    fontSize: entity.kind === "board" ? "10px" : "12px",
+    cursor: "pointer",
+    userSelect: "none",
+    display: "grid",
+    placeItems: "center",
+    overflow: "hidden",
+    padding: 0,
+  };
+
+  if (entity.kind === "ball") {
+    return {
+      ...baseStyle,
+      width: `${entity.radius * 2}px`,
+      height: `${entity.radius * 2}px`,
+      borderRadius: "999px",
+    };
+  }
+
+  return {
+    ...baseStyle,
+    width: `${entity.width}px`,
+    height: `${entity.height}px`,
+    borderRadius: entity.kind === "polygon" ? "20px" : "12px",
+  };
+}
+
 export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   const {
     entities,
@@ -171,20 +208,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             data-testid={`scene-entity-${entity.id}`}
             type="button"
             onClick={() => onSelectEntity(entity.id)}
-            style={{
-              position: "absolute",
-              left: `${entity.x}px`,
-              top: `${entity.y}px`,
-              padding: "6px 10px",
-              borderRadius: "999px",
-              border: "1px solid rgba(17, 37, 64, 0.16)",
-              background:
-                state.selectedEntityId === entity.id ? "#2457a6" : "rgba(17, 37, 64, 0.88)",
-              color: "#f7fbff",
-              fontSize: "12px",
-              cursor: "pointer",
-              userSelect: "none",
-            }}
+            style={getEntityVisualStyle(entity, state.selectedEntityId === entity.id)}
             onMouseDown={(event) => beginEntityDrag(entity, event)}
           >
             {entity.label}

@@ -15,8 +15,8 @@ describe("WorkspaceCanvas", () => {
     render(
       <WorkspaceCanvas
         entities={[
-          { id: "ball-1", label: "Ball 1", x: 120, y: 180 },
-          { id: "board-1", label: "Board 1", x: 320, y: 260 },
+          { id: "ball-1", kind: "ball", label: "Ball 1", x: 120, y: 180, radius: 24 },
+          { id: "board-1", kind: "board", label: "Board 1", x: 320, y: 260, width: 120, height: 18 },
         ]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
@@ -92,8 +92,8 @@ describe("WorkspaceCanvas", () => {
     render(
       <WorkspaceCanvas
         entities={[
-          { id: "ball-1", label: "Ball 1", x: 120, y: 180 },
-          { id: "board-1", label: "Board 1", x: 320, y: 260 },
+          { id: "ball-1", kind: "ball", label: "Ball 1", x: 120, y: 180, radius: 24 },
+          { id: "board-1", kind: "board", label: "Board 1", x: 320, y: 260, width: 120, height: 18 },
         ]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
@@ -120,7 +120,7 @@ describe("WorkspaceCanvas", () => {
 
     render(
       <WorkspaceCanvas
-        entities={[{ id: "ball-1", label: "Ball 1", x: 120, y: 180 }]}
+        entities={[{ id: "ball-1", kind: "ball", label: "Ball 1", x: 120, y: 180, radius: 24 }]}
         onCreateEntity={() => undefined}
         onMoveEntity={(id, position) => {
           moves.push({ id, ...position });
@@ -137,6 +137,37 @@ describe("WorkspaceCanvas", () => {
     fireEvent.mouseUp(window);
 
     expect(moves).toEqual([{ id: "ball-1", x: 150, y: 222 }]);
+  });
+
+  it("renders entity geometry with the configured dimensions", () => {
+    const state = {
+      ...createInitialEditorState(),
+      selectedEntityId: "ball-1",
+    };
+
+    render(
+      <WorkspaceCanvas
+        entities={[
+          { id: "ball-1", kind: "ball", label: "Ball 1", x: 120, y: 180, radius: 30 },
+          { id: "board-1", kind: "board", label: "Board 1", x: 320, y: 260, width: 148, height: 24 },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={state}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+    const board = screen.getByTestId("scene-entity-board-1") as HTMLElement;
+
+    expect(ball.style.width).toBe("60px");
+    expect(ball.style.height).toBe("60px");
+    expect(ball.style.borderRadius).toBe("999px");
+    expect(board.style.width).toBe("148px");
+    expect(board.style.height).toBe("24px");
   });
 
   it("creates a new entity when place-body mode clicks the workspace stage", () => {

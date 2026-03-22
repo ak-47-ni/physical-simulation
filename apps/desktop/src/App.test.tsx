@@ -54,6 +54,35 @@ describe("App selection sync", () => {
     expect(screen.getByText("340, 290")).toBeDefined();
   });
 
+  it("updates entity label and dimensions from the property panel", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+    fireEvent.change(screen.getByLabelText("Entity name"), { target: { value: "Ramp" } });
+    fireEvent.change(screen.getByLabelText("Width"), { target: { value: "148" } });
+    fireEvent.change(screen.getByLabelText("Height"), { target: { value: "24" } });
+
+    const board = screen.getByTestId("scene-entity-board-1") as HTMLElement;
+    const sceneTreeItem = screen.getByTestId("scene-tree-item-board-1");
+
+    expect(board.textContent).toBe("Ramp");
+    expect(board.style.width).toBe("148px");
+    expect(board.style.height).toBe("24px");
+    expect(sceneTreeItem.textContent).toBe("Ramp");
+  });
+
+  it("updates ball radius from the property panel", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "30" } });
+
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    expect(ball.style.width).toBe("60px");
+    expect(ball.style.height).toBe("60px");
+  });
+
   it("creates and selects a new body from place-body mode", () => {
     render(<App />);
 
