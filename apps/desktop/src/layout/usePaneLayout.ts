@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export type PaneKey = "left" | "right" | "bottom";
 
@@ -14,6 +14,7 @@ const DEFAULT_LAYOUT: PaneLayoutState = {
   right: { collapsed: false, size: 320 },
   bottom: { collapsed: false, size: 132 },
 };
+const PANE_LAYOUT_STORAGE_KEY = "physics-sandbox:pane-layout";
 
 const PANE_LIMITS: Record<PaneKey, { min: number; max: number }> = {
   left: { min: 220, max: 420 },
@@ -27,8 +28,54 @@ function clampPaneSize(pane: PaneKey, size: number) {
   return Math.min(limits.max, Math.max(limits.min, Math.round(size)));
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function sanitizePaneState(pane: PaneKey, value: unknown): PaneState {
+  if (!isRecord(value)) {
+    return DEFAULT_LAYOUT[pane];
+  }
+
+  return {
+    collapsed: typeof value.collapsed === "boolean" ? value.collapsed : DEFAULT_LAYOUT[pane].collapsed,
+    size:
+      typeof value.size === "number"
+        ? clampPaneSize(pane, value.size)
+        : DEFAULT_LAYOUT[pane].size,
+  };
+}
+
+function loadStoredLayout(): PaneLayoutState {
+  if (typeof window === "undefined") {
+    return DEFAULT_LAYOUT;
+  }
+
+  const rawLayout = window.localStorage.getItem(PANE_LAYOUT_STORAGE_KEY);
+
+  if (!rawLayout) {
+    return DEFAULT_LAYOUT;
+  }
+
+  try {
+    const parsed = JSON.parse(rawLayout);
+
+    return {
+      left: sanitizePaneState("left", parsed.left),
+      right: sanitizePaneState("right", parsed.right),
+      bottom: sanitizePaneState("bottom", parsed.bottom),
+    };
+  } catch {
+    return DEFAULT_LAYOUT;
+  }
+}
+
 export function usePaneLayout() {
-  const [layout, setLayout] = useState<PaneLayoutState>(DEFAULT_LAYOUT);
+  const [layout, setLayout] = useState<PaneLayoutState>(loadStoredLayout);
+
+  useEffect(() => {
+    window.localStorage.setItem(PANE_LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+  }, [layout]);
 
   const togglePane = useCallback((pane: PaneKey) => {
     setLayout((current) => ({
