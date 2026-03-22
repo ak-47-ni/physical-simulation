@@ -1,7 +1,12 @@
 import type { CSSProperties } from "react";
 
 import { OverlayLayer } from "./OverlayLayer";
-import { useAnalyzerState } from "./useAnalyzerState";
+import {
+  ANALYZER_METRICS,
+  formatAnalyzerMetric,
+  groupAnalyzerSamples,
+  useAnalyzerState,
+} from "./useAnalyzerState";
 
 export type AnalysisDisplayState = {
   showTrajectories: boolean;
@@ -50,12 +55,16 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
   const {
     state,
     acceptSample,
+    selectChartMetric,
     toggleChartPanel,
     toggleForceVectors,
     toggleTrajectories,
     toggleVelocityVectors,
     updateDraft,
   } = useAnalyzerState();
+  const groupedSamples = groupAnalyzerSamples(state.samples);
+  const chartSamples = state.samples.filter((sample) => sample.metric === state.selectedMetric);
+  const latestChartSample = chartSamples.at(-1);
   const display = props.display ?? {
     showTrajectories: state.overlays.showTrajectories,
     showVelocityVectors: state.overlays.showVelocityVectors,
@@ -139,6 +148,31 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>
               Samples ready: {state.samples.length}
             </span>
+            <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+              Selected metric: {state.selectedMetric}
+            </span>
+            <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+              Samples in view: {chartSamples.length}
+            </span>
+            <div style={rowStyle}>
+              {ANALYZER_METRICS.map((metric) => (
+                <button
+                  key={metric}
+                  type="button"
+                  style={buttonStyle}
+                  onClick={() => {
+                    selectChartMetric(metric);
+                  }}
+                >
+                  View {metric} chart
+                </button>
+              ))}
+            </div>
+            <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+              {latestChartSample
+                ? `Latest sample: ${latestChartSample.value} ${latestChartSample.unit}`
+                : "Latest sample: none"}
+            </span>
           </div>
         ) : null}
       </section>
@@ -156,6 +190,23 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                 updateDraft({ label: event.target.value });
               }}
             />
+          </label>
+          <label style={{ display: "grid", gap: "4px", color: "#5d6f88", fontSize: "13px" }}>
+            Sample metric
+            <select
+              aria-label="Sample metric"
+              style={inputStyle}
+              value={state.draft.metric}
+              onChange={(event) => {
+                updateDraft({ metric: event.target.value as (typeof ANALYZER_METRICS)[number] });
+              }}
+            >
+              {ANALYZER_METRICS.map((metric) => (
+                <option key={metric} value={metric}>
+                  {formatAnalyzerMetric(metric)}
+                </option>
+              ))}
+            </select>
           </label>
           <label style={{ display: "grid", gap: "4px", color: "#5d6f88", fontSize: "13px" }}>
             Sample value
@@ -185,25 +236,42 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
         </button>
 
         <div style={{ display: "grid", gap: "8px" }}>
-          {state.samples.map((sample) => (
-            <div
-              key={sample.id}
+          {groupedSamples.map((group) => (
+            <section
+              key={group.metric}
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: "12px",
+                display: "grid",
+                gap: "8px",
                 padding: "10px 12px",
                 borderRadius: "12px",
-                background: "#ffffff",
-                border: "1px solid rgba(108, 128, 173, 0.14)",
+                background: "#eef3fb",
+                border: "1px solid rgba(108, 128, 173, 0.1)",
               }}
             >
-              <strong style={{ color: "#17304f" }}>{sample.label}</strong>
-              <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                {sample.value} {sample.unit}
-              </span>
-            </div>
+              <strong style={{ color: "#17304f" }}>
+                {formatAnalyzerMetric(group.metric)} samples ({group.samples.length})
+              </strong>
+              {group.samples.map((sample) => (
+                <div
+                  key={sample.id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: "12px",
+                    padding: "10px 12px",
+                    borderRadius: "12px",
+                    background: "#ffffff",
+                    border: "1px solid rgba(108, 128, 173, 0.14)",
+                  }}
+                >
+                  <strong style={{ color: "#17304f" }}>{sample.label}</strong>
+                  <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                    {sample.value} {sample.unit}
+                  </span>
+                </div>
+              ))}
+            </section>
           ))}
         </div>
       </section>

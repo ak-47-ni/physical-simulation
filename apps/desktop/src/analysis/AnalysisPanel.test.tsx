@@ -49,6 +49,54 @@ describe("AnalysisPanel", () => {
     expect(screen.getByText("9.81 m/s^2")).toBeDefined();
   });
 
+  it("groups accepted samples by metric and switches the chart metric view", () => {
+    render(<AnalysisPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: /open chart panel/i }));
+
+    expect(screen.getByText("Selected metric: displacement")).toBeDefined();
+    expect(screen.getByText("Samples in view: 0")).toBeDefined();
+
+    fireEvent.change(screen.getByLabelText(/sample metric/i), {
+      target: { value: "velocity" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample label/i), {
+      target: { value: "Probe V" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample value/i), {
+      target: { value: "4.2" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample unit/i), {
+      target: { value: "m/s" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /accept sample/i }));
+
+    fireEvent.change(screen.getByLabelText(/sample metric/i), {
+      target: { value: "energy" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample label/i), {
+      target: { value: "Probe E" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample value/i), {
+      target: { value: "12.4" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample unit/i), {
+      target: { value: "J" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /accept sample/i }));
+
+    expect(screen.getByText("Velocity samples (1)")).toBeDefined();
+    expect(screen.getByText("Energy samples (1)")).toBeDefined();
+    expect(screen.getByText("Probe V")).toBeDefined();
+    expect(screen.getByText("Probe E")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /view velocity chart/i }));
+
+    expect(screen.getByText("Selected metric: velocity")).toBeDefined();
+    expect(screen.getByText("Samples in view: 1")).toBeDefined();
+    expect(screen.getByText("Latest sample: 4.2 m/s")).toBeDefined();
+  });
+
   it("supports controlled overlay display state updates", () => {
     const displayChanges: Array<{
       showTrajectories: boolean;

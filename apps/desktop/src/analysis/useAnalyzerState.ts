@@ -1,5 +1,14 @@
 import { useState } from "react";
 
+export const ANALYZER_METRICS = [
+  "displacement",
+  "velocity",
+  "acceleration",
+  "energy",
+] as const;
+
+export type AnalyzerMetric = (typeof ANALYZER_METRICS)[number];
+
 export type AnalyzerOverlayState = {
   showTrajectories: boolean;
   showVelocityVectors: boolean;
@@ -10,21 +19,40 @@ export type AnalyzerOverlayState = {
 export type AnalyzerSample = {
   id: string;
   label: string;
+  metric: AnalyzerMetric;
   value: number;
   unit: string;
 };
 
 export type AnalyzerDraftState = {
   label: string;
+  metric: AnalyzerMetric;
   value: string;
   unit: string;
 };
 
 export type AnalyzerState = {
   overlays: AnalyzerOverlayState;
+  selectedMetric: AnalyzerMetric;
   samples: AnalyzerSample[];
   draft: AnalyzerDraftState;
 };
+
+export type AnalyzerSampleGroup = {
+  metric: AnalyzerMetric;
+  samples: AnalyzerSample[];
+};
+
+export function formatAnalyzerMetric(metric: AnalyzerMetric) {
+  return `${metric.slice(0, 1).toUpperCase()}${metric.slice(1)}`;
+}
+
+export function groupAnalyzerSamples(samples: AnalyzerSample[]): AnalyzerSampleGroup[] {
+  return ANALYZER_METRICS.map((metric) => ({
+    metric,
+    samples: samples.filter((sample) => sample.metric === metric),
+  })).filter((group) => group.samples.length > 0);
+}
 
 export function createInitialAnalyzerState(): AnalyzerState {
   return {
@@ -34,9 +62,11 @@ export function createInitialAnalyzerState(): AnalyzerState {
       showForceVectors: false,
       chartPanelOpen: false,
     },
+    selectedMetric: "displacement",
     samples: [],
     draft: {
       label: "",
+      metric: "displacement",
       value: "",
       unit: "",
     },
@@ -52,6 +82,7 @@ export function useAnalyzerState(initialState?: Partial<AnalyzerState>) {
       ...baseState.overlays,
       ...initialState?.overlays,
     },
+    selectedMetric: initialState?.selectedMetric ?? baseState.selectedMetric,
     samples: initialState?.samples ?? [],
     draft: {
       ...baseState.draft,
@@ -95,12 +126,14 @@ export function useAnalyzerState(initialState?: Partial<AnalyzerState>) {
           {
             id: `${label}-${current.samples.length + 1}`,
             label,
+            metric: current.draft.metric,
             value,
             unit: current.draft.unit.trim(),
           },
         ],
         draft: {
           label: "",
+          metric: current.draft.metric,
           value: "",
           unit: current.draft.unit,
         },
@@ -122,6 +155,12 @@ export function useAnalyzerState(initialState?: Partial<AnalyzerState>) {
     },
     toggleVelocityVectors: () => {
       toggleOverlay("showVelocityVectors");
+    },
+    selectChartMetric: (metric: AnalyzerMetric) => {
+      setState((current) => ({
+        ...current,
+        selectedMetric: metric,
+      }));
     },
     acceptSample,
   };
