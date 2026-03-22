@@ -382,4 +382,16 @@ describe("AnalysisPanel", () => {
       expect(screen.getByText("Runtime latest value: 1.80 m/s")).toBeDefined();
     });
   });
+
+  it("shows runtime trajectory loading state before samples arrive", async () => {
+    const port = createMockRuntimeBridgePort();
+
+    render(<AnalysisPanel runtimePort={port} analyzerId="traj-1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /open chart panel/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Runtime trajectory source: loading")).toBeDefined();
+    });
+  });
 });
