@@ -3,6 +3,8 @@
   "private": true,
   "packageManager": "pnpm@10.30.2",
   "scripts": {
+    "coord": "node scripts/coord.mjs",
+    "test:coord": "vitest run scripts/coord.test.mjs",
     "test": "pnpm -r test"
   },
   "devDependencies": {

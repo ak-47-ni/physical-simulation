@@ -5,3 +5,4 @@ coverage
 target
 .worktrees/
 worktrees/
+.coordination/
