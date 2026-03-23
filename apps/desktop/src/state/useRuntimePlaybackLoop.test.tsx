@@ -4,8 +4,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   createInitialRuntimeBridgePortSnapshot,
+  DEFAULT_PRECOMPUTED_DURATION_SECONDS,
   type RuntimeBridgePort,
   type RuntimeBridgePortSnapshot,
+  type RuntimePlaybackConfig,
 } from "./runtimeBridge";
 import { useRuntimePlaybackLoop } from "./useRuntimePlaybackLoop";
 
@@ -76,17 +78,59 @@ function createControlledRuntimePort(options: { deferredTicks?: boolean } = {}) 
     });
   }
 
+  function createFrameForTime(timeSeconds: number) {
+    return {
+      frameNumber: Math.round(timeSeconds * 60),
+      entities: [],
+    };
+  }
+
+  function createRuntimeTotalDuration(config: RuntimePlaybackConfig): number {
+    return config.mode === "precomputed"
+      ? config.precomputeDurationSeconds ?? DEFAULT_PRECOMPUTED_DURATION_SECONDS
+      : snapshot.bridge.totalDurationSeconds;
+  }
+
   function buildNextTickSnapshot() {
+    if (snapshot.bridge.status === "preparing") {
+      const nextProgress = Math.min(1, (snapshot.bridge.preparingProgress ?? 0) + 0.25);
+
+      if (nextProgress >= 1) {
+        return {
+          ...snapshot,
+          bridge: {
+            ...snapshot.bridge,
+            status: "running",
+            preparingProgress: null,
+            canSeek: true,
+          },
+        };
+      }
+
+      return {
+        ...snapshot,
+        bridge: {
+          ...snapshot.bridge,
+          status: "preparing",
+          preparingProgress: nextProgress,
+          canSeek: false,
+        },
+      };
+    }
+
+    const nextTimeSeconds = Math.min(
+      snapshot.bridge.currentTimeSeconds + 1 / 60,
+      snapshot.bridge.totalDurationSeconds,
+    );
+    const reachedTerminalFrame = nextTimeSeconds >= snapshot.bridge.totalDurationSeconds;
+
     return {
       ...snapshot,
       bridge: {
         ...snapshot.bridge,
-        status: "running" as const,
-        currentTimeSeconds: snapshot.bridge.currentTimeSeconds + 1 / 60,
-        currentFrame: {
-          frameNumber: (snapshot.bridge.currentFrame?.frameNumber ?? 0) + 1,
-          entities: [],
-        },
+        status: reachedTerminalFrame ? "paused" : "running",
+        currentTimeSeconds: nextTimeSeconds,
+        currentFrame: createFrameForTime(nextTimeSeconds),
       },
     };
   }
@@ -108,7 +152,16 @@ function createControlledRuntimePort(options: { deferredTicks?: boolean } = {}) 
     start: async () =>
       updateBridge((currentSnapshot) => ({
         ...currentSnapshot.bridge,
-        status: "running",
+        status:
+          currentSnapshot.bridge.playbackMode === "precomputed" &&
+          !currentSnapshot.bridge.canSeek
+            ? "preparing"
+            : "running",
+        preparingProgress:
+          currentSnapshot.bridge.playbackMode === "precomputed" &&
+          !currentSnapshot.bridge.canSeek
+            ? 0
+            : currentSnapshot.bridge.preparingProgress,
         rebuildRequired: false,
         canResume: true,
         blockReason: null,
@@ -135,6 +188,15 @@ function createControlledRuntimePort(options: { deferredTicks?: boolean } = {}) 
     reset: async () =>
       publish({
         ...createInitialRuntimeBridgePortSnapshot(),
+        bridge: {
+          ...createInitialRuntimeBridgePortSnapshot().bridge,
+          playbackMode: snapshot.bridge.playbackMode,
+          totalDurationSeconds: snapshot.bridge.totalDurationSeconds,
+          canSeek:
+            snapshot.bridge.playbackMode === "precomputed"
+              ? snapshot.bridge.canSeek
+              : false,
+        },
         lastCompileRequest: snapshot.lastCompileRequest,
       }),
     setTimeScale: async (timeScale) =>
@@ -142,13 +204,35 @@ function createControlledRuntimePort(options: { deferredTicks?: boolean } = {}) 
         ...currentSnapshot.bridge,
         timeScale,
       })),
+    setPlaybackConfig: async (config) =>
+      updateBridge((currentSnapshot) => ({
+        ...currentSnapshot.bridge,
+        status: "idle",
+        currentTimeSeconds: 0,
+        currentFrame: null,
+        playbackMode: config.mode,
+        totalDurationSeconds: createRuntimeTotalDuration(config),
+        preparingProgress: null,
+        canSeek: false,
+      })),
+    seek: async (timeSeconds) =>
+      updateBridge((currentSnapshot) => ({
+        ...currentSnapshot.bridge,
+        status: "paused",
+        currentTimeSeconds: timeSeconds,
+        currentFrame: createFrameForTime(timeSeconds),
+      })),
     readTrajectorySamples: async () => [],
   };
 
   return {
     port,
     getTickCalls: () => tickCalls,
-    publishBridge(update: (bridge: RuntimeBridgePortSnapshot["bridge"]) => RuntimeBridgePortSnapshot["bridge"]) {
+    publishBridge(
+      update: (
+        bridge: RuntimeBridgePortSnapshot["bridge"],
+      ) => RuntimeBridgePortSnapshot["bridge"],
+    ) {
       publish({
         ...snapshot,
         bridge: update(snapshot.bridge),
@@ -185,6 +269,31 @@ function RuntimePlaybackHarness(props: {
 }
 
 describe("useRuntimePlaybackLoop", () => {
+  it("continues scheduling while precompute cache generation is in progress", async () => {
+    const scheduler = createFrameScheduler();
+    const control = createControlledRuntimePort();
+
+    render(<RuntimePlaybackHarness runtimePort={control.port} scheduler={scheduler} />);
+
+    await act(async () => {
+      await control.port.setPlaybackConfig({
+        mode: "precomputed",
+        precomputeDurationSeconds: 10,
+      });
+      await control.port.start();
+    });
+
+    expect(control.port.getSnapshot().bridge.status).toBe("preparing");
+    expect(scheduler.pendingCount()).toBe(1);
+
+    await scheduler.flushNextFrame();
+
+    expect(control.getTickCalls()).toBe(1);
+    expect(control.port.getSnapshot().bridge.status).toBe("preparing");
+    expect(control.port.getSnapshot().bridge.preparingProgress).toBe(0.25);
+    expect(scheduler.pendingCount()).toBe(1);
+  });
+
   it("schedules repeated tick calls while the runtime is running", async () => {
     const scheduler = createFrameScheduler();
     const control = createControlledRuntimePort();
@@ -207,11 +316,13 @@ describe("useRuntimePlaybackLoop", () => {
     expect(control.port.getSnapshot().bridge.currentFrame?.frameNumber).toBe(2);
   });
 
-  it("stops scheduling when playback pauses, resets, or unmounts", async () => {
+  it("stops scheduling while playback is idle, paused, reset, or unmounted", async () => {
     const scheduler = createFrameScheduler();
     const control = createControlledRuntimePort();
 
     const view = render(<RuntimePlaybackHarness runtimePort={control.port} scheduler={scheduler} />);
+
+    expect(scheduler.pendingCount()).toBe(0);
 
     await act(async () => {
       await control.port.start();
@@ -299,5 +410,29 @@ describe("useRuntimePlaybackLoop", () => {
 
     await scheduler.flushNextFrame();
     expect(control.getTickCalls()).toBe(0);
+  });
+
+  it("stops scheduling after realtime playback reaches the capped terminal state", async () => {
+    const scheduler = createFrameScheduler();
+    const control = createControlledRuntimePort();
+
+    render(<RuntimePlaybackHarness runtimePort={control.port} scheduler={scheduler} />);
+
+    await act(async () => {
+      control.publishBridge((bridge) => ({
+        ...bridge,
+        totalDurationSeconds: 1 / 60,
+      }));
+      await control.port.start();
+    });
+
+    expect(scheduler.pendingCount()).toBe(1);
+
+    await scheduler.flushNextFrame();
+
+    expect(control.getTickCalls()).toBe(1);
+    expect(control.port.getSnapshot().bridge.status).toBe("paused");
+    expect(control.port.getSnapshot().bridge.currentTimeSeconds).toBeCloseTo(1 / 60, 5);
+    expect(scheduler.pendingCount()).toBe(0);
   });
 });

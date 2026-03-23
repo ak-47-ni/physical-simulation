@@ -10,8 +10,13 @@ import {
   type RuntimeCompileRequest,
 } from "./runtimeCompileRequest";
 
-export type RuntimeBridgeStatus = "idle" | "running" | "paused";
+export type RuntimeBridgeStatus = "idle" | "preparing" | "running" | "paused";
 export type RuntimeBridgeBlockReason = "rebuild-required" | null;
+export type RuntimePlaybackMode = "realtime" | "precomputed";
+export type RuntimePlaybackConfig = {
+  mode: RuntimePlaybackMode;
+  precomputeDurationSeconds?: number;
+};
 export type RuntimeBridgeCommandAction =
   | "compile"
   | "start"
@@ -19,7 +24,14 @@ export type RuntimeBridgeCommandAction =
   | "tick"
   | "step"
   | "reset"
-  | "set-time-scale";
+  | "set-time-scale"
+  | "set-playback-config"
+  | "seek";
+
+export const DEFAULT_REALTIME_DURATION_CAP_SECONDS = 40;
+export const DEFAULT_PRECOMPUTED_DURATION_SECONDS = 20;
+const RUNTIME_STEP_SECONDS = 1 / 60;
+const MOCK_PRECOMPUTE_PROGRESS_INCREMENT = 0.25;
 
 export type RuntimeBridgeBlockedAction = {
   action: RuntimeBridgeCommandAction;
@@ -59,12 +71,16 @@ export type RuntimeBridgeState = {
   rebuildRequired: boolean;
   canResume: boolean;
   blockReason: RuntimeBridgeBlockReason;
+  playbackMode: RuntimePlaybackMode;
+  totalDurationSeconds: number;
+  preparingProgress: number | null;
+  canSeek: boolean;
   lastErrorMessage: string | null;
   lastBlockedAction: RuntimeBridgeBlockedAction | null;
 };
 
 export type RuntimeBridgeStatusSnapshot = {
-  status: RuntimeBridgeStatus;
+  status: RuntimeBridgeState["status"];
   currentFrame: RuntimeFramePayload | null;
   currentTimeSeconds: number;
   timeScale: number;
@@ -72,6 +88,10 @@ export type RuntimeBridgeStatusSnapshot = {
   rebuildRequired: boolean;
   canResume: boolean;
   blockReason: RuntimeBridgeBlockReason;
+  playbackMode: RuntimePlaybackMode;
+  totalDurationSeconds: number;
+  preparingProgress: number | null;
+  canSeek: boolean;
 };
 
 export type RuntimeBridgePortSnapshot = {
@@ -89,6 +109,10 @@ export type RuntimeBridgePort = {
   step: () => Promise<RuntimeBridgePortSnapshot>;
   reset: () => Promise<RuntimeBridgePortSnapshot>;
   setTimeScale: (timeScale: number) => Promise<RuntimeBridgePortSnapshot>;
+  setPlaybackConfig: (
+    config: RuntimePlaybackConfig,
+  ) => Promise<RuntimeBridgePortSnapshot>;
+  seek: (timeSeconds: number) => Promise<RuntimeBridgePortSnapshot>;
   readTrajectorySamples: (analyzerId: string) => Promise<RuntimeTrajectorySample[]>;
 };
 
@@ -113,6 +137,10 @@ export function createInitialRuntimeBridgeState(): RuntimeBridgeState {
     rebuildRequired: false,
     canResume: true,
     blockReason: null,
+    playbackMode: "realtime",
+    totalDurationSeconds: DEFAULT_REALTIME_DURATION_CAP_SECONDS,
+    preparingProgress: null,
+    canSeek: false,
     lastErrorMessage: null,
     lastBlockedAction: null,
   };
@@ -167,6 +195,10 @@ export function applyRuntimeBridgeStatusSnapshot(
     rebuildRequired: snapshot.rebuildRequired,
     canResume: snapshot.canResume,
     blockReason: snapshot.blockReason,
+    playbackMode: snapshot.playbackMode,
+    totalDurationSeconds: snapshot.totalDurationSeconds,
+    preparingProgress: snapshot.preparingProgress,
+    canSeek: snapshot.canSeek,
   });
 
   if (!snapshot.currentFrame) {
@@ -192,6 +224,8 @@ export function markRuntimeBridgeSceneDirty(
     rebuildRequired,
     canResume: !rebuildRequired,
     blockReason: rebuildRequired ? "rebuild-required" : null,
+    preparingProgress: null,
+    canSeek: rebuildRequired ? false : state.canSeek,
   };
 }
 
@@ -215,14 +249,62 @@ export function setRuntimeBridgeTimeScale(
   });
 }
 
+export function setRuntimeBridgePlaybackConfig(
+  state: RuntimeBridgeState,
+  config: RuntimePlaybackConfig,
+): RuntimeBridgeState {
+  const totalDurationSeconds = readRuntimeTotalDurationSeconds(config);
+
+  return clearRuntimeBridgeFeedback({
+    ...createInitialRuntimeBridgeState(),
+    timeScale: state.timeScale,
+    dirtyScopes: [...state.dirtyScopes],
+    rebuildRequired: state.rebuildRequired,
+    canResume: !state.rebuildRequired,
+    blockReason: state.rebuildRequired ? "rebuild-required" : null,
+    playbackMode: config.mode,
+    totalDurationSeconds,
+  });
+}
+
 export function stepRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState {
+  const currentTimeSeconds = readNextRuntimeTimeSeconds(state);
+
   return clearRuntimeBridgeFeedback({
     ...state,
-    currentTimeSeconds: state.currentTimeSeconds + (1 / 60) * state.timeScale,
+    currentTimeSeconds,
+    status:
+      state.status === "running" && currentTimeSeconds >= state.totalDurationSeconds
+        ? "paused"
+        : state.status,
   });
 }
 
 export function tickRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState {
+  if (state.status === "preparing") {
+    const preparingProgress = Math.min(
+      1,
+      (state.preparingProgress ?? 0) + MOCK_PRECOMPUTE_PROGRESS_INCREMENT,
+    );
+
+    if (preparingProgress >= 1) {
+      return clearRuntimeBridgeFeedback({
+        ...state,
+        status: "running",
+        currentTimeSeconds: 0,
+        preparingProgress: null,
+        canSeek: true,
+      });
+    }
+
+    return clearRuntimeBridgeFeedback({
+      ...state,
+      status: "preparing",
+      preparingProgress,
+      canSeek: false,
+    });
+  }
+
   if (state.status !== "running") {
     return clearRuntimeBridgeFeedback(state);
   }
@@ -230,8 +312,13 @@ export function tickRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState
   return stepRuntimeBridge(state);
 }
 
-export function resetRuntimeBridge(_state: RuntimeBridgeState): RuntimeBridgeState {
-  return createInitialRuntimeBridgeState();
+export function resetRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState {
+  return {
+    ...createInitialRuntimeBridgeState(),
+    playbackMode: state.playbackMode,
+    totalDurationSeconds: state.totalDurationSeconds,
+    canSeek: state.playbackMode === "precomputed" ? state.canSeek : false,
+  };
 }
 
 export function resumeRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState {
@@ -248,11 +335,40 @@ export function resumeRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeSta
     );
   }
 
+  if (state.playbackMode === "precomputed" && !state.canSeek) {
+    return clearRuntimeBridgeFeedback({
+      ...state,
+      status: "preparing",
+      canResume: true,
+      blockReason: null,
+      preparingProgress: state.preparingProgress ?? 0,
+    });
+  }
+
   return clearRuntimeBridgeFeedback({
     ...state,
     status: "running",
     canResume: true,
     blockReason: null,
+  });
+}
+
+export function seekRuntimeBridge(
+  state: RuntimeBridgeState,
+  timeSeconds: number,
+): RuntimeBridgeState {
+  if (!state.canSeek) {
+    return setRuntimeBridgeBlockedAction(
+      state,
+      "seek",
+      "Cached playback is not ready to seek yet.",
+    );
+  }
+
+  return clearRuntimeBridgeFeedback({
+    ...state,
+    status: "paused",
+    currentTimeSeconds: clampRuntimeTimeSeconds(timeSeconds, state.totalDurationSeconds),
   });
 }
 
@@ -344,12 +460,15 @@ export function createMockRuntimeBridgePort(
     compile: async (request) =>
       update((currentSnapshot) => {
         trajectorySamplesByAnalyzer = {};
+        const currentBridge = currentSnapshot.bridge;
 
         return {
           ...currentSnapshot,
           bridge: {
             ...createInitialRuntimeBridgeState(),
-            timeScale: currentSnapshot.bridge.timeScale,
+            timeScale: currentBridge.timeScale,
+            playbackMode: currentBridge.playbackMode,
+            totalDurationSeconds: currentBridge.totalDurationSeconds,
           },
           lastCompileRequest: request,
         };
@@ -368,32 +487,22 @@ export function createMockRuntimeBridgePort(
       update((currentSnapshot) => {
         let bridge = tickRuntimeBridge(currentSnapshot.bridge);
 
-        if (currentSnapshot.bridge.status !== "running") {
+        if (bridge.currentTimeSeconds === currentSnapshot.bridge.currentTimeSeconds) {
           return {
             ...currentSnapshot,
             bridge,
           };
         }
 
-        const nextFrameNumber = (bridge.currentFrame?.frameNumber ?? 0) + 1;
-        const frame =
-          options.createFrame?.({
-            ...currentSnapshot,
-            bridge,
-            nextFrameNumber,
-          }) ??
-          {
-            frameNumber: nextFrameNumber,
-            entities: [],
-          };
+        const frame = createMockRuntimeFrame(options, currentSnapshot, bridge);
 
         bridge = applyRuntimeFrame(bridge, frame);
-        trajectorySamplesByAnalyzer =
-          options.createTrajectorySamples?.({
-            bridge,
-            frame,
-            currentSamplesByAnalyzer: cloneTrajectorySampleMap(trajectorySamplesByAnalyzer),
-          }) ?? trajectorySamplesByAnalyzer;
+        trajectorySamplesByAnalyzer = updateMockTrajectorySamples(
+          options,
+          bridge,
+          frame,
+          trajectorySamplesByAnalyzer,
+        );
 
         return {
           ...currentSnapshot,
@@ -403,25 +512,18 @@ export function createMockRuntimeBridgePort(
     step: async () =>
       update((currentSnapshot) => {
         let bridge = stepRuntimeBridge(currentSnapshot.bridge);
-        const nextFrameNumber = (bridge.currentFrame?.frameNumber ?? 0) + 1;
-        const frame =
-          options.createFrame?.({
-            ...currentSnapshot,
-            bridge,
-            nextFrameNumber,
-          }) ??
-          {
-            frameNumber: nextFrameNumber,
-            entities: [],
-          };
 
-        bridge = applyRuntimeFrame(bridge, frame);
-        trajectorySamplesByAnalyzer =
-          options.createTrajectorySamples?.({
+        if (bridge.currentTimeSeconds > currentSnapshot.bridge.currentTimeSeconds) {
+          const frame = createMockRuntimeFrame(options, currentSnapshot, bridge);
+
+          bridge = applyRuntimeFrame(bridge, frame);
+          trajectorySamplesByAnalyzer = updateMockTrajectorySamples(
+            options,
             bridge,
             frame,
-            currentSamplesByAnalyzer: cloneTrajectorySampleMap(trajectorySamplesByAnalyzer),
-          }) ?? trajectorySamplesByAnalyzer;
+            trajectorySamplesByAnalyzer,
+          );
+        }
 
         return {
           ...currentSnapshot,
@@ -442,6 +544,27 @@ export function createMockRuntimeBridgePort(
         ...currentSnapshot,
         bridge: setRuntimeBridgeTimeScale(currentSnapshot.bridge, timeScale),
       })),
+    setPlaybackConfig: async (config) =>
+      update((currentSnapshot) => ({
+        ...currentSnapshot,
+        bridge: setRuntimeBridgePlaybackConfig(currentSnapshot.bridge, config),
+      })),
+    seek: async (timeSeconds) =>
+      update((currentSnapshot) => {
+        let bridge = seekRuntimeBridge(currentSnapshot.bridge, timeSeconds);
+
+        if (bridge.currentTimeSeconds !== currentSnapshot.bridge.currentTimeSeconds) {
+          bridge = applyRuntimeFrame(
+            bridge,
+            createMockRuntimeFrame(options, currentSnapshot, bridge),
+          );
+        }
+
+        return {
+          ...currentSnapshot,
+          bridge,
+        };
+      }),
     readTrajectorySamples: async (analyzerId) => {
       const samples = trajectorySamplesByAnalyzer[analyzerId];
 
@@ -473,6 +596,67 @@ function cloneTrajectorySampleMap(
       cloneTrajectorySamples(samples),
     ]),
   );
+}
+
+function createMockRuntimeFrame(
+  options: CreateMockRuntimeBridgePortOptions,
+  currentSnapshot: RuntimeBridgePortSnapshot,
+  bridge: RuntimeBridgeState,
+): RuntimeFramePayload {
+  const nextFrameNumber = Math.round(bridge.currentTimeSeconds / RUNTIME_STEP_SECONDS);
+
+  return (
+    options.createFrame?.({
+      ...currentSnapshot,
+      bridge,
+      nextFrameNumber,
+    }) ?? {
+      frameNumber: nextFrameNumber,
+      entities: [],
+    }
+  );
+}
+
+function updateMockTrajectorySamples(
+  options: CreateMockRuntimeBridgePortOptions,
+  bridge: RuntimeBridgeState,
+  frame: RuntimeFramePayload,
+  currentSamplesByAnalyzer: Record<string, RuntimeTrajectorySample[]>,
+): Record<string, RuntimeTrajectorySample[]> {
+  return (
+    options.createTrajectorySamples?.({
+      bridge,
+      frame,
+      currentSamplesByAnalyzer: cloneTrajectorySampleMap(currentSamplesByAnalyzer),
+    }) ?? currentSamplesByAnalyzer
+  );
+}
+
+function readNextRuntimeTimeSeconds(state: RuntimeBridgeState): number {
+  return clampRuntimeTimeSeconds(
+    state.currentTimeSeconds + RUNTIME_STEP_SECONDS * state.timeScale,
+    state.totalDurationSeconds,
+  );
+}
+
+function clampRuntimeTimeSeconds(timeSeconds: number, totalDurationSeconds: number): number {
+  return Math.max(0, Math.min(timeSeconds, totalDurationSeconds));
+}
+
+function readRuntimeTotalDurationSeconds(config: RuntimePlaybackConfig): number {
+  if (config.mode === "realtime") {
+    return DEFAULT_REALTIME_DURATION_CAP_SECONDS;
+  }
+
+  return normalizePrecomputeDurationSeconds(config.precomputeDurationSeconds);
+}
+
+function normalizePrecomputeDurationSeconds(duration: number | undefined): number {
+  if (!Number.isFinite(duration) || duration === undefined || duration <= 0) {
+    return DEFAULT_PRECOMPUTED_DURATION_SECONDS;
+  }
+
+  return duration;
 }
 
 export { createRuntimeCompileRequest } from "./runtimeCompileRequest";
