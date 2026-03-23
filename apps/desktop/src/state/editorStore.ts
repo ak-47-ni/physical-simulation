@@ -35,6 +35,7 @@ export type EditorSceneEntity = BallSceneEntity | SizedSceneEntity;
 export type EditorState = {
   activeTool: EditorTool;
   gridVisible: boolean;
+  selectedConstraintId: string | null;
   selectedEntityId: string | null;
 };
 
@@ -44,6 +45,7 @@ export function createInitialEditorState(): EditorState {
   return {
     activeTool: "select",
     gridVisible: true,
+    selectedConstraintId: null,
     selectedEntityId: null,
   };
 }
