@@ -12,6 +12,18 @@ import {
 
 export type RuntimeBridgeStatus = "idle" | "running" | "paused";
 export type RuntimeBridgeBlockReason = "rebuild-required" | null;
+export type RuntimeBridgeCommandAction =
+  | "compile"
+  | "start"
+  | "pause"
+  | "step"
+  | "reset"
+  | "set-time-scale";
+
+export type RuntimeBridgeBlockedAction = {
+  action: RuntimeBridgeCommandAction;
+  message: string;
+};
 
 export type RuntimeFrameEntityView = {
   id: string;
@@ -46,6 +58,8 @@ export type RuntimeBridgeState = {
   rebuildRequired: boolean;
   canResume: boolean;
   blockReason: RuntimeBridgeBlockReason;
+  lastErrorMessage: string | null;
+  lastBlockedAction: RuntimeBridgeBlockedAction | null;
 };
 
 export type RuntimeBridgeStatusSnapshot = {
@@ -97,6 +111,8 @@ export function createInitialRuntimeBridgeState(): RuntimeBridgeState {
     rebuildRequired: false,
     canResume: true,
     blockReason: null,
+    lastErrorMessage: null,
+    lastBlockedAction: null,
   };
 }
 
@@ -140,7 +156,7 @@ export function applyRuntimeBridgeStatusSnapshot(
   state: RuntimeBridgeState,
   snapshot: RuntimeBridgeStatusSnapshot,
 ): RuntimeBridgeState {
-  const nextState = {
+  const nextState = clearRuntimeBridgeFeedback({
     ...state,
     status: snapshot.status,
     currentTimeSeconds: snapshot.currentTimeSeconds,
@@ -149,7 +165,7 @@ export function applyRuntimeBridgeStatusSnapshot(
     rebuildRequired: snapshot.rebuildRequired,
     canResume: snapshot.canResume,
     blockReason: snapshot.blockReason,
-  };
+  });
 
   if (!snapshot.currentFrame) {
     return {
@@ -178,30 +194,30 @@ export function markRuntimeBridgeSceneDirty(
 }
 
 export function markRuntimeBridgeRebuilt(state: RuntimeBridgeState): RuntimeBridgeState {
-  return {
+  return clearRuntimeBridgeFeedback({
     ...state,
     dirtyScopes: [],
     rebuildRequired: false,
     canResume: true,
     blockReason: null,
-  };
+  });
 }
 
 export function setRuntimeBridgeTimeScale(
   state: RuntimeBridgeState,
   timeScale: number,
 ): RuntimeBridgeState {
-  return {
+  return clearRuntimeBridgeFeedback({
     ...state,
     timeScale,
-  };
+  });
 }
 
 export function stepRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState {
-  return {
+  return clearRuntimeBridgeFeedback({
     ...state,
     currentTimeSeconds: state.currentTimeSeconds + (1 / 60) * state.timeScale,
-  };
+  });
 }
 
 export function resetRuntimeBridge(_state: RuntimeBridgeState): RuntimeBridgeState {
@@ -210,27 +226,77 @@ export function resetRuntimeBridge(_state: RuntimeBridgeState): RuntimeBridgeSta
 
 export function resumeRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState {
   if (state.rebuildRequired) {
-    return {
-      ...state,
-      status: "paused",
-      canResume: false,
-      blockReason: "rebuild-required",
-    };
+    return setRuntimeBridgeBlockedAction(
+      {
+        ...state,
+        status: "paused",
+        canResume: false,
+        blockReason: "rebuild-required",
+      },
+      "start",
+      "Rebuild required before starting runtime.",
+    );
   }
 
-  return {
+  return clearRuntimeBridgeFeedback({
     ...state,
     status: "running",
     canResume: true,
     blockReason: null,
-  };
+  });
 }
 
 export function pauseRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState {
-  return {
+  return clearRuntimeBridgeFeedback({
     ...state,
     status: "paused",
+  });
+}
+
+export function clearRuntimeBridgeFeedback(state: RuntimeBridgeState): RuntimeBridgeState {
+  return {
+    ...state,
+    lastErrorMessage: null,
+    lastBlockedAction: null,
   };
+}
+
+export function setRuntimeBridgeErrorMessage(
+  state: RuntimeBridgeState,
+  message: string,
+): RuntimeBridgeState {
+  return {
+    ...state,
+    lastErrorMessage: message,
+    lastBlockedAction: null,
+  };
+}
+
+export function setRuntimeBridgeBlockedAction(
+  state: RuntimeBridgeState,
+  action: RuntimeBridgeCommandAction,
+  message: string,
+): RuntimeBridgeState {
+  return {
+    ...state,
+    lastErrorMessage: null,
+    lastBlockedAction: {
+      action,
+      message,
+    },
+  };
+}
+
+export function readRuntimeBridgeErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error;
+  }
+
+  return "Runtime command failed.";
 }
 
 export function createMockRuntimeBridgePort(

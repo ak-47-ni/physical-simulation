@@ -146,4 +146,21 @@ describe("desktopRuntimeBridgePort", () => {
     expect(commands).not.toContain("runtime_status");
     expect(snapshots).toHaveLength(3);
   });
+
+  it("preserves backend command failures on the runtime snapshot", async () => {
+    const request = createRuntimeCompileRequest(createEmptySceneDocument(), ["analysis"]);
+    const fallbackPort = createMockRuntimeBridgePort();
+    const port = createDesktopRuntimeBridgePort({
+      fallbackPort,
+      invoke: async () => {
+        throw new Error("compile failed: spring endpoint missing");
+      },
+    });
+
+    await expect(port.compile(request)).rejects.toThrow("compile failed: spring endpoint missing");
+    expect(port.getSnapshot().bridge.lastErrorMessage).toBe(
+      "compile failed: spring endpoint missing",
+    );
+    expect(port.getSnapshot().bridge.lastBlockedAction).toBeNull();
+  });
 });

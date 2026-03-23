@@ -1,6 +1,9 @@
 import {
   applyRuntimeBridgeStatusSnapshot,
   createInitialRuntimeBridgePortSnapshot,
+  readRuntimeBridgeErrorMessage,
+  setRuntimeBridgeBlockedAction,
+  setRuntimeBridgeErrorMessage,
   type RuntimeBridgePort,
   type RuntimeBridgePortSnapshot,
   type RuntimeBridgeStatusSnapshot,
@@ -46,11 +49,48 @@ export function createDesktopRuntimeBridgePort(
     return snapshot;
   }
 
+  function publishCommandFailure(
+    action: "compile" | "start" | "pause" | "step" | "reset" | "set-time-scale",
+    error: unknown,
+  ): never {
+    const message = readRuntimeBridgeErrorMessage(error);
+    const currentSnapshot = snapshot;
+    const nextBridge =
+      action === "start" && currentSnapshot.bridge.rebuildRequired
+        ? setRuntimeBridgeBlockedAction(currentSnapshot.bridge, action, message)
+        : setRuntimeBridgeErrorMessage(currentSnapshot.bridge, message);
+
+    publish({
+      ...currentSnapshot,
+      bridge: nextBridge,
+    });
+
+    throw (error instanceof Error ? error : new Error(message));
+  }
+
   async function runStatusCommand(
     command: string,
     payload?: Record<string, unknown>,
   ): Promise<RuntimeBridgePortSnapshot> {
-    const status = await invoke<RuntimeBridgeStatusSnapshot>(command, payload);
+    let status: RuntimeBridgeStatusSnapshot;
+
+    try {
+      status = await invoke<RuntimeBridgeStatusSnapshot>(command, payload);
+    } catch (error) {
+      return publishCommandFailure(
+        command === "start_runtime"
+          ? "start"
+          : command === "pause_runtime"
+            ? "pause"
+            : command === "step_runtime"
+              ? "step"
+              : command === "reset_runtime"
+                ? "reset"
+                : "set-time-scale",
+        error,
+      );
+    }
+
     const currentSnapshot = snapshot;
 
     return publish({
@@ -69,7 +109,14 @@ export function createDesktopRuntimeBridgePort(
       };
     },
     compile: async (request) => {
-      const status = await invoke<RuntimeBridgeStatusSnapshot>("compile_scene", { request });
+      let status: RuntimeBridgeStatusSnapshot;
+
+      try {
+        status = await invoke<RuntimeBridgeStatusSnapshot>("compile_scene", { request });
+      } catch (error) {
+        return publishCommandFailure("compile", error);
+      }
+
       const currentSnapshot = snapshot;
 
       return publish({
