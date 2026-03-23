@@ -17,6 +17,8 @@ describe("BottomTransportBar", () => {
           timeScale: 1,
           canResume: true,
           blockReason: null,
+          lastErrorMessage: null,
+          lastBlockedAction: null,
         }}
         onPause={() => undefined}
         onReset={() => undefined}
@@ -49,6 +51,8 @@ describe("BottomTransportBar", () => {
           timeScale: 1,
           canResume: true,
           blockReason: null,
+          lastErrorMessage: null,
+          lastBlockedAction: null,
         }}
         onPause={() => {
           calls.push("pause");
@@ -75,5 +79,42 @@ describe("BottomTransportBar", () => {
     fireEvent.click(screen.getByRole("button", { name: "2x" }));
 
     expect(calls).toEqual(["start", "pause", "step", "reset", "scale:2"]);
+  });
+
+  it("shows blocked-runtime guidance and disables actions that cannot run yet", () => {
+    render(
+      <BottomTransportBar
+        runtime={{
+          status: "paused",
+          currentTimeSeconds: 0,
+          timeScale: 1,
+          canResume: false,
+          blockReason: "rebuild-required",
+          lastErrorMessage: null,
+          lastBlockedAction: {
+            action: "start",
+            message: "Rebuild required before starting runtime.",
+          },
+        }}
+        onPause={() => undefined}
+        onReset={() => undefined}
+        onStart={() => undefined}
+        onStep={() => undefined}
+        onTimeScaleChange={() => undefined}
+      />,
+    );
+
+    expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
+      "Rebuild required before starting runtime.",
+    );
+    expect(
+      (screen.getByRole("button", { name: /start/i }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getByRole("button", { name: /start/i }).getAttribute("title")).toBe(
+      "Rebuild required before starting runtime.",
+    );
+    expect(
+      (screen.getByRole("button", { name: /step/i }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 });
