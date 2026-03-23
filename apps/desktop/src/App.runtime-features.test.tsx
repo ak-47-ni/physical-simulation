@@ -79,4 +79,39 @@ describe("App runtime features", () => {
       expect(screen.getByText("Runtime sample count: 1")).toBeDefined();
     });
   });
+
+  it("projects runtime step positions back into the workspace", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "60" } });
+
+    expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("132px");
+
+    fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
+
+    await waitFor(() => {
+      expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("133px");
+    });
+  });
+
+  it("falls back to authored workspace positions after resetting the runtime", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "60" } });
+    fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
+
+    await waitFor(() => {
+      expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("133px");
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^reset$/i }));
+
+    await waitFor(() => {
+      expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("132px");
+    });
+  });
 });

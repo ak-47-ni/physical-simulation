@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { App } from "./App";
@@ -255,5 +255,22 @@ describe("App selection sync", () => {
     expect(screen.queryByTestId("scene-constraint-spring-spring-1")).toBeNull();
     expect(screen.queryByTestId("scene-tree-constraint-spring-1")).toBeNull();
     expect(screen.getByText("No entity selected")).toBeDefined();
+  });
+
+  it("keeps entity selection synced while runtime projection is active", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "60" } });
+    fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
+
+    await waitFor(() => {
+      expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("133px");
+      expect(screen.getByTestId("scene-entity-ball-1").getAttribute("data-selected")).toBe("true");
+      expect(screen.getByTestId("scene-tree-item-ball-1").getAttribute("data-selected")).toBe(
+        "true",
+      );
+    });
   });
 });
