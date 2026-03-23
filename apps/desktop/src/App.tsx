@@ -1,10 +1,16 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { AnalysisPanel } from "./analysis/AnalysisPanel";
+import {
+  AnnotationLayer,
+  createInitialAnnotationLayerState,
+} from "./annotation/AnnotationLayer";
 import {
   createSceneDisplaySettings,
   type SceneDisplaySettings,
 } from "./io/sceneFile";
 import { ShellLayout } from "./layout/ShellLayout";
+import { BottomTransportBar } from "./panels/BottomTransportBar";
 import { ObjectLibraryPanel } from "./panels/ObjectLibraryPanel";
 import { PropertyPanel } from "./panels/PropertyPanel";
 import { SceneTreePanel } from "./panels/SceneTreePanel";
@@ -17,14 +23,102 @@ import {
   type EditorSceneEntity,
   type LibraryBodyKind,
 } from "./state/editorStore";
+import {
+  createMockRuntimeBridgePort,
+  type RuntimeBridgePortSnapshot,
+  type RuntimeTrajectorySample,
+} from "./state/runtimeBridge";
+import { createDesktopRuntimeBridgePort } from "./state/desktopRuntimeBridgePort";
+import { createRuntimeCompileRequestFromEditorState } from "./state/runtimeCompileRequest";
 import { useEditorHotkeys } from "./state/useEditorHotkeys";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import type { EditorTool } from "./workspace/tools";
+
+const GRAVITY_ACCELERATION = 9.8;
+const PRIMARY_ANALYZER_ID = "traj-primary";
+
+function getEntityCenter(entity: EditorSceneEntity) {
+  if (entity.kind === "ball") {
+    return {
+      x: entity.x + entity.radius,
+      y: entity.y + entity.radius,
+    };
+  }
+
+  return {
+    x: entity.x + entity.width / 2,
+    y: entity.y + entity.height / 2,
+  };
+}
+
+function createRuntimePreviewFrame(
+  entities: EditorSceneEntity[],
+  input: RuntimeBridgePortSnapshot & { nextFrameNumber: number },
+) {
+  const elapsedTimeSeconds = input.bridge.currentTimeSeconds;
+
+  return {
+    frameNumber: input.nextFrameNumber,
+    entities: entities.map((entity) => {
+      const center = getEntityCenter(entity);
+      const timeAdjustedPosition = entity.locked
+        ? center
+        : {
+            x: center.x + entity.velocityX * elapsedTimeSeconds,
+            y:
+              center.y +
+              entity.velocityY * elapsedTimeSeconds +
+              0.5 * GRAVITY_ACCELERATION * elapsedTimeSeconds * elapsedTimeSeconds,
+          };
+
+      return {
+        entityId: entity.id,
+        position: timeAdjustedPosition,
+        rotation: 0,
+        velocity: entity.locked
+          ? { x: 0, y: 0 }
+          : {
+              x: entity.velocityX,
+              y: entity.velocityY + GRAVITY_ACCELERATION * elapsedTimeSeconds,
+            },
+        acceleration: entity.locked ? { x: 0, y: 0 } : { x: 0, y: GRAVITY_ACCELERATION },
+      };
+    }),
+  };
+}
+
+function createRuntimePreviewTrajectorySamples(input: {
+  bridge: RuntimeBridgePortSnapshot["bridge"];
+  currentSamplesByAnalyzer: Record<string, RuntimeTrajectorySample[]>;
+}) {
+  const trackedEntity = input.bridge.currentFrame?.entities[0];
+
+  if (!trackedEntity) {
+    return input.currentSamplesByAnalyzer;
+  }
+
+  return {
+    [PRIMARY_ANALYZER_ID]: [
+      ...(input.currentSamplesByAnalyzer[PRIMARY_ANALYZER_ID] ?? []),
+      {
+        frameNumber: input.bridge.currentFrame?.frameNumber ?? 0,
+        timeSeconds: input.bridge.currentTimeSeconds,
+        position: {
+          x: trackedEntity.transform.x,
+          y: trackedEntity.transform.y,
+        },
+        velocity: trackedEntity.velocity ?? { x: 0, y: 0 },
+        acceleration: trackedEntity.acceleration ?? { x: 0, y: 0 },
+      },
+    ],
+  };
+}
 
 export function App() {
   const [editorState, setEditorState] = useState(createInitialEditorState);
   const [entities, setEntities] = useState<EditorSceneEntity[]>(createInitialSceneEntities);
   const [selectedLibraryItem, setSelectedLibraryItem] = useState<LibraryBodyKind>("ball");
+  const [annotationState, setAnnotationState] = useState(createInitialAnnotationLayerState);
   const [displaySettings, setDisplaySettings] = useState(() =>
     createSceneDisplaySettings({
       gridVisible: true,
@@ -32,6 +126,36 @@ export function App() {
       showTrajectories: false,
     }),
   );
+  const entityCatalogRef = useRef(entities);
+  const [runtimePort] = useState(() =>
+    createDesktopRuntimeBridgePort({
+      fallbackPort: createMockRuntimeBridgePort({
+        createFrame: (input) => createRuntimePreviewFrame(entityCatalogRef.current, input),
+        createTrajectorySamples: ({ bridge, currentSamplesByAnalyzer }) =>
+          createRuntimePreviewTrajectorySamples({
+            bridge,
+            currentSamplesByAnalyzer,
+          }),
+      }),
+    }),
+  );
+  const [runtimeSnapshot, setRuntimeSnapshot] = useState(() => runtimePort.getSnapshot());
+
+  useEffect(() => {
+    entityCatalogRef.current = entities;
+  }, [entities]);
+
+  useEffect(() => runtimePort.subscribe(setRuntimeSnapshot), [runtimePort]);
+
+  useEffect(() => {
+    void runtimePort.compile(
+      createRuntimeCompileRequestFromEditorState({
+        analyzerId: PRIMARY_ANALYZER_ID,
+        annotations: annotationState.strokes,
+        entities,
+      }),
+    );
+  }, [annotationState.strokes, entities, runtimePort]);
 
   function handleToolChange(tool: EditorTool) {
     setEditorState((current) => ({
@@ -196,7 +320,40 @@ export function App() {
 
   return (
     <ShellLayout
-      bottomPane={<span>Transport controls mount point</span>}
+      bottomPane={
+        <div style={{ display: "grid", gap: "14px" }}>
+          <BottomTransportBar
+            runtime={runtimeSnapshot.bridge}
+            onPause={() => {
+              void runtimePort.pause();
+            }}
+            onReset={() => {
+              void runtimePort.reset();
+            }}
+            onStart={() => {
+              void runtimePort.start();
+            }}
+            onStep={() => {
+              void runtimePort.step();
+            }}
+            onTimeScaleChange={(timeScale) => {
+              void runtimePort.setTimeScale(timeScale);
+            }}
+          />
+          <AnalysisPanel
+            analyzerId={PRIMARY_ANALYZER_ID}
+            display={{
+              showTrajectories: displaySettings.showTrajectories,
+              showVelocityVectors: displaySettings.showVelocityVectors,
+              showForceVectors: displaySettings.showForceVectors,
+            }}
+            onDisplayChange={(nextDisplay) => {
+              handleUpdateDisplaySetting(nextDisplay);
+            }}
+            runtimePort={runtimePort}
+          />
+        </div>
+      }
       leftPane={
         <ObjectLibraryPanel
           onSelectItem={handleSelectLibraryItem}
@@ -225,16 +382,19 @@ export function App() {
         </div>
       }
     >
-      <WorkspaceCanvas
-        display={displaySettings}
-        entities={entities}
-        onCreateEntity={handleCreateEntity}
-        onGridVisibleChange={handleGridVisibleChange}
-        onMoveEntity={handleMoveEntity}
-        onSelectEntity={handleSelectEntity}
-        onToolChange={handleToolChange}
-        state={editorState}
-      />
+      <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr) auto", gap: "14px" }}>
+        <WorkspaceCanvas
+          display={displaySettings}
+          entities={entities}
+          onCreateEntity={handleCreateEntity}
+          onGridVisibleChange={handleGridVisibleChange}
+          onMoveEntity={handleMoveEntity}
+          onSelectEntity={handleSelectEntity}
+          onToolChange={handleToolChange}
+          state={editorState}
+        />
+        <AnnotationLayer state={annotationState} onStateChange={setAnnotationState} />
+      </div>
     </ShellLayout>
   );
 }
