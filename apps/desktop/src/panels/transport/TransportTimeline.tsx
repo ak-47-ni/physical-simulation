@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import type { RuntimeBridgeStatus } from "../../state/runtimeBridge";
 
@@ -10,7 +10,10 @@ export type TransportTimelineProgressView = {
   status: RuntimeBridgeStatus;
 };
 
+export type TransportTimelineLayout = "default" | "compact";
+
 type TransportTimelineProps = {
+  layout?: TransportTimelineLayout;
   progress: TransportTimelineProgressView;
   onSeek?: (timeSeconds: number) => void;
 };
@@ -24,12 +27,27 @@ const containerStyle: CSSProperties = {
   background: "rgba(247, 249, 252, 0.92)",
 };
 
+const compactContainerStyle: CSSProperties = {
+  ...containerStyle,
+  gap: "8px",
+  padding: "10px 12px",
+  width: "min(100%, 560px)",
+  maxWidth: "560px",
+  alignSelf: "start",
+};
+
 const rowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   flexWrap: "wrap",
   gap: "10px",
+};
+
+const compactRowStyle: CSSProperties = {
+  ...rowStyle,
+  justifyContent: "flex-start",
+  gap: "12px",
 };
 
 const inputStyle: CSSProperties = {
@@ -55,11 +73,15 @@ function clampSeconds(timeSeconds: number, totalDurationSeconds: number): number
 }
 
 export function TransportTimeline(props: TransportTimelineProps) {
-  const { progress, onSeek } = props;
+  const { onSeek, progress } = props;
   const [draftTime, setDraftTime] = useState(() => formatSeconds(progress.currentTimeSeconds));
+  const lastSliderValueRef = useRef<string | null>(null);
+  const layout = props.layout ?? "default";
+  const isCompactLayout = layout === "compact";
 
   useEffect(() => {
     setDraftTime(formatSeconds(progress.currentTimeSeconds));
+    lastSliderValueRef.current = null;
   }, [progress.currentTimeSeconds]);
 
   function commitSeek(nextValue: string) {
@@ -81,8 +103,25 @@ export function TransportTimeline(props: TransportTimelineProps) {
     onSeek(clamped);
   }
 
+  function emitSliderSeek(nextValue: string) {
+    if (!progress.canSeek || !onSeek) {
+      return;
+    }
+
+    const parsed = Number(nextValue);
+
+    if (!Number.isFinite(parsed)) {
+      return;
+    }
+
+    onSeek(clampSeconds(parsed, progress.totalDurationSeconds));
+  }
+
   return (
-    <div style={containerStyle}>
+    <div
+      data-testid={isCompactLayout ? "transport-timeline-compact" : undefined}
+      style={isCompactLayout ? compactContainerStyle : containerStyle}
+    >
       <div style={rowStyle}>
         <strong style={{ color: "#17304f", fontSize: "13px" }}>
           {formatSeconds(progress.currentTimeSeconds)} / {formatSeconds(progress.totalDurationSeconds)} s
@@ -97,28 +136,35 @@ export function TransportTimeline(props: TransportTimelineProps) {
         ) : null}
       </div>
 
-      <input
-        aria-label="Playback timeline"
-        max={progress.totalDurationSeconds}
-        min={0}
-        step={1 / 60}
-        style={{ width: "100%" }}
-        type="range"
-        value={progress.currentTimeSeconds}
-        disabled={!progress.canSeek}
-        onChange={(event) => {
-          if (!progress.canSeek || !onSeek) {
-            return;
-          }
+      <div data-testid={isCompactLayout ? "transport-timeline-compact-row" : undefined}>
+        <input
+          aria-label="Playback timeline"
+          max={progress.totalDurationSeconds}
+          min={0}
+          step={1 / 60}
+          style={{ width: "100%" }}
+          type="range"
+          value={progress.currentTimeSeconds}
+          disabled={!progress.canSeek}
+          onInput={(event) => {
+            const nextValue = (event.currentTarget as HTMLInputElement).value;
 
-          onSeek(Number(event.currentTarget.value));
-        }}
-      />
+            lastSliderValueRef.current = nextValue;
+            emitSliderSeek(nextValue);
+          }}
+          onChange={(event) => {
+            if (event.currentTarget.value === lastSliderValueRef.current) {
+              return;
+            }
 
-      <div style={rowStyle}>
-        <label style={{ display: "grid", gap: "4px" }}>
-          <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
-            Jump to time
+            emitSliderSeek(event.currentTarget.value);
+          }}
+        />
+
+        <div style={isCompactLayout ? compactRowStyle : rowStyle}>
+          <label style={{ display: "grid", gap: "4px" }}>
+            <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
+              Jump to time
           </span>
           <input
             aria-label="Jump to time"
@@ -143,11 +189,12 @@ export function TransportTimeline(props: TransportTimelineProps) {
           />
         </label>
 
-        <span style={hintStyle}>
-          {progress.canSeek
-            ? "Drag the timeline or type a target time."
-            : "Seek unlocks after cached playback is ready."}
-        </span>
+          <span style={hintStyle}>
+            {progress.canSeek
+              ? "Drag the timeline or type a target time."
+              : "Seek unlocks after cached playback is ready."}
+          </span>
+        </div>
       </div>
     </div>
   );
