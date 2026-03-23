@@ -4,6 +4,8 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 export const BOARD_VERSION = 1;
+const LOCK_RETRY_MS = 20;
+const LOCK_TIMEOUT_MS = 2_000;
 
 export function createEmptyBoard() {
   return {
@@ -116,6 +118,59 @@ export function saveBoard(boardPath, board) {
   fs.writeFileSync(boardPath, `${JSON.stringify(board, null, 2)}\n`, "utf8");
 }
 
+function sleepMs(durationMs) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, durationMs);
+}
+
+export function withBoardLock(boardPath, action, options = {}) {
+  const lockPath = `${boardPath}.lock`;
+  const retryMs = options.retryMs ?? LOCK_RETRY_MS;
+  const timeoutMs = options.timeoutMs ?? LOCK_TIMEOUT_MS;
+  const startedAt = Date.now();
+
+  while (true) {
+    let lockFd;
+
+    try {
+      lockFd = fs.openSync(lockPath, "wx");
+      return action();
+    } catch (error) {
+      if (error?.code !== "EEXIST") {
+        throw error;
+      }
+
+      if (Date.now() - startedAt >= timeoutMs) {
+        throw new Error(`Timed out waiting for coordination lock ${lockPath}`);
+      }
+
+      sleepMs(retryMs);
+    } finally {
+      if (typeof lockFd === "number") {
+        fs.closeSync(lockFd);
+        fs.rmSync(lockPath, { force: true });
+      }
+    }
+  }
+}
+
+export function updateBoardFile(boardPath, updateBoard, options = {}) {
+  return withBoardLock(
+    boardPath,
+    () => {
+      const board = loadBoard(boardPath);
+
+      if (options.delayAfterLoadMs) {
+        sleepMs(options.delayAfterLoadMs);
+      }
+
+      const nextBoard = updateBoard(board);
+      saveBoard(boardPath, nextBoard);
+      return nextBoard;
+    },
+    options,
+  );
+}
+
 export function normalizeFilePath(filePath) {
   return filePath.replaceAll("\\", "/");
 }
@@ -193,14 +248,15 @@ export function runCli(argv, cwd = process.cwd()) {
         return 1;
       }
 
-      board = upsertTerminalEntry(board, {
-        branch: getCurrentBranch(cwd),
-        plannedFiles: files,
-        status: "planned",
-        task,
-        terminal,
-      });
-      saveBoard(boardPath, board);
+      board = updateBoardFile(boardPath, (currentBoard) =>
+        upsertTerminalEntry(currentBoard, {
+          branch: getCurrentBranch(cwd),
+          plannedFiles: files,
+          status: "planned",
+          task,
+          terminal,
+        }),
+      );
       console.log(`Planned files recorded for terminal ${terminal}.`);
       return 0;
     }
@@ -212,14 +268,15 @@ export function runCli(argv, cwd = process.cwd()) {
         return 1;
       }
 
-      board = upsertTerminalEntry(board, {
-        branch: getCurrentBranch(cwd),
-        modifiedFiles: getModifiedFiles(cwd),
-        status,
-        task: taskParts.join(" "),
-        terminal,
-      });
-      saveBoard(boardPath, board);
+      board = updateBoardFile(boardPath, (currentBoard) =>
+        upsertTerminalEntry(currentBoard, {
+          branch: getCurrentBranch(cwd),
+          modifiedFiles: getModifiedFiles(cwd),
+          status,
+          task: taskParts.join(" "),
+          terminal,
+        }),
+      );
       console.log(`Synchronized terminal ${terminal} status.`);
       return 0;
     }
@@ -231,8 +288,7 @@ export function runCli(argv, cwd = process.cwd()) {
         return 1;
       }
 
-      board = clearTerminal(board, terminal);
-      saveBoard(boardPath, board);
+      board = updateBoardFile(boardPath, (currentBoard) => clearTerminal(currentBoard, terminal));
       console.log(`Cleared terminal ${terminal}.`);
       return 0;
     }
