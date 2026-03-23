@@ -1,14 +1,27 @@
 import { useEffect, useState, type CSSProperties, type MouseEvent } from "react";
 
 import type { SceneDisplaySettings } from "../io/sceneFile";
+import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
 import type { EditorSceneEntity, EditorState } from "../state/editorStore";
 import type { EditorTool } from "./tools";
 
+type ConstraintPlacementState = {
+  anchorEntityId: string | null;
+  hint: string;
+  kind: LibraryConstraintKind;
+  mode: "pick-entity" | "pick-point";
+};
+
 type WorkspaceCanvasProps = {
+  constraintPlacement?: ConstraintPlacementState | null;
+  constraints?: EditorConstraint[];
   display: SceneDisplaySettings;
   entities: EditorSceneEntity[];
+  onCancelPlacement?: () => void;
   onCreateEntity: (position: { x: number; y: number }) => void;
   state: EditorState;
+  onPlaceConstraintEntity?: (entityId: string) => void;
+  onPlaceConstraintPoint?: (position: { x: number; y: number }) => void;
   onToolChange: (tool: EditorTool) => void;
   onGridVisibleChange: (visible: boolean) => void;
   onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
@@ -116,6 +129,31 @@ function createVectorStyle(
   };
 }
 
+function createConstraintStyle(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  color: string,
+): CSSProperties {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+
+  return {
+    position: "absolute",
+    left: `${start.x}px`,
+    top: `${start.y}px`,
+    width: `${length}px`,
+    height: "4px",
+    borderRadius: "999px",
+    background: color,
+    opacity: 0.72,
+    transform: `translateY(-50%) rotate(${angle}deg)`,
+    transformOrigin: "0 50%",
+    pointerEvents: "none",
+  };
+}
+
 function getVelocityVector(entity: EditorSceneEntity): { dx: number; dy: number } | null {
   const speed = Math.hypot(entity.velocityX, entity.velocityY);
 
@@ -144,10 +182,15 @@ function getForceVector(entity: EditorSceneEntity): { dx: number; dy: number } |
 
 export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   const {
+    constraintPlacement,
+    constraints = [],
     display,
     entities,
+    onCancelPlacement,
     onCreateEntity,
     state,
+    onPlaceConstraintEntity,
+    onPlaceConstraintPoint,
     onGridVisibleChange,
     onMoveEntity,
     onSelectEntity,
@@ -201,16 +244,77 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   }
 
   function handleStageClick(event: MouseEvent<HTMLDivElement>) {
-    if (event.target !== event.currentTarget || state.activeTool !== "place-body") {
+    if (event.target !== event.currentTarget) {
       return;
     }
 
     const stageBounds = event.currentTarget.getBoundingClientRect();
-
-    onCreateEntity({
+    const position = {
       x: Math.round(event.clientX - stageBounds.left),
       y: Math.round(event.clientY - stageBounds.top),
-    });
+    };
+
+    if (state.activeTool === "place-body") {
+      onCreateEntity(position);
+      return;
+    }
+
+    if (state.activeTool === "place-constraint" && constraintPlacement?.mode === "pick-point") {
+      onPlaceConstraintPoint?.(position);
+    }
+  }
+
+  function handleEntityClick(entityId: string) {
+    if (state.activeTool === "place-constraint" && constraintPlacement?.mode === "pick-entity") {
+      onPlaceConstraintEntity?.(entityId);
+      return;
+    }
+
+    onSelectEntity(entityId);
+  }
+
+  function getEntityById(entityId: string | null) {
+    return entityId ? entities.find((entity) => entity.id === entityId) ?? null : null;
+  }
+
+  function renderConstraint(constraint: EditorConstraint) {
+    if (constraint.kind === "spring") {
+      const entityA = getEntityById(constraint.entityAId);
+      const entityB = getEntityById(constraint.entityBId);
+
+      if (!entityA || !entityB) {
+        return null;
+      }
+
+      return (
+        <div
+          key={constraint.id}
+          data-rest-length={String(constraint.restLength)}
+          data-testid={`scene-constraint-spring-${constraint.id}`}
+          style={createConstraintStyle(getEntityCenter(entityA), getEntityCenter(entityB), "#6d58c9")}
+        />
+      );
+    }
+
+    const attachedEntity = getEntityById(constraint.entityId);
+
+    if (!attachedEntity) {
+      return null;
+    }
+
+    const origin = constraint.origin;
+    const end = {
+      x: origin.x + constraint.axis.x,
+      y: origin.y + constraint.axis.y,
+    };
+
+    return (
+      <div
+        key={constraint.id}
+        data-testid={`scene-constraint-track-${constraint.id}`}
+        style={createConstraintStyle(origin, end, "#1ba784")}
+      />
+    );
   }
 
   return (
@@ -236,14 +340,23 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             Place body tool
           </button>
         </div>
-
-        <button
-          style={actionButtonStyle}
-          type="button"
-          onClick={() => onGridVisibleChange(!display.gridVisible)}
-        >
-          {display.gridVisible ? "Hide grid" : "Show grid"}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {constraintPlacement ? (
+            <>
+              <span style={{ color: "#516276", fontSize: "13px" }}>{constraintPlacement.hint}</span>
+              <button style={actionButtonStyle} type="button" onClick={onCancelPlacement}>
+                Cancel placement
+              </button>
+            </>
+          ) : null}
+          <button
+            style={actionButtonStyle}
+            type="button"
+            onClick={() => onGridVisibleChange(!display.gridVisible)}
+          >
+            {display.gridVisible ? "Hide grid" : "Show grid"}
+          </button>
+        </div>
       </div>
 
       <div
@@ -305,6 +418,8 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             })
           : null}
 
+        {constraints.map(renderConstraint)}
+
         {entities.map((entity) => (
           <button
             key={entity.id}
@@ -313,7 +428,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             data-selected={String(state.selectedEntityId === entity.id)}
             data-testid={`scene-entity-${entity.id}`}
             type="button"
-            onClick={() => onSelectEntity(entity.id)}
+            onClick={() => handleEntityClick(entity.id)}
             style={getEntityVisualStyle(entity, state.selectedEntityId === entity.id)}
             onMouseDown={(event) => beginEntityDrag(entity, event)}
           >

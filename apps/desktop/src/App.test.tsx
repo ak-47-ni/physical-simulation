@@ -198,4 +198,45 @@ describe("App selection sync", () => {
     expect(screen.queryByTestId("scene-tree-item-board-2")).toBeNull();
     expect(screen.getByText("No entity selected")).toBeDefined();
   });
+
+  it("creates a spring constraint from two entity picks", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Spring" }));
+
+    expect(screen.getByTestId("workspace-canvas").getAttribute("data-tool")).toBe(
+      "place-constraint",
+    );
+    expect(screen.getByText("Select first body for the spring")).toBeDefined();
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+
+    expect(screen.getByTestId("scene-constraint-spring-spring-1")).toBeDefined();
+    expect(screen.getByTestId("scene-constraint-spring-spring-1").getAttribute("data-rest-length")).toBe(
+      "236",
+    );
+  });
+
+  it("creates a track constraint from an entity pick and a workspace point", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Track" }));
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 312, clientY: 248 });
+
+    expect(screen.getByTestId("scene-constraint-track-track-1")).toBeDefined();
+  });
+
+  it("cancels in-progress constraint placement without creating a constraint", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Spring" }));
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.click(screen.getByRole("button", { name: /cancel placement/i }));
+
+    expect(screen.queryByTestId("scene-constraint-spring-spring-1")).toBeNull();
+    expect(screen.getByTestId("workspace-canvas").getAttribute("data-tool")).toBe("select");
+    expect(screen.queryByText("Select second body for the spring")).toBeNull();
+  });
 });

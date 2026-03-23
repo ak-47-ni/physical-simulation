@@ -64,6 +64,65 @@ export function createDefaultEditorConstraint(
   };
 }
 
+export function createSpringConstraintFromEntities(
+  constraints: EditorConstraint[],
+  entities: {
+    id: string;
+    x: number;
+    y: number;
+  }[],
+): EditorSpringConstraint {
+  const [entityA, entityB] = entities;
+  const spring = createDefaultEditorConstraint(constraints, "spring");
+
+  if (spring.kind !== "spring" || !entityA || !entityB) {
+    throw new Error("A spring requires two entities.");
+  }
+
+  return {
+    ...spring,
+    entityAId: entityA.id,
+    entityBId: entityB.id,
+    restLength: Math.round(Math.hypot(entityB.x - entityA.x, entityB.y - entityA.y)),
+  };
+}
+
+export function createTrackConstraintFromEntityAndPoint(
+  constraints: EditorConstraint[],
+  entity: {
+    id: string;
+    x: number;
+    y: number;
+  },
+  point: Vector2,
+): EditorTrackConstraint {
+  const track = createDefaultEditorConstraint(constraints, "track");
+
+  if (track.kind !== "track") {
+    throw new Error("Track creation returned an unexpected constraint kind.");
+  }
+
+  const axis = {
+    x: point.x - entity.x,
+    y: point.y - entity.y,
+  };
+
+  if (axis.x === 0 && axis.y === 0) {
+    return {
+      ...track,
+      entityId: entity.id,
+      origin: { x: entity.x, y: entity.y },
+    };
+  }
+
+  return {
+    ...track,
+    entityId: entity.id,
+    origin: { x: entity.x, y: entity.y },
+    axis,
+  };
+}
+
 function getNextConstraintIndex(
   constraints: EditorConstraint[],
   kind: LibraryConstraintKind,

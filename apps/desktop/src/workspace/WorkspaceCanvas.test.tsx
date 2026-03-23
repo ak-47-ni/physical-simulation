@@ -407,4 +407,108 @@ describe("WorkspaceCanvas", () => {
 
     expect(created).toEqual([{ x: 248, y: 204 }]);
   });
+
+  it("routes entity picks and stage picks through constraint placement callbacks", () => {
+    const entityPicks: string[] = [];
+    const pointPicks: Array<{ x: number; y: number }> = [];
+    const selectedEntityIds: string[] = [];
+    const { rerender } = render(
+      <WorkspaceCanvas
+        constraintPlacement={{
+          anchorEntityId: null,
+          hint: "Select first body for the spring",
+          kind: "spring",
+          mode: "pick-entity",
+        }}
+        display={createDisplaySettings()}
+        entities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onPlaceConstraintEntity={(entityId) => {
+          entityPicks.push(entityId);
+        }}
+        onPlaceConstraintPoint={(position) => {
+          pointPicks.push(position);
+        }}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-constraint" as never,
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={(entityId) => {
+          selectedEntityIds.push(entityId);
+        }}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+
+    rerender(
+      <WorkspaceCanvas
+        constraintPlacement={{
+          anchorEntityId: "ball-1",
+          hint: "Pick a point to define the track axis",
+          kind: "track",
+          mode: "pick-point",
+        }}
+        display={createDisplaySettings()}
+        entities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onPlaceConstraintEntity={(entityId) => {
+          entityPicks.push(entityId);
+        }}
+        onPlaceConstraintPoint={(position) => {
+          pointPicks.push(position);
+        }}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-constraint" as never,
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={(entityId) => {
+          selectedEntityIds.push(entityId);
+        }}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 280, clientY: 220 });
+
+    expect(screen.getByText("Pick a point to define the track axis")).toBeDefined();
+    expect(entityPicks).toEqual(["ball-1"]);
+    expect(pointPicks).toEqual([{ x: 280, y: 220 }]);
+    expect(selectedEntityIds).toEqual([]);
+  });
 });

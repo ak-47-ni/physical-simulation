@@ -1,6 +1,8 @@
 import type { EditorTool } from "../workspace/tools";
+import type { LibraryConstraintKind } from "./editorConstraints";
 
 export type LibraryBodyKind = "ball" | "block" | "board" | "polygon";
+export type LibraryItemKind = LibraryBodyKind | LibraryConstraintKind;
 
 export type EditorEntityPhysics = {
   mass: number;
@@ -123,7 +125,7 @@ const BODY_PHYSICS_DEFAULTS: Record<LibraryBodyKind, EditorEntityPhysics> = {
   },
 };
 
-function isLibraryBodyKind(value: string): value is LibraryBodyKind {
+export function isLibraryBodyKind(value: string): value is LibraryBodyKind {
   return value in BODY_LABELS;
 }
 

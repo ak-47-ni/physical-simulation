@@ -15,13 +15,20 @@ import { ObjectLibraryPanel } from "./panels/ObjectLibraryPanel";
 import { PropertyPanel } from "./panels/PropertyPanel";
 import { SceneTreePanel } from "./panels/SceneTreePanel";
 import {
+  createSpringConstraintFromEntities,
+  createTrackConstraintFromEntityAndPoint,
+  type EditorConstraint,
+  type LibraryConstraintKind,
+} from "./state/editorConstraints";
+import {
   createDuplicatedEntity,
   createPlacedBodyEntity,
   createInitialEditorState,
   createInitialSceneEntities,
   type EditorEntityPhysics,
   type EditorSceneEntity,
-  type LibraryBodyKind,
+  type LibraryItemKind,
+  isLibraryBodyKind,
 } from "./state/editorStore";
 import {
   createMockRuntimeBridgePort,
@@ -36,6 +43,13 @@ import type { EditorTool } from "./workspace/tools";
 
 const GRAVITY_ACCELERATION = 9.8;
 const PRIMARY_ANALYZER_ID = "traj-primary";
+
+type ConstraintPlacementState = {
+  anchorEntityId: string | null;
+  hint: string;
+  kind: LibraryConstraintKind;
+  mode: "pick-entity" | "pick-point";
+};
 
 function getEntityCenter(entity: EditorSceneEntity) {
   if (entity.kind === "ball") {
@@ -116,8 +130,10 @@ function createRuntimePreviewTrajectorySamples(input: {
 
 export function App() {
   const [editorState, setEditorState] = useState(createInitialEditorState);
+  const [constraints, setConstraints] = useState<EditorConstraint[]>([]);
   const [entities, setEntities] = useState<EditorSceneEntity[]>(createInitialSceneEntities);
-  const [selectedLibraryItem, setSelectedLibraryItem] = useState<LibraryBodyKind>("ball");
+  const [selectedLibraryItem, setSelectedLibraryItem] = useState<LibraryItemKind>("ball");
+  const [constraintPlacement, setConstraintPlacement] = useState<ConstraintPlacementState | null>(null);
   const [annotationState, setAnnotationState] = useState(createInitialAnnotationLayerState);
   const [displaySettings, setDisplaySettings] = useState(() =>
     createSceneDisplaySettings({
@@ -178,8 +194,14 @@ export function App() {
   }
 
   function handleSelectEntity(entityId: string) {
+    if (constraintPlacement?.mode === "pick-entity") {
+      handleConstraintEntityPick(entityId);
+      return;
+    }
+
     setEditorState((current) => ({
       ...current,
+      selectedConstraintId: null,
       selectedEntityId: entityId,
     }));
   }
@@ -216,6 +238,10 @@ export function App() {
   }
 
   function handleCreateEntity(position: { x: number; y: number }) {
+    if (!isLibraryBodyKind(selectedLibraryItem)) {
+      return;
+    }
+
     setEntities((current) => {
       const nextEntity = createPlacedBodyEntity(current, selectedLibraryItem, position);
       handleSelectEntity(nextEntity.id);
@@ -223,9 +249,31 @@ export function App() {
     });
   }
 
-  function handleSelectLibraryItem(itemId: LibraryBodyKind) {
+  function handleSelectLibraryItem(itemId: LibraryItemKind) {
     setSelectedLibraryItem(itemId);
-    handleToolChange("place-body");
+
+    if (isLibraryBodyKind(itemId)) {
+      setConstraintPlacement(null);
+      handleToolChange("place-body");
+      return;
+    }
+
+    handleToolChange("place-constraint");
+    setConstraintPlacement(
+      itemId === "spring"
+        ? {
+            anchorEntityId: null,
+            hint: "Select first body for the spring",
+            kind: "spring",
+            mode: "pick-entity",
+          }
+        : {
+            anchorEntityId: null,
+            hint: "Select a body for the track",
+            kind: "track",
+            mode: "pick-entity",
+          },
+    );
   }
 
   function handleDeleteSelectedEntity() {
@@ -238,6 +286,7 @@ export function App() {
     );
     setEditorState((current) => ({
       ...current,
+      selectedConstraintId: null,
       selectedEntityId: null,
     }));
   }
@@ -320,6 +369,97 @@ export function App() {
     }
   }
 
+  function getEntityCenterForConstraint(entityId: string) {
+    const entity = entities.find((candidate) => candidate.id === entityId);
+
+    return entity ? getEntityCenter(entity) : null;
+  }
+
+  function finishConstraintPlacement() {
+    setConstraintPlacement(null);
+    handleToolChange("select");
+  }
+
+  function handleCancelConstraintPlacement() {
+    finishConstraintPlacement();
+  }
+
+  function handleConstraintEntityPick(entityId: string) {
+    if (!constraintPlacement) {
+      return;
+    }
+
+    if (constraintPlacement.kind === "spring") {
+      if (!constraintPlacement.anchorEntityId) {
+        setConstraintPlacement({
+          ...constraintPlacement,
+          anchorEntityId: entityId,
+          hint: "Select second body for the spring",
+        });
+        return;
+      }
+
+      if (constraintPlacement.anchorEntityId === entityId) {
+        return;
+      }
+
+      const entityA = getEntityCenterForConstraint(constraintPlacement.anchorEntityId);
+      const entityB = getEntityCenterForConstraint(entityId);
+
+      if (!entityA || !entityB) {
+        return;
+      }
+
+      setConstraints((current) => [
+        ...current,
+        createSpringConstraintFromEntities(current, [
+          {
+            id: constraintPlacement.anchorEntityId,
+            ...entityA,
+          },
+          {
+            id: entityId,
+            ...entityB,
+          },
+        ]),
+      ]);
+      finishConstraintPlacement();
+      return;
+    }
+
+    setConstraintPlacement({
+      ...constraintPlacement,
+      anchorEntityId: entityId,
+      hint: "Pick a point to define the track axis",
+      mode: "pick-point",
+    });
+  }
+
+  function handleConstraintPointPick(position: { x: number; y: number }) {
+    if (!constraintPlacement || constraintPlacement.kind !== "track" || !constraintPlacement.anchorEntityId) {
+      return;
+    }
+
+    const origin = getEntityCenterForConstraint(constraintPlacement.anchorEntityId);
+
+    if (!origin) {
+      return;
+    }
+
+    setConstraints((current) => [
+      ...current,
+      createTrackConstraintFromEntityAndPoint(
+        current,
+        {
+          id: constraintPlacement.anchorEntityId,
+          ...origin,
+        },
+        position,
+      ),
+    ]);
+    finishConstraintPlacement();
+  }
+
   return (
     <ShellLayout
       bottomPane={
@@ -386,11 +526,16 @@ export function App() {
     >
       <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr) auto", gap: "14px" }}>
         <WorkspaceCanvas
+          constraintPlacement={constraintPlacement}
+          constraints={constraints}
           display={displaySettings}
           entities={entities}
+          onCancelPlacement={handleCancelConstraintPlacement}
           onCreateEntity={handleCreateEntity}
           onGridVisibleChange={handleGridVisibleChange}
           onMoveEntity={handleMoveEntity}
+          onPlaceConstraintEntity={handleConstraintEntityPick}
+          onPlaceConstraintPoint={handleConstraintPointPick}
           onSelectEntity={handleSelectEntity}
           onToolChange={handleToolChange}
           state={editorState}

@@ -1,14 +1,20 @@
 import type { CSSProperties } from "react";
 
-import type { LibraryBodyKind } from "../state/editorStore";
+import type { LibraryConstraintKind } from "../state/editorConstraints";
+import type { LibraryBodyKind, LibraryItemKind } from "../state/editorStore";
 
 type ObjectLibraryPanelProps = {
-  onSelectItem: (itemId: LibraryBodyKind) => void;
-  selectedItemId: LibraryBodyKind;
+  onSelectItem: (itemId: LibraryItemKind) => void;
+  selectedItemId: LibraryItemKind;
 };
 
 type BodyLibraryItem = {
   id: LibraryBodyKind;
+  label: string;
+};
+
+type ConstraintLibraryItem = {
+  id: LibraryConstraintKind;
   label: string;
 };
 
@@ -48,11 +54,12 @@ const bodyItems: BodyLibraryItem[] = [
   { id: "polygon", label: "Polygon" },
 ];
 
+const constraintItems: ConstraintLibraryItem[] = [
+  { id: "spring", label: "Spring" },
+  { id: "track", label: "Track" },
+];
+
 const chipGroups: Array<{ title: string; items: string[] }> = [
-  {
-    title: "Constraints",
-    items: ["Spring", "Rod", "Track", "Anchor"],
-  },
   {
     title: "Helpers",
     items: ["Probe", "Ruler", "Angle tool"],
@@ -82,6 +89,28 @@ export function ObjectLibraryPanel(props: ObjectLibraryPanelProps) {
               {item.label}
             </button>
           ))}
+        </div>
+      </section>
+      <section key="Constraints" style={groupStyle}>
+        <h2 style={headingStyle}>Constraints</h2>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+          {constraintItems.map((item) => (
+            <button
+              key={item.id}
+              data-selected={String(selectedItemId === item.id)}
+              data-testid={`library-item-${item.id}`}
+              style={{
+                ...buttonChipStyle,
+                background: selectedItemId === item.id ? "#dbe8ff" : chipStyle.background,
+              }}
+              type="button"
+              onClick={() => onSelectItem(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+          <span style={chipStyle}>Rod</span>
+          <span style={chipStyle}>Anchor</span>
         </div>
       </section>
       {chipGroups.map((group) => (
