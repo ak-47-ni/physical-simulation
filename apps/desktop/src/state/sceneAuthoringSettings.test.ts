@@ -12,7 +12,7 @@ describe("sceneAuthoringSettings", () => {
       lengthUnit: "m",
       velocityUnit: "m/s",
       massUnit: "kg",
-      pixelsPerMeter: 100,
+      pixelsPerMeter: 1,
     });
   });
 

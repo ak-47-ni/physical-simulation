@@ -8,7 +8,7 @@ export type SceneAuthoringSettings = {
   pixelsPerMeter: number;
 };
 
-export const DEFAULT_PIXELS_PER_METER = 100;
+export const DEFAULT_PIXELS_PER_METER = 1;
 export const DEFAULT_SCENE_AUTHORING_SETTINGS: SceneAuthoringSettings = {
   gravity: 9.8,
   lengthUnit: "m",
