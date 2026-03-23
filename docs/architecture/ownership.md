@@ -19,6 +19,11 @@ Owns:
 - `crates/sim-core/**`
 - Rust-side Tauri command registration
 
+After the M2 contract freeze is merged:
+
+- consumes `spring`, `track`, and `gravity` payloads from `packages/scene-schema`
+- must not redefine shared constraint or force-source record shapes locally
+
 ## Worker C
 
 Owns:
@@ -32,3 +37,4 @@ Owns:
 
 - Shared contract changes in `packages/scene-schema/**` require controller approval before merge.
 - Worker branches are opened only after the scene schema and runtime contract are committed.
+- `apps/desktop/src/App.tsx` remains worker-A-owned during M2 integration.

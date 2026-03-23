@@ -13,11 +13,14 @@ export type {
   BallSceneEntity,
   DirtyEditScope,
   ForceSource,
+  GravityForceSource,
   SceneConstraint,
   SceneDocument,
   SceneEntity,
   SceneEntityPhysics,
+  SpringConstraint,
   SizedSceneEntity,
+  TrackConstraint,
   TrajectoryAnalyzer,
   UserPolygonEntity,
   Vector2,
@@ -27,6 +30,8 @@ export {
   createRuntimeFramePayload,
 } from "./runtime-contract";
 export type {
+  RuntimeCompileConstraint,
+  RuntimeCompileForceSource,
   RuntimeCompileRequest,
   RuntimeEntityFrame,
   RuntimeFramePayload,

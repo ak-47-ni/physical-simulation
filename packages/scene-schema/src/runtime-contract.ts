@@ -2,6 +2,8 @@ import {
   cloneSceneDocument,
   requiresRuntimeRebuild,
   type DirtyEditScope,
+  type ForceSource,
+  type SceneConstraint,
   type SceneDocument,
   type Vector2,
 } from "./schema";
@@ -24,6 +26,10 @@ export type RuntimeCompileRequest = {
   dirtyScopes: DirtyEditScope[];
   rebuildRequired: boolean;
 };
+
+export type RuntimeCompileConstraint = SceneConstraint;
+
+export type RuntimeCompileForceSource = ForceSource;
 
 export function createRuntimeFramePayload(input: RuntimeFramePayload): RuntimeFramePayload {
   return {

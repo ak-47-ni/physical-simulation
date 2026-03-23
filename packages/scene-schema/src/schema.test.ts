@@ -206,4 +206,96 @@ describe("scene schema", () => {
     originalBall.x = 999;
     expect(clonedBall.x).toBe(132);
   });
+
+  it("deep-clones typed constraint and force-source payload vectors", () => {
+    const scene = createEmptySceneDocument();
+
+    scene.constraints.push(
+      {
+        id: "spring-1",
+        kind: "spring",
+        entityAId: "ball-1",
+        entityBId: "board-1",
+        restLength: 120,
+        stiffness: 18,
+      },
+      {
+        id: "track-1",
+        kind: "track",
+        entityId: "ball-1",
+        origin: { x: 10, y: 20 },
+        axis: { x: 1, y: 0 },
+      },
+    );
+    scene.forceSources.push({
+      id: "gravity-1",
+      kind: "gravity",
+      acceleration: { x: 0, y: 9.8 },
+    });
+
+    const clone = cloneSceneDocument(scene);
+    const originalTrack = scene.constraints[1] as {
+      origin: { x: number; y: number };
+      axis: { x: number; y: number };
+    };
+    const clonedTrack = clone.constraints[1] as {
+      origin: { x: number; y: number };
+      axis: { x: number; y: number };
+    };
+    const originalGravity = scene.forceSources[0] as {
+      acceleration: { x: number; y: number };
+    };
+    const clonedGravity = clone.forceSources[0] as {
+      acceleration: { x: number; y: number };
+    };
+
+    originalTrack.origin.x = 999;
+    originalTrack.axis.y = 42;
+    originalGravity.acceleration.y = -1;
+
+    expect(clonedTrack.origin).toEqual({ x: 10, y: 20 });
+    expect(clonedTrack.axis).toEqual({ x: 1, y: 0 });
+    expect(clonedGravity.acceleration).toEqual({ x: 0, y: 9.8 });
+  });
+
+  it("clones typed constraints and force sources into runtime compile requests", () => {
+    const scene = createEmptySceneDocument();
+
+    scene.constraints.push({
+      id: "track-1",
+      kind: "track",
+      entityId: "ball-1",
+      origin: { x: 4, y: 8 },
+      axis: { x: 0, y: 1 },
+    });
+    scene.forceSources.push({
+      id: "gravity-1",
+      kind: "gravity",
+      acceleration: { x: 0, y: 12 },
+    });
+
+    const request = createRuntimeCompileRequest(scene, ["physics"]);
+    const originalTrack = scene.constraints[0] as {
+      origin: { x: number; y: number };
+      axis: { x: number; y: number };
+    };
+    const clonedTrack = request.scene.constraints[0] as {
+      origin: { x: number; y: number };
+      axis: { x: number; y: number };
+    };
+    const originalGravity = scene.forceSources[0] as {
+      acceleration: { x: number; y: number };
+    };
+    const clonedGravity = request.scene.forceSources[0] as {
+      acceleration: { x: number; y: number };
+    };
+
+    originalTrack.origin.y = -100;
+    originalTrack.axis.x = -5;
+    originalGravity.acceleration.x = 7;
+
+    expect(clonedTrack.origin).toEqual({ x: 4, y: 8 });
+    expect(clonedTrack.axis).toEqual({ x: 0, y: 1 });
+    expect(clonedGravity.acceleration).toEqual({ x: 0, y: 12 });
+  });
 });

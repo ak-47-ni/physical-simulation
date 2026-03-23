@@ -44,15 +44,37 @@ export type SizedSceneEntity = BaseSceneEntity &
 
 export type SceneEntity = UserPolygonEntity | BallSceneEntity | SizedSceneEntity;
 
-export type SceneConstraint = {
+type BaseSceneConstraint = {
   id: string;
-  kind: string;
 };
 
-export type ForceSource = {
-  id: string;
-  kind: string;
+export type SpringConstraint = BaseSceneConstraint & {
+  kind: "spring";
+  entityAId: string;
+  entityBId: string;
+  restLength: number;
+  stiffness: number;
 };
+
+export type TrackConstraint = BaseSceneConstraint & {
+  kind: "track";
+  entityId: string;
+  origin: Vector2;
+  axis: Vector2;
+};
+
+export type SceneConstraint = SpringConstraint | TrackConstraint;
+
+type BaseForceSource = {
+  id: string;
+};
+
+export type GravityForceSource = BaseForceSource & {
+  kind: "gravity";
+  acceleration: Vector2;
+};
+
+export type ForceSource = GravityForceSource;
 
 export type Analyzer = {
   id: string;
@@ -136,12 +158,8 @@ export function cloneSceneDocument(scene: SceneDocument): SceneDocument {
   return {
     schemaVersion: scene.schemaVersion,
     entities: scene.entities.map(cloneSceneEntity),
-    constraints: scene.constraints.map((constraint) => ({
-      ...constraint,
-    })),
-    forceSources: scene.forceSources.map((source) => ({
-      ...source,
-    })),
+    constraints: scene.constraints.map(cloneSceneConstraint),
+    forceSources: scene.forceSources.map(cloneForceSource),
     analyzers: scene.analyzers.map((analyzer) => ({
       ...analyzer,
     })),
@@ -160,6 +178,10 @@ function clonePoints(points: Vector2[]): Vector2[] {
   return points.map((point) => ({ ...point }));
 }
 
+function cloneVector2(vector: Vector2): Vector2 {
+  return { ...vector };
+}
+
 function cloneSceneEntity(entity: SceneEntity): SceneEntity {
   if (entity.kind === "user-polygon") {
     return {
@@ -170,6 +192,27 @@ function cloneSceneEntity(entity: SceneEntity): SceneEntity {
 
   return {
     ...entity,
+  };
+}
+
+function cloneSceneConstraint(constraint: SceneConstraint): SceneConstraint {
+  if (constraint.kind === "track") {
+    return {
+      ...constraint,
+      origin: cloneVector2(constraint.origin),
+      axis: cloneVector2(constraint.axis),
+    };
+  }
+
+  return {
+    ...constraint,
+  };
+}
+
+function cloneForceSource(source: ForceSource): ForceSource {
+  return {
+    ...source,
+    acceleration: cloneVector2(source.acceleration),
   };
 }
 
