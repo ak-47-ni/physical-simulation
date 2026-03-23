@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createSceneDisplaySettings } from "../io/sceneFile";
 import { createInitialEditorState } from "../state/editorStore";
 import { WorkspaceCanvas } from "./WorkspaceCanvas";
+import type { UnitViewport } from "./unitViewport";
 
 afterEach(() => {
   cleanup();
@@ -19,6 +20,11 @@ function createDisplaySettings(overrides: Parameters<typeof createSceneDisplaySe
     ...overrides,
   });
 }
+
+const meterViewport: UnitViewport = {
+  lengthUnit: "m",
+  pixelsPerMeter: 100,
+};
 
 describe("WorkspaceCanvas", () => {
   it("mounts the center canvas and renders mock scene entities by id", () => {
@@ -408,6 +414,33 @@ describe("WorkspaceCanvas", () => {
     expect(created).toEqual([{ x: 248, y: 204 }]);
   });
 
+  it("converts stage clicks back into authored world coordinates through the viewport", () => {
+    const created: Array<{ x: number; y: number }> = [];
+
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        entities={[]}
+        onCreateEntity={(position) => {
+          created.push(position);
+        }}
+        onMoveEntity={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-body",
+        }}
+        viewport={meterViewport}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 248, clientY: 204 });
+
+    expect(created).toEqual([{ x: 2.48, y: 2.04 }]);
+  });
+
   it("routes entity picks and stage picks through constraint placement callbacks", () => {
     const entityPicks: string[] = [];
     const pointPicks: Array<{ x: number; y: number }> = [];
@@ -565,6 +598,63 @@ describe("WorkspaceCanvas", () => {
     expect(ball.style.top).toBe("288px");
   });
 
+  it("converts drag movement back into authored world coordinates through the viewport", () => {
+    const moves: Array<{ id: string; x: number; y: number }> = [];
+
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        displayEntities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        entities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 1.2,
+            y: 1.8,
+            radius: 0.24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={(id, position) => {
+          moves.push({ id, ...position });
+        }}
+        state={createInitialEditorState()}
+        viewport={meterViewport}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    fireEvent.mouseDown(screen.getByTestId("scene-entity-ball-1"), { clientX: 120, clientY: 180 });
+    fireEvent.mouseMove(window, { clientX: 150, clientY: 222 });
+    fireEvent.mouseUp(window);
+
+    expect(moves).toEqual([{ id: "ball-1", x: 1.5, y: 2.22 }]);
+  });
+
   it("renders spring overlays from projected display entity centers", () => {
     render(
       <WorkspaceCanvas
@@ -664,8 +754,8 @@ describe("WorkspaceCanvas", () => {
             id: "track-1",
             kind: "track",
             entityId: "ball-1",
-            origin: { x: 144, y: 204 },
-            axis: { x: 168, y: 44 },
+            origin: { x: 1.44, y: 2.04 },
+            axis: { x: 1.68, y: 0.44 },
           },
         ]}
         display={createDisplaySettings()}
@@ -704,13 +794,17 @@ describe("WorkspaceCanvas", () => {
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         state={createInitialEditorState()}
+        viewport={meterViewport}
         onGridVisibleChange={() => undefined}
         onSelectEntity={() => undefined}
         onToolChange={() => undefined}
       />,
     );
 
-    expect(screen.getByTestId("scene-constraint-track-track-1")).toBeDefined();
+    const track = screen.getByTestId("scene-constraint-track-track-1") as HTMLElement;
+
+    expect(track.style.left).toBe("144px");
+    expect(track.style.top).toBe("204px");
     expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("236px");
   });
 

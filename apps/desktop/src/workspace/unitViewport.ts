@@ -15,6 +15,11 @@ const METERS_PER_LENGTH_UNIT: Record<LengthUnit, number> = {
   cm: 0.01,
 };
 
+export const DEFAULT_WORKSPACE_VIEWPORT: UnitViewport = {
+  lengthUnit: "cm",
+  pixelsPerMeter: 100,
+};
+
 function authoringLengthToMeters(value: number, unit: LengthUnit): number {
   return value * METERS_PER_LENGTH_UNIT[unit];
 }
@@ -25,6 +30,24 @@ function metersToAuthoringLength(value: number, unit: LengthUnit): number {
 
 function roundScreenPixelValue(value: number): number {
   return Number(value.toFixed(3));
+}
+
+function roundAuthoringValue(value: number): number {
+  return Number(value.toFixed(6));
+}
+
+export function authoringLengthToSiMeters(
+  value: number,
+  viewport: UnitViewport,
+): number {
+  return authoringLengthToMeters(value, viewport.lengthUnit);
+}
+
+export function siMetersToAuthoringLength(
+  value: number,
+  viewport: UnitViewport,
+): number {
+  return roundAuthoringValue(metersToAuthoringLength(value, viewport.lengthUnit));
 }
 
 export function authoringLengthToScreenPixels(
@@ -41,7 +64,7 @@ export function screenPixelsToAuthoringLength(
   value: number,
   viewport: UnitViewport,
 ): number {
-  return metersToAuthoringLength(value / viewport.pixelsPerMeter, viewport.lengthUnit);
+  return siMetersToAuthoringLength(value / viewport.pixelsPerMeter, viewport);
 }
 
 export function siLengthToScreenPixels(value: number, viewport: UnitViewport): number {
@@ -55,6 +78,13 @@ export function projectAuthoringPointToScreen(
   return {
     x: authoringLengthToScreenPixels(point.x, viewport),
     y: authoringLengthToScreenPixels(point.y, viewport),
+  };
+}
+
+export function projectAuthoringPointToSi(point: Point2, viewport: UnitViewport): Point2 {
+  return {
+    x: authoringLengthToSiMeters(point.x, viewport),
+    y: authoringLengthToSiMeters(point.y, viewport),
   };
 }
 

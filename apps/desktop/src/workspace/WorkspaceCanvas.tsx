@@ -4,6 +4,12 @@ import type { SceneDisplaySettings } from "../io/sceneFile";
 import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
 import type { EditorSceneEntity, EditorState } from "../state/editorStore";
 import type { EditorTool } from "./tools";
+import {
+  DEFAULT_WORKSPACE_VIEWPORT,
+  projectAuthoringPointToScreen,
+  projectScreenPointToAuthoring,
+  type UnitViewport,
+} from "./unitViewport";
 
 type ConstraintPlacementState = {
   anchorEntityId: string | null;
@@ -28,12 +34,13 @@ type WorkspaceCanvasProps = {
   onGridVisibleChange: (visible: boolean) => void;
   onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
   onSelectEntity: (entityId: string) => void;
+  viewport?: UnitViewport;
 };
 
 type DragSession = {
   entityId: string;
-  originX: number;
-  originY: number;
+  originScreenX: number;
+  originScreenY: number;
   startClientX: number;
   startClientY: number;
 };
@@ -202,6 +209,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     onMoveEntity,
     onSelectEntity,
     onToolChange,
+    viewport = DEFAULT_WORKSPACE_VIEWPORT,
   } = props;
   const [dragSession, setDragSession] = useState<DragSession | null>(null);
   const renderedEntities = displayEntities ?? entities;
@@ -216,11 +224,15 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     function handleMouseMove(event: globalThis.MouseEvent) {
       const deltaX = event.clientX - currentSession.startClientX;
       const deltaY = event.clientY - currentSession.startClientY;
+      const screenPosition = {
+        x: Math.round(currentSession.originScreenX + deltaX),
+        y: Math.round(currentSession.originScreenY + deltaY),
+      };
 
-      onMoveEntity(currentSession.entityId, {
-        x: Math.round(currentSession.originX + deltaX),
-        y: Math.round(currentSession.originY + deltaY),
-      });
+      onMoveEntity(
+        currentSession.entityId,
+        projectScreenPointToAuthoring(screenPosition, viewport),
+      );
     }
 
     function handleMouseUp() {
@@ -243,8 +255,8 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
 
     setDragSession({
       entityId: entity.id,
-      originX: entity.x,
-      originY: entity.y,
+      originScreenX: entity.x,
+      originScreenY: entity.y,
       startClientX: event.clientX,
       startClientY: event.clientY,
     });
@@ -257,22 +269,23 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     }
 
     const stageBounds = event.currentTarget.getBoundingClientRect();
-    const position = {
+    const screenPosition = {
       x: Math.round(event.clientX - stageBounds.left),
       y: Math.round(event.clientY - stageBounds.top),
     };
+    const authoringPosition = projectScreenPointToAuthoring(screenPosition, viewport);
 
     if (authoringLocked) {
       return;
     }
 
     if (state.activeTool === "place-body") {
-      onCreateEntity(position);
+      onCreateEntity(authoringPosition);
       return;
     }
 
     if (state.activeTool === "place-constraint" && constraintPlacement?.mode === "pick-point") {
-      onPlaceConstraintPoint?.(position);
+      onPlaceConstraintPoint?.(authoringPosition);
     }
   }
 
@@ -324,12 +337,14 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       x: origin.x + constraint.axis.x,
       y: origin.y + constraint.axis.y,
     };
+    const projectedOrigin = projectAuthoringPointToScreen(origin, viewport);
+    const projectedEnd = projectAuthoringPointToScreen(end, viewport);
 
     return (
       <div
         key={constraint.id}
         data-testid={`scene-constraint-track-${constraint.id}`}
-        style={createConstraintStyle(origin, end, "#1ba784")}
+        style={createConstraintStyle(projectedOrigin, projectedEnd, "#1ba784")}
       />
     );
   }

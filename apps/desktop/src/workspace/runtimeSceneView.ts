@@ -1,18 +1,57 @@
 import type { EditorSceneEntity } from "../state/editorStore";
 import type { RuntimeFrameView } from "../state/runtimeBridge";
+import {
+  authoringLengthToScreenPixels,
+  DEFAULT_WORKSPACE_VIEWPORT,
+  projectAuthoringPointToScreen,
+  projectSiPointToScreen,
+  type UnitViewport,
+} from "./unitViewport";
 
 type ProjectRuntimeSceneEntitiesInput = {
   editorEntities: EditorSceneEntity[];
   runtimeFrame: RuntimeFrameView | null;
+  viewport?: UnitViewport;
 };
+
+function projectEditorEntityToScreen(
+  entity: EditorSceneEntity,
+  viewport: UnitViewport,
+): EditorSceneEntity {
+  const projectedPosition = projectAuthoringPointToScreen(
+    {
+      x: entity.x,
+      y: entity.y,
+    },
+    viewport,
+  );
+
+  if (entity.kind === "ball") {
+    return {
+      ...entity,
+      x: projectedPosition.x,
+      y: projectedPosition.y,
+      radius: authoringLengthToScreenPixels(entity.radius, viewport),
+    };
+  }
+
+  return {
+    ...entity,
+    x: projectedPosition.x,
+    y: projectedPosition.y,
+    width: authoringLengthToScreenPixels(entity.width, viewport),
+    height: authoringLengthToScreenPixels(entity.height, viewport),
+  };
+}
 
 export function projectRuntimeSceneEntities(
   input: ProjectRuntimeSceneEntitiesInput,
 ): EditorSceneEntity[] {
   const { editorEntities, runtimeFrame } = input;
+  const viewport = input.viewport ?? DEFAULT_WORKSPACE_VIEWPORT;
 
   if (!runtimeFrame) {
-    return editorEntities;
+    return editorEntities.map((entity) => projectEditorEntityToScreen(entity, viewport));
   }
 
   const runtimeEntitiesById = new Map(
@@ -20,24 +59,33 @@ export function projectRuntimeSceneEntities(
   );
 
   return editorEntities.map((editorEntity) => {
+    const projectedEditorEntity = projectEditorEntityToScreen(editorEntity, viewport);
     const runtimeEntity = runtimeEntitiesById.get(editorEntity.id);
 
     if (!runtimeEntity) {
-      return editorEntity;
+      return projectedEditorEntity;
     }
+
+    const projectedRuntimeCenter = projectSiPointToScreen(
+      {
+        x: runtimeEntity.transform.x,
+        y: runtimeEntity.transform.y,
+      },
+      viewport,
+    );
 
     if (editorEntity.kind === "ball") {
       return {
-        ...editorEntity,
-        x: runtimeEntity.transform.x - editorEntity.radius,
-        y: runtimeEntity.transform.y - editorEntity.radius,
+        ...projectedEditorEntity,
+        x: projectedRuntimeCenter.x - projectedEditorEntity.radius,
+        y: projectedRuntimeCenter.y - projectedEditorEntity.radius,
       };
     }
 
     return {
-      ...editorEntity,
-      x: runtimeEntity.transform.x - editorEntity.width / 2,
-      y: runtimeEntity.transform.y - editorEntity.height / 2,
+      ...projectedEditorEntity,
+      x: projectedRuntimeCenter.x - projectedEditorEntity.width / 2,
+      y: projectedRuntimeCenter.y - projectedEditorEntity.height / 2,
     };
   });
 }

@@ -41,6 +41,11 @@ import { useEditorHotkeys } from "./state/useEditorHotkeys";
 import { useRuntimePlaybackLoop } from "./state/useRuntimePlaybackLoop";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import { projectRuntimeSceneEntities } from "./workspace/runtimeSceneView";
+import {
+  authoringLengthToSiMeters,
+  DEFAULT_WORKSPACE_VIEWPORT,
+  projectAuthoringPointToSi,
+} from "./workspace/unitViewport";
 import type { EditorTool } from "./workspace/tools";
 
 const GRAVITY_ACCELERATION = 9.8;
@@ -83,14 +88,16 @@ function createRuntimePreviewFrame(
   return {
     frameNumber: input.nextFrameNumber,
     entities: entities.map((entity) => {
-      const center = getEntityCenter(entity);
+      const centerSi = projectAuthoringPointToSi(getEntityCenter(entity), DEFAULT_WORKSPACE_VIEWPORT);
+      const velocityXSi = authoringLengthToSiMeters(entity.velocityX, DEFAULT_WORKSPACE_VIEWPORT);
+      const velocityYSi = authoringLengthToSiMeters(entity.velocityY, DEFAULT_WORKSPACE_VIEWPORT);
       const timeAdjustedPosition = entity.locked
-        ? center
+        ? centerSi
         : {
-            x: center.x + entity.velocityX * elapsedTimeSeconds,
+            x: centerSi.x + velocityXSi * elapsedTimeSeconds,
             y:
-              center.y +
-              entity.velocityY * elapsedTimeSeconds +
+              centerSi.y +
+              velocityYSi * elapsedTimeSeconds +
               0.5 * GRAVITY_ACCELERATION * elapsedTimeSeconds * elapsedTimeSeconds,
           };
 
@@ -101,8 +108,8 @@ function createRuntimePreviewFrame(
         velocity: entity.locked
           ? { x: 0, y: 0 }
           : {
-              x: entity.velocityX,
-              y: entity.velocityY + GRAVITY_ACCELERATION * elapsedTimeSeconds,
+              x: velocityXSi,
+              y: velocityYSi + GRAVITY_ACCELERATION * elapsedTimeSeconds,
             },
         acceleration: entity.locked ? { x: 0, y: 0 } : { x: 0, y: GRAVITY_ACCELERATION },
       };
@@ -320,6 +327,7 @@ export function App() {
   const displayEntities = projectRuntimeSceneEntities({
     editorEntities: entities,
     runtimeFrame: runtimeSnapshot.bridge.currentFrame,
+    viewport: DEFAULT_WORKSPACE_VIEWPORT,
   });
   const authoringLocked = runtimeSnapshot.bridge.status === "running";
 
@@ -621,6 +629,7 @@ export function App() {
           onSelectEntity={handleSelectEntity}
           onToolChange={handleToolChange}
           state={editorState}
+          viewport={DEFAULT_WORKSPACE_VIEWPORT}
         />
         <AnnotationLayer state={annotationState} onStateChange={setAnnotationState} />
       </div>

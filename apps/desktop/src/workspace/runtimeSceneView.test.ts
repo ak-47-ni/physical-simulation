@@ -3,15 +3,21 @@ import { describe, expect, it } from "vitest";
 import type { RuntimeFrameView } from "../state/runtimeBridge";
 import type { EditorSceneEntity } from "../state/editorStore";
 import { projectRuntimeSceneEntities } from "./runtimeSceneView";
+import type { UnitViewport } from "./unitViewport";
+
+const meterViewport: UnitViewport = {
+  lengthUnit: "m",
+  pixelsPerMeter: 100,
+};
 
 function createBallEntity(): EditorSceneEntity {
   return {
     id: "ball-1",
     kind: "ball",
     label: "Ball 1",
-    x: 120,
-    y: 180,
-    radius: 24,
+    x: 1.2,
+    y: 1.8,
+    radius: 0.24,
     mass: 1.2,
     friction: 0.14,
     restitution: 0.82,
@@ -26,10 +32,10 @@ function createBoardEntity(): EditorSceneEntity {
     id: "board-1",
     kind: "board",
     label: "Board 1",
-    x: 320,
-    y: 260,
-    width: 120,
-    height: 18,
+    x: 3.2,
+    y: 2.6,
+    width: 1.2,
+    height: 0.18,
     mass: 5,
     friction: 0.42,
     restitution: 0.18,
@@ -56,13 +62,14 @@ describe("projectRuntimeSceneEntities", () => {
           {
             id: "ball-1",
             transform: {
-              x: 260,
-              y: 312,
+              x: 2.6,
+              y: 3.12,
               rotation: 0,
             },
           },
         ],
       }),
+      viewport: meterViewport,
     });
 
     expect(projected).toEqual([
@@ -83,13 +90,14 @@ describe("projectRuntimeSceneEntities", () => {
           {
             id: "board-1",
             transform: {
-              x: 460,
-              y: 271,
+              x: 4.6,
+              y: 2.71,
               rotation: 0,
             },
           },
         ],
       }),
+      viewport: meterViewport,
     });
 
     expect(projected).toEqual([
@@ -111,13 +119,14 @@ describe("projectRuntimeSceneEntities", () => {
           {
             id: "ball-1",
             transform: {
-              x: 260,
-              y: 312,
+              x: 2.6,
+              y: 3.12,
               rotation: 0,
             },
           },
         ],
       }),
+      viewport: meterViewport,
     });
 
     expect(projected[0]).toEqual(
@@ -142,13 +151,14 @@ describe("projectRuntimeSceneEntities", () => {
           {
             id: "ball-1",
             transform: {
-              x: 260,
-              y: 312,
+              x: 2.6,
+              y: 3.12,
               rotation: 0,
             },
           },
         ],
       }),
+      viewport: meterViewport,
     });
 
     expect(projected[0]).toEqual(
@@ -158,12 +168,13 @@ describe("projectRuntimeSceneEntities", () => {
         y: 288,
       }),
     );
-    expect(projected[1]).toBe(board);
     expect(projected[1]).toEqual(
       expect.objectContaining({
         id: "board-1",
         x: 320,
         y: 260,
+        width: 120,
+        height: 18,
       }),
     );
   });
