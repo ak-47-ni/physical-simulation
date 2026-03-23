@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
 use crate::analyzer::{AnalyzerDefinition, CompiledAnalyzer};
-use crate::constraint::{CompiledConstraint, ConstraintDefinition};
+use crate::constraint::{
+    CompiledConstraint, ConstraintCompileError, ConstraintDefinition, compile_constraint,
+};
 use crate::entity::{
     CompiledEntity, CompiledShape, EntityDefinition, ShapeDefinition, is_convex_polygon,
 };
@@ -29,9 +31,20 @@ pub enum SceneCompileError {
     DuplicateEntityId {
         id: String,
     },
+    InvalidSpringRestLength {
+        constraint_id: String,
+        value: f64,
+    },
+    InvalidSpringStiffness {
+        constraint_id: String,
+        value: f64,
+    },
     InvalidShapeParameters {
         entity_id: String,
         kind: String,
+    },
+    InvalidTrackAxis {
+        constraint_id: String,
     },
     MissingGravity,
     NonConvexPolygon {
@@ -49,6 +62,30 @@ pub enum SceneCompileError {
         entity_id: String,
         kind: String,
     },
+}
+
+impl From<ConstraintCompileError> for SceneCompileError {
+    fn from(value: ConstraintCompileError) -> Self {
+        match value {
+            ConstraintCompileError::InvalidSpringRestLength {
+                constraint_id,
+                value,
+            } => Self::InvalidSpringRestLength {
+                constraint_id,
+                value,
+            },
+            ConstraintCompileError::InvalidSpringStiffness {
+                constraint_id,
+                value,
+            } => Self::InvalidSpringStiffness {
+                constraint_id,
+                value,
+            },
+            ConstraintCompileError::InvalidTrackAxis { constraint_id } => {
+                Self::InvalidTrackAxis { constraint_id }
+            }
+        }
+    }
 }
 
 pub fn compile_scene(request: &CompileSceneRequest) -> Result<CompiledScene, SceneCompileError> {
@@ -85,7 +122,7 @@ pub fn compile_scene(request: &CompileSceneRequest) -> Result<CompiledScene, Sce
             }
         }
 
-        compiled_constraints.push(CompiledConstraint::from(constraint));
+        compiled_constraints.push(compile_constraint(constraint).map_err(SceneCompileError::from)?);
     }
 
     let mut compiled_analyzers = Vec::with_capacity(request.analyzers.len());

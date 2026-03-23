@@ -36,6 +36,13 @@ impl ConstraintDefinition {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum ConstraintCompileError {
+    InvalidSpringRestLength { constraint_id: String, value: f64 },
+    InvalidSpringStiffness { constraint_id: String, value: f64 },
+    InvalidTrackAxis { constraint_id: String },
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum CompiledConstraint {
     Spring {
         id: String,
@@ -52,33 +59,57 @@ pub enum CompiledConstraint {
     },
 }
 
-impl From<&ConstraintDefinition> for CompiledConstraint {
-    fn from(value: &ConstraintDefinition) -> Self {
-        match value {
-            ConstraintDefinition::Spring {
-                id,
-                entity_a,
-                entity_b,
-                rest_length,
-                stiffness,
-            } => Self::Spring {
+pub fn compile_constraint(
+    definition: &ConstraintDefinition,
+) -> Result<CompiledConstraint, ConstraintCompileError> {
+    match definition {
+        ConstraintDefinition::Spring {
+            id,
+            entity_a,
+            entity_b,
+            rest_length,
+            stiffness,
+        } => {
+            if !rest_length.is_finite() || *rest_length <= 0.0 {
+                return Err(ConstraintCompileError::InvalidSpringRestLength {
+                    constraint_id: id.clone(),
+                    value: *rest_length,
+                });
+            }
+
+            if !stiffness.is_finite() || *stiffness <= 0.0 {
+                return Err(ConstraintCompileError::InvalidSpringStiffness {
+                    constraint_id: id.clone(),
+                    value: *stiffness,
+                });
+            }
+
+            Ok(CompiledConstraint::Spring {
                 id: id.clone(),
                 entity_a: entity_a.clone(),
                 entity_b: entity_b.clone(),
                 rest_length: *rest_length,
                 stiffness: *stiffness,
-            },
-            ConstraintDefinition::Track {
-                id,
-                entity_id,
-                origin,
-                axis,
-            } => Self::Track {
+            })
+        }
+        ConstraintDefinition::Track {
+            id,
+            entity_id,
+            origin,
+            axis,
+        } => {
+            if !axis.x.is_finite() || !axis.y.is_finite() || axis.length() <= f64::EPSILON {
+                return Err(ConstraintCompileError::InvalidTrackAxis {
+                    constraint_id: id.clone(),
+                });
+            }
+
+            Ok(CompiledConstraint::Track {
                 id: id.clone(),
                 entity_id: entity_id.clone(),
                 origin: *origin,
                 axis: *axis,
-            },
+            })
         }
     }
 }
