@@ -30,10 +30,9 @@ describe("App runtime features", () => {
   it("routes transport controls through app runtime state", () => {
     render(<App />);
     const transport = within(screen.getByTestId("bottom-transport-bar"));
-    const topRow = within(screen.getByTestId("playback-transport-top-row"));
+    const topRow = within(screen.getByTestId("transport-compact-row"));
 
     expect(screen.getByText("0.00 s")).toBeDefined();
-    expect(screen.getByText("State: idle")).toBeDefined();
 
     fireEvent.change(topRow.getByRole("combobox", { name: /speed/i }), {
       target: { value: "2" },
@@ -43,16 +42,15 @@ describe("App runtime features", () => {
     expect(screen.getByText("0.03 s")).toBeDefined();
 
     fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
-    expect(
-      screen.getByText("Runtime is playing. Pause to inspect the current motion."),
-    ).toBeDefined();
+    expect((topRow.getByRole("combobox", { name: /speed/i }) as HTMLSelectElement).value).toBe(
+      "2",
+    );
 
     fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
-    expect(screen.getByText("Runtime is paused on the current frame.")).toBeDefined();
+    expect(topRow.getByText("0.03 s")).toBeDefined();
 
     fireEvent.click(transport.getByRole("button", { name: /^reset$/i }));
     expect(screen.getByText("0.00 s")).toBeDefined();
-    expect(screen.getByText("State: idle")).toBeDefined();
     expect((topRow.getByRole("combobox", { name: /speed/i }) as HTMLSelectElement).value).toBe(
       "1",
     );
@@ -227,7 +225,6 @@ describe("App runtime features", () => {
 
     await waitFor(() => {
       expect(screen.getByText("0.00 s")).toBeDefined();
-      expect(screen.getByText("State: idle")).toBeDefined();
       expect(ball.style.left).toBe("132px");
       expect(ball.style.top).toBe("176px");
     });
@@ -264,7 +261,6 @@ describe("App runtime features", () => {
 
     await waitFor(() => {
       expect(screen.getByText("0.00 s")).toBeDefined();
-      expect(screen.getByText("State: idle")).toBeDefined();
       expect((screen.getByLabelText("Gravity") as HTMLInputElement).value).toBe("980");
       expect(screen.getByText("cm/s²")).toBeDefined();
       expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("132");
@@ -296,8 +292,8 @@ describe("App runtime features", () => {
     render(<App />);
 
     expect((screen.getByLabelText("Playback mode") as HTMLSelectElement).value).toBe("realtime");
-    expect((screen.getByLabelText("Playback progress") as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByLabelText("Playback time") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Jump to time") as HTMLInputElement).disabled).toBe(true);
   });
 
   it("precomputes cached playback and seeks by timeline and time input", async () => {
@@ -315,20 +311,23 @@ describe("App runtime features", () => {
     fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
 
     await waitFor(() => {
-      expect((screen.getByLabelText("Playback progress") as HTMLInputElement).disabled).toBe(
+      expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
         false,
       );
     });
 
     fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
-    fireEvent.change(screen.getByLabelText("Playback progress"), { target: { value: "0.5" } });
+    fireEvent.input(screen.getByRole("slider", { name: /playback timeline/i }), {
+      target: { value: "0.5" },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("0.50 s")).toBeDefined();
       expect(ball.style.left).toBe("162px");
     });
 
-    fireEvent.change(screen.getByLabelText("Playback time"), { target: { value: "0.25" } });
+    fireEvent.change(screen.getByLabelText("Jump to time"), { target: { value: "0.25" } });
+    fireEvent.blur(screen.getByLabelText("Jump to time"));
 
     await waitFor(() => {
       expect(screen.getByText("0.25 s")).toBeDefined();
@@ -348,13 +347,15 @@ describe("App runtime features", () => {
     fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
 
     await waitFor(() => {
-      expect((screen.getByLabelText("Playback progress") as HTMLInputElement).disabled).toBe(
+      expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
         false,
       );
     });
 
     fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
-    fireEvent.change(screen.getByLabelText("Playback progress"), { target: { value: "0.5" } });
+    fireEvent.input(screen.getByRole("slider", { name: /playback timeline/i }), {
+      target: { value: "0.5" },
+    });
 
     await waitFor(() => {
       expect(ball.style.left).toBe("162px");

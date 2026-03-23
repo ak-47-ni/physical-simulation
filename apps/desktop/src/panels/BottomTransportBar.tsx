@@ -172,6 +172,15 @@ function createTimelineProgress(runtime: BottomTransportRuntimeView): TransportT
   };
 }
 
+function shouldShowCompactBanner(runtime: BottomTransportRuntimeView): boolean {
+  return (
+    runtime.lastErrorMessage !== null ||
+    runtime.lastBlockedAction !== null ||
+    runtime.blockReason === "rebuild-required" ||
+    runtime.status === "preparing"
+  );
+}
+
 export function BottomTransportBar(props: BottomTransportBarProps) {
   const {
     onPause,
@@ -321,7 +330,7 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
   if (isCompactLayout) {
     return (
       <div data-testid="bottom-transport-bar" style={cardStyle}>
-        <RuntimeStatusBanner runtime={runtime} />
+        {shouldShowCompactBanner(runtime) ? <RuntimeStatusBanner runtime={runtime} /> : null}
 
         {showPlaybackControls ? (
           <>

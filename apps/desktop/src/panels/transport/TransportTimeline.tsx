@@ -119,6 +119,7 @@ export function TransportTimeline(props: TransportTimelineProps) {
 
   return (
     <div
+      data-align={isCompactLayout ? "left" : undefined}
       data-testid={isCompactLayout ? "transport-timeline-compact" : undefined}
       style={isCompactLayout ? compactContainerStyle : containerStyle}
     >
