@@ -768,4 +768,145 @@ describe("WorkspaceCanvas", () => {
     expect(board.textContent).toContain("Ramp");
     expect(screen.getByTestId("scene-entity-lock-board-1")).toBeDefined();
   });
+
+  it("blocks dragging bodies while authoring is locked", () => {
+    const moves: Array<{ id: string; x: number; y: number }> = [];
+
+    render(
+      <WorkspaceCanvas
+        authoringLocked
+        display={createDisplaySettings()}
+        entities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={(id, position) => {
+          moves.push({ id, ...position });
+        }}
+        state={createInitialEditorState()}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    fireEvent.mouseDown(screen.getByTestId("scene-entity-ball-1"), { clientX: 120, clientY: 180 });
+    fireEvent.mouseMove(window, { clientX: 180, clientY: 240 });
+    fireEvent.mouseUp(window);
+
+    expect(moves).toEqual([]);
+  });
+
+  it("blocks place-body stage clicks while authoring is locked", () => {
+    const created: Array<{ x: number; y: number }> = [];
+
+    render(
+      <WorkspaceCanvas
+        authoringLocked
+        display={createDisplaySettings()}
+        entities={[]}
+        onCreateEntity={(position) => {
+          created.push(position);
+        }}
+        onMoveEntity={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-body",
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 248, clientY: 204 });
+
+    expect(created).toEqual([]);
+  });
+
+  it("keeps selection available and blocks constraint picks while authoring is locked", () => {
+    const entityPicks: string[] = [];
+    const selectedEntityIds: string[] = [];
+
+    render(
+      <WorkspaceCanvas
+        authoringLocked
+        constraintPlacement={{
+          anchorEntityId: null,
+          hint: "Select first body for the spring",
+          kind: "spring",
+          mode: "pick-entity",
+        }}
+        display={createDisplaySettings()}
+        entities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onPlaceConstraintEntity={(entityId) => {
+          entityPicks.push(entityId);
+        }}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-constraint" as never,
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={(entityId) => {
+          selectedEntityIds.push(entityId);
+        }}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+
+    expect(entityPicks).toEqual([]);
+    expect(selectedEntityIds).toEqual(["ball-1"]);
+  });
+
+  it("shows a playback lock hint while authoring is locked", () => {
+    render(
+      <WorkspaceCanvas
+        authoringLocked
+        display={createDisplaySettings()}
+        entities={[]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={createInitialEditorState()}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    expect(
+      screen.getByText("Playback running. Move, placement, and constraint editing are temporarily locked."),
+    ).toBeDefined();
+  });
 });

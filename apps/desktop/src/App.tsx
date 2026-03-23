@@ -315,6 +315,7 @@ export function App() {
     editorEntities: entities,
     runtimeFrame: runtimeSnapshot.bridge.currentFrame,
   });
+  const authoringLocked = runtimeSnapshot.bridge.status === "running";
 
   function handleDuplicateSelectedEntity() {
     if (!selectedEntity) {
@@ -599,6 +600,7 @@ export function App() {
     >
       <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr) auto", gap: "14px" }}>
         <WorkspaceCanvas
+          authoringLocked={authoringLocked}
           constraintPlacement={constraintPlacement}
           constraints={constraints}
           display={displaySettings}

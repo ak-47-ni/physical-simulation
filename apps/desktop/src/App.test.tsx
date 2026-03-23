@@ -273,4 +273,36 @@ describe("App selection sync", () => {
       );
     });
   });
+
+  it("blocks dragging and shows a workspace hint while the runtime is running", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    fireEvent.mouseDown(screen.getByTestId("scene-entity-ball-1"), { clientX: 132, clientY: 176 });
+    fireEvent.mouseMove(window, { clientX: 180, clientY: 228 });
+    fireEvent.mouseUp(window);
+
+    expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("132px");
+    expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.top).toBe("176px");
+    expect(
+      screen.getByText("Playback running. Move, placement, and constraint editing are temporarily locked."),
+    ).toBeDefined();
+  });
+
+  it("blocks placement but still allows selection while the runtime is running", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.click(screen.getByRole("button", { name: /place body tool/i }));
+    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 248, clientY: 204 });
+    fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+
+    expect(screen.queryByTestId("scene-entity-ball-2")).toBeNull();
+    expect(screen.getByTestId("scene-entity-board-1").getAttribute("data-selected")).toBe("true");
+    expect(screen.getByTestId("scene-tree-item-board-1").getAttribute("data-selected")).toBe(
+      "true",
+    );
+  });
 });
