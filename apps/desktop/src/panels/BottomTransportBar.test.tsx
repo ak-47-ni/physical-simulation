@@ -15,8 +15,6 @@ describe("BottomTransportBar", () => {
           status: "paused",
           currentTimeSeconds: 12.5,
           timeScale: 1,
-          dirtyScopes: [],
-          rebuildRequired: false,
           canResume: true,
           blockReason: null,
         }}
@@ -40,30 +38,6 @@ describe("BottomTransportBar", () => {
     expect(screen.getByText("12.50 s")).toBeDefined();
   });
 
-  it("shows dirty runtime scope metadata when a rebuild is required", () => {
-    render(
-      <BottomTransportBar
-        runtime={{
-          status: "paused",
-          currentTimeSeconds: 0,
-          timeScale: 1,
-          dirtyScopes: ["analysis", "physics"],
-          rebuildRequired: true,
-          canResume: false,
-          blockReason: "rebuild-required",
-        }}
-        onPause={() => undefined}
-        onReset={() => undefined}
-        onStart={() => undefined}
-        onStep={() => undefined}
-        onTimeScaleChange={() => undefined}
-      />,
-    );
-
-    expect(screen.getByText("Rebuild required")).toBeDefined();
-    expect(screen.getByText("Dirty scopes: analysis, physics")).toBeDefined();
-  });
-
   it("routes transport and time-scale actions through the runtime bridge interface", () => {
     const calls: string[] = [];
 
@@ -73,8 +47,6 @@ describe("BottomTransportBar", () => {
           status: "paused",
           currentTimeSeconds: 0,
           timeScale: 1,
-          dirtyScopes: [],
-          rebuildRequired: false,
           canResume: true,
           blockReason: null,
         }}

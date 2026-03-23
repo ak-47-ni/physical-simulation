@@ -26,13 +26,12 @@ type TauriInternals = {
 export function createDesktopRuntimeBridgePort(
   options: DesktopRuntimeBridgePortOptions,
 ): RuntimeBridgePort {
-  const runtimeInvoke = options.invoke ?? resolveTauriInvoke();
+  const invoke = options.invoke ?? resolveTauriInvoke();
 
-  if (!runtimeInvoke) {
+  if (!invoke) {
     return options.fallbackPort;
   }
 
-  const invoke: RuntimeBridgeInvoke = runtimeInvoke;
   let snapshot = createInitialRuntimeBridgePortSnapshot();
   const listeners = new Set<(snapshot: RuntimeBridgePortSnapshot) => void>();
 
@@ -82,7 +81,8 @@ export function createDesktopRuntimeBridgePort(
     pause: async () => runStatusCommand("pause_runtime"),
     step: async () => runStatusCommand("step_runtime"),
     reset: async () => runStatusCommand("reset_runtime"),
-    setTimeScale: async (timeScale) => runStatusCommand("set_runtime_time_scale", { timeScale }),
+    setTimeScale: async (timeScale) =>
+      runStatusCommand("set_runtime_time_scale", { timeScale }),
     readTrajectorySamples: async (analyzerId) =>
       invoke<RuntimeTrajectorySample[]>("read_trajectory_samples", { analyzerId }),
   };

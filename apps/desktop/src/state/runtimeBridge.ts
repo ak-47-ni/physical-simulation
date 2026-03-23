@@ -2,6 +2,7 @@ import {
   requiresRuntimeRebuild,
   type DirtyEditScope,
   type RuntimeFramePayload,
+  type SceneDocument,
   type Vector2,
 } from "../../../../packages/scene-schema/src";
 import {
@@ -107,7 +108,7 @@ export function createInitialRuntimeBridgePortSnapshot(): RuntimeBridgePortSnaps
 }
 
 export function createCompileRequestFromScene(
-  scene: RuntimeCompileRequest["scene"],
+  scene: SceneDocument,
   dirtyScopes: DirtyEditScope[] = [],
 ): RuntimeCompileRequest {
   return createRuntimeCompileRequest(scene, dirtyScopes);

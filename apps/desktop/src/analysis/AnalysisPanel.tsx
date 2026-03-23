@@ -1,9 +1,10 @@
 import type { CSSProperties } from "react";
 
-import type { RuntimeBridgePort, RuntimeTrajectorySample } from "../state/runtimeBridge";
+import type { RuntimeBridgePort } from "../state/runtimeBridge";
 import {
   buildRuntimeTrajectoryReadout,
   createAnalyzerSamplesFromTrajectory,
+  type RuntimeTrajectorySample,
 } from "./analysisTrajectorySamples";
 import {
   buildAnalyzerChartSeries,
@@ -91,8 +92,6 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
         },
   );
   const trajectorySamples = props.trajectorySamples ?? runtimeTrajectoryState.trajectorySamples;
-  const runtimeTrajectoryStatus = props.trajectorySamples ? "ready" : runtimeTrajectoryState.status;
-  const runtimeTrajectoryError = props.trajectorySamples ? null : runtimeTrajectoryState.error;
   const groupedSamples = groupAnalyzerSamples(analysisState.samples);
   const metricSummaries = buildAnalyzerMetricSummaries(analysisState.samples);
   const manualChartSamples = analysisState.samples.filter(
@@ -254,7 +253,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                 No metric summary yet
               </span>
             )}
-            {runtimeReadout || runtimeTrajectoryStatus !== "idle" || runtimeTrajectoryError ? (
+            {runtimeReadout ? (
               <div
                 style={{
                   display: "grid",
@@ -266,16 +265,6 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                 }}
               >
                 <strong style={{ color: "#17304f" }}>Runtime trajectory</strong>
-                <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                  Runtime trajectory source: {runtimeTrajectoryStatus}
-                </span>
-                {runtimeTrajectoryError ? (
-                  <span style={{ color: "#b42318", fontSize: "13px" }}>
-                    Runtime trajectory error: {runtimeTrajectoryError}
-                  </span>
-                ) : null}
-                {runtimeReadout ? (
-                  <>
                 <span style={{ color: "#5d6f88", fontSize: "13px" }}>
                   Trajectory samples: {trajectorySamples.length}
                 </span>
@@ -296,13 +285,11 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                       {runtimeDerivedSummary.unit}
                     </span>
                   </>
-                ) : runtimeReadout ? (
+                ) : (
                   <span style={{ color: "#5d6f88", fontSize: "13px" }}>
                     Runtime-derived metric unavailable
                   </span>
-                ) : null}
-                  </>
-                ) : null}
+                )}
               </div>
             ) : null}
             <div

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { RuntimeTrajectorySample } from "../state/runtimeBridge";
 import {
   buildRuntimeTrajectoryReadout,
   createAnalyzerSamplesFromTrajectory,
+  type RuntimeTrajectorySample,
 } from "./analysisTrajectorySamples";
 
 const trajectorySamples: RuntimeTrajectorySample[] = [

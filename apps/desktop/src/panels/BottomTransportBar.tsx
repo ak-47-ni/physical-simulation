@@ -1,6 +1,5 @@
 import type { CSSProperties } from "react";
 
-import type { DirtyEditScope } from "../../../../packages/scene-schema/src";
 import type {
   RuntimeBridgeBlockReason,
   RuntimeBridgeStatus,
@@ -12,8 +11,6 @@ export type BottomTransportRuntimeView = {
   status: RuntimeBridgeStatus;
   currentTimeSeconds: number;
   timeScale: number;
-  dirtyScopes: DirtyEditScope[];
-  rebuildRequired: boolean;
   canResume: boolean;
   blockReason: RuntimeBridgeBlockReason;
 };
@@ -54,8 +51,6 @@ const buttonStyle: CSSProperties = {
 export function BottomTransportBar(props: BottomTransportBarProps) {
   const { runtime, onPause, onReset, onStart, onStep, onTimeScaleChange } = props;
   const timeScalePresets = props.timeScalePresets ?? DEFAULT_TIME_SCALE_PRESETS;
-  const dirtyScopeLabel =
-    runtime.dirtyScopes.length > 0 ? runtime.dirtyScopes.join(", ") : "none";
 
   return (
     <div data-testid="bottom-transport-bar" style={cardStyle}>
@@ -114,17 +109,6 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
             : `State: ${runtime.status}`}
         </span>
       </div>
-
-      {runtime.rebuildRequired || runtime.dirtyScopes.length > 0 ? (
-        <div style={{ display: "grid", gap: "4px" }}>
-          {runtime.rebuildRequired ? (
-            <strong style={{ color: "#b42318", fontSize: "13px" }}>Rebuild required</strong>
-          ) : null}
-          <span style={{ color: "#5a6d88", fontSize: "13px" }}>
-            Dirty scopes: {dirtyScopeLabel}
-          </span>
-        </div>
-      ) : null}
     </div>
   );
 }

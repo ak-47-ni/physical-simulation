@@ -1,6 +1,6 @@
-import type { CSSProperties, PropsWithChildren, ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type MouseEvent, type PropsWithChildren, type ReactNode } from "react";
 
-import { usePaneLayout } from "./usePaneLayout";
+import { usePaneLayout, type PaneKey } from "./usePaneLayout";
 
 type ShellLayoutProps = PropsWithChildren<{
   leftPane?: ReactNode;
@@ -18,13 +18,6 @@ const appFrameStyle: CSSProperties = {
   fontFamily: '"Segoe UI", "Helvetica Neue", sans-serif',
 };
 
-const shellStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateRows: "72px minmax(0, 1fr) auto",
-  gap: "14px",
-  minHeight: "calc(100vh - 40px)",
-};
-
 const topBarStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
@@ -35,13 +28,6 @@ const topBarStyle: CSSProperties = {
   border: "1px solid rgba(108, 128, 173, 0.2)",
   boxShadow: "0 12px 30px rgba(25, 48, 89, 0.08)",
   backdropFilter: "blur(18px)",
-};
-
-const contentRowStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 280px) minmax(0, 1fr) minmax(0, 320px)",
-  gap: "14px",
-  minHeight: "0",
 };
 
 const panelStyle: CSSProperties = {
@@ -80,8 +66,19 @@ const workspacePlaceholderStyle: CSSProperties = {
 };
 
 const bottomPaneStyle: CSSProperties = {
-  ...panelStyle,
   minHeight: "84px",
+};
+
+const COLLAPSED_PANE_SIZE: Record<PaneKey, number> = {
+  left: 72,
+  right: 72,
+  bottom: 56,
+};
+
+const resizeHandleStyle: CSSProperties = {
+  position: "relative",
+  borderRadius: "999px",
+  background: "rgba(139, 157, 190, 0.22)",
 };
 
 const buttonStyle: CSSProperties = {
@@ -97,16 +94,20 @@ const buttonStyle: CSSProperties = {
 function PaneCard(props: {
   title: string;
   collapsed: boolean;
+  collapsedSize: number;
+  size: number;
   onToggle: () => void;
   toggleLabel: string;
   testId: string;
   children?: ReactNode;
 }) {
-  const { title, collapsed, onToggle, toggleLabel, testId, children } = props;
+  const { title, collapsed, collapsedSize, size, onToggle, toggleLabel, testId, children } = props;
 
   return (
     <section
       data-collapsed={collapsed}
+      data-collapsed-size={String(collapsedSize)}
+      data-size={String(size)}
       data-testid={testId}
       style={{
         ...panelStyle,
@@ -114,9 +115,17 @@ function PaneCard(props: {
       }}
     >
       <div style={panelHeaderStyle}>
-        <strong>{title}</strong>
+        <strong
+          style={{
+            fontSize: collapsed ? "11px" : "14px",
+            letterSpacing: collapsed ? "0.08em" : undefined,
+            textTransform: collapsed ? "uppercase" : undefined,
+          }}
+        >
+          {collapsed ? title.slice(0, 3) : title}
+        </strong>
         <button style={buttonStyle} type="button" onClick={onToggle}>
-          {toggleLabel}
+          {collapsed ? "Show" : toggleLabel}
         </button>
       </div>
       <div
@@ -132,9 +141,77 @@ function PaneCard(props: {
   );
 }
 
+type ResizeSession = {
+  axis: "x" | "y";
+  direction: 1 | -1;
+  pane: PaneKey;
+  startClient: number;
+  startSize: number;
+};
+
 export function ShellLayout(props: ShellLayoutProps) {
   const { children, leftPane, rightPane, bottomPane } = props;
-  const { layout, togglePane } = usePaneLayout();
+  const { layout, resetLayout, resizePane, togglePane } = usePaneLayout();
+  const [activeResize, setActiveResize] = useState<ResizeSession | null>(null);
+
+  useEffect(() => {
+    if (!activeResize) {
+      return undefined;
+    }
+
+    function handleMouseMove(event: globalThis.MouseEvent) {
+      const currentClient = activeResize.axis === "x" ? event.clientX : event.clientY;
+      const delta = (currentClient - activeResize.startClient) * activeResize.direction;
+
+      resizePane(activeResize.pane, activeResize.startSize + delta);
+    }
+
+    function handleMouseUp() {
+      setActiveResize(null);
+    }
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [activeResize, resizePane]);
+
+  function beginResize(
+    pane: PaneKey,
+    axis: "x" | "y",
+    direction: 1 | -1,
+    event: MouseEvent<HTMLDivElement>,
+  ) {
+    event.preventDefault();
+    setActiveResize({
+      axis,
+      direction,
+      pane,
+      startClient: axis === "x" ? event.clientX : event.clientY,
+      startSize: layout[pane].size,
+    });
+  }
+
+  const leftPaneSize = layout.left.collapsed ? COLLAPSED_PANE_SIZE.left : layout.left.size;
+  const rightPaneSize = layout.right.collapsed ? COLLAPSED_PANE_SIZE.right : layout.right.size;
+  const bottomPaneSize = layout.bottom.collapsed ? COLLAPSED_PANE_SIZE.bottom : layout.bottom.size;
+
+  const shellStyle: CSSProperties = {
+    display: "grid",
+    gridTemplateRows: `72px minmax(0, 1fr) 10px ${bottomPaneSize}px`,
+    gap: "14px",
+    minHeight: "calc(100vh - 40px)",
+  };
+
+  const contentRowStyle: CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: `${leftPaneSize}px 10px minmax(0, 1fr) 10px ${rightPaneSize}px`,
+    gap: "14px",
+    minHeight: "0",
+  };
 
   return (
     <div style={appFrameStyle}>
@@ -146,17 +223,22 @@ export function ShellLayout(props: ShellLayoutProps) {
             </div>
             <h1 style={{ margin: "6px 0 0", fontSize: "24px" }}>Desktop Editor Shell</h1>
           </div>
-          <div style={{ display: "flex", gap: "10px", color: "#516276", fontSize: "14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "#516276", fontSize: "14px" }}>
             <span>Canvas-first</span>
             <span>Resizable panes</span>
             <span>Worker C mount-ready</span>
+            <button style={buttonStyle} type="button" onClick={resetLayout}>
+              Reset layout
+            </button>
           </div>
         </header>
 
         <div style={contentRowStyle}>
           <PaneCard
             collapsed={layout.left.collapsed}
+            collapsedSize={COLLAPSED_PANE_SIZE.left}
             onToggle={() => togglePane("left")}
+            size={layout.left.size}
             testId="shell-left-pane"
             title="Library"
             toggleLabel={layout.left.collapsed ? "Show library" : "Hide library"}
@@ -164,13 +246,35 @@ export function ShellLayout(props: ShellLayoutProps) {
             {leftPane}
           </PaneCard>
 
+          <div
+            aria-label="Resize library pane"
+            data-testid="shell-resize-left"
+            style={{
+              ...resizeHandleStyle,
+              cursor: "col-resize",
+            }}
+            onMouseDown={(event) => beginResize("left", "x", 1, event)}
+          />
+
           <section data-testid="shell-center-pane" style={centerPaneStyle}>
             {children}
           </section>
 
+          <div
+            aria-label="Resize inspector pane"
+            data-testid="shell-resize-right"
+            style={{
+              ...resizeHandleStyle,
+              cursor: "col-resize",
+            }}
+            onMouseDown={(event) => beginResize("right", "x", -1, event)}
+          />
+
           <PaneCard
             collapsed={layout.right.collapsed}
+            collapsedSize={COLLAPSED_PANE_SIZE.right}
             onToggle={() => togglePane("right")}
+            size={layout.right.size}
             testId="shell-right-pane"
             title="Inspector"
             toggleLabel={layout.right.collapsed ? "Show inspector" : "Hide inspector"}
@@ -179,15 +283,29 @@ export function ShellLayout(props: ShellLayoutProps) {
           </PaneCard>
         </div>
 
-        <PaneCard
-          collapsed={layout.bottom.collapsed}
-          onToggle={() => togglePane("bottom")}
-          testId="shell-bottom-pane"
-          title="Transport"
-          toggleLabel={layout.bottom.collapsed ? "Show transport" : "Hide transport"}
-        >
-          {bottomPane}
-        </PaneCard>
+        <div
+          aria-label="Resize transport pane"
+          data-testid="shell-resize-bottom"
+          style={{
+            ...resizeHandleStyle,
+            cursor: "row-resize",
+          }}
+          onMouseDown={(event) => beginResize("bottom", "y", -1, event)}
+        />
+
+        <div style={bottomPaneStyle}>
+          <PaneCard
+            collapsed={layout.bottom.collapsed}
+            collapsedSize={COLLAPSED_PANE_SIZE.bottom}
+            onToggle={() => togglePane("bottom")}
+            size={layout.bottom.size}
+            testId="shell-bottom-pane"
+            title="Transport"
+            toggleLabel={layout.bottom.collapsed ? "Show transport" : "Hide transport"}
+          >
+            {bottomPane}
+          </PaneCard>
+        </div>
       </div>
     </div>
   );

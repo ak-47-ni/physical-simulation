@@ -38,6 +38,8 @@ export function SceneTreePanel(props: SceneTreePanelProps) {
       {entities.map((entity) => (
         <button
           key={entity.id}
+          data-selected={String(selectedEntityId === entity.id)}
+          data-testid={`scene-tree-item-${entity.id}`}
           style={{
             ...itemButtonStyle,
             background: selectedEntityId === entity.id ? "#eaf1ff" : "#ffffff",

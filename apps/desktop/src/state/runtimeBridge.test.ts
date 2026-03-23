@@ -18,7 +18,6 @@ import {
   resumeRuntimeBridge,
   setRuntimeBridgeTimeScale,
   stepRuntimeBridge,
-  type RuntimeBridgePortSnapshot,
 } from "./runtimeBridge";
 
 describe("runtimeBridge", () => {
@@ -81,24 +80,13 @@ describe("runtimeBridge", () => {
     });
   });
 
-  it("maps a runtime status snapshot into bridge state metadata and current frame", () => {
+  it("applies dirty runtime metadata from bridge status snapshots", () => {
     const state = applyRuntimeBridgeStatusSnapshot(createInitialRuntimeBridgeState(), {
       status: "paused",
-      currentFrame: createRuntimeFramePayload({
-        frameNumber: 7,
-        entities: [
-          {
-            entityId: "block-1",
-            position: { x: 18, y: 24 },
-            rotation: 0.25,
-            velocity: { x: 3, y: -2 },
-            acceleration: { x: 0, y: -9.8 },
-          },
-        ],
-      }),
-      currentTimeSeconds: 1.4,
-      timeScale: 0.5,
-      dirtyScopes: ["analysis", "physics"],
+      currentFrame: null,
+      currentTimeSeconds: 0,
+      timeScale: 1,
+      dirtyScopes: ["physics", "analysis"],
       rebuildRequired: true,
       canResume: false,
       blockReason: "rebuild-required",
@@ -106,23 +94,13 @@ describe("runtimeBridge", () => {
 
     expect(state).toMatchObject({
       status: "paused",
-      currentTimeSeconds: 1.4,
-      timeScale: 0.5,
-      dirtyScopes: ["analysis", "physics"],
+      currentFrame: null,
+      currentTimeSeconds: 0,
+      timeScale: 1,
+      dirtyScopes: ["physics", "analysis"],
       rebuildRequired: true,
       canResume: false,
       blockReason: "rebuild-required",
-      currentFrame: {
-        frameNumber: 7,
-        entities: [
-          {
-            id: "block-1",
-            transform: { x: 18, y: 24, rotation: 0.25 },
-            velocity: { x: 3, y: -2 },
-            acceleration: { x: 0, y: -9.8 },
-          },
-        ],
-      },
     });
   });
 
@@ -173,7 +151,7 @@ describe("runtimeBridge", () => {
   it("provides a mock runtime bridge port with subscribable command snapshots", async () => {
     const scene = createEmptySceneDocument();
     const request = createCompileRequestFromScene(scene, ["analysis"]);
-    const snapshots: RuntimeBridgePortSnapshot[] = [];
+    const snapshots = [];
     const port = createMockRuntimeBridgePort({
       createFrame: ({ nextFrameNumber }) =>
         createRuntimeFramePayload({

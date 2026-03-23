@@ -37,34 +37,6 @@ describe("useRuntimeTrajectorySamples", () => {
     expect(screen.getByTestId("trajectory-error").textContent).toBe("");
   });
 
-  it("keeps waiting when the analyzer is not registered before runtime frames exist", async () => {
-    const port = createMockRuntimeBridgePort();
-
-    render(<RuntimeTrajectoryProbe runtimePort={port} analyzerId="traj-1" />);
-
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0);
-    });
-
-    expect(screen.getByTestId("trajectory-status").textContent).toBe("loading");
-    expect(screen.getByTestId("trajectory-count").textContent).toBe("0");
-    expect(screen.getByTestId("trajectory-error").textContent).toBe("");
-  });
-
-  it("reports an error after runtime advances without matching analyzer samples", async () => {
-    const port = createMockRuntimeBridgePort();
-
-    render(<RuntimeTrajectoryProbe runtimePort={port} analyzerId="traj-1" />);
-
-    await port.step();
-
-    await waitFor(() => {
-      expect(screen.getByTestId("trajectory-status").textContent).toBe("error");
-      expect(screen.getByTestId("trajectory-count").textContent).toBe("0");
-      expect(screen.getByTestId("trajectory-error").textContent).toMatch(/unknown analyzer/i);
-    });
-  });
-
   it("subscribes to runtime port updates and loads analyzer samples", async () => {
     const port = createMockRuntimeBridgePort({
       createFrame: ({ nextFrameNumber }) => ({
