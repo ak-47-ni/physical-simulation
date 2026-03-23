@@ -6,6 +6,7 @@ import {
   createUserPolygonEntity,
 } from "../../../../packages/scene-schema/src";
 import {
+  applyRuntimeBridgeStatusSnapshot,
   applyRuntimeFrame,
   createMockRuntimeBridgePort,
   createCompileRequestFromScene,
@@ -77,6 +78,51 @@ describe("runtimeBridge", () => {
           acceleration: { x: 0, y: -9.8 },
         },
       ],
+    });
+  });
+
+  it("maps a runtime status snapshot into bridge state metadata and current frame", () => {
+    const state = applyRuntimeBridgeStatusSnapshot(createInitialRuntimeBridgeState(), {
+      status: "paused",
+      currentFrame: createRuntimeFramePayload({
+        frameNumber: 7,
+        entities: [
+          {
+            entityId: "block-1",
+            position: { x: 18, y: 24 },
+            rotation: 0.25,
+            velocity: { x: 3, y: -2 },
+            acceleration: { x: 0, y: -9.8 },
+          },
+        ],
+      }),
+      currentTimeSeconds: 1.4,
+      timeScale: 0.5,
+      dirtyScopes: ["analysis", "physics"],
+      rebuildRequired: true,
+      canResume: false,
+      blockReason: "rebuild-required",
+    });
+
+    expect(state).toMatchObject({
+      status: "paused",
+      currentTimeSeconds: 1.4,
+      timeScale: 0.5,
+      dirtyScopes: ["analysis", "physics"],
+      rebuildRequired: true,
+      canResume: false,
+      blockReason: "rebuild-required",
+      currentFrame: {
+        frameNumber: 7,
+        entities: [
+          {
+            id: "block-1",
+            transform: { x: 18, y: 24, rotation: 0.25 },
+            velocity: { x: 3, y: -2 },
+            acceleration: { x: 0, y: -9.8 },
+          },
+        ],
+      },
     });
   });
 

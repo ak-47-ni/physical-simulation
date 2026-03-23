@@ -50,6 +50,17 @@ export type RuntimeBridgeState = {
   blockReason: RuntimeBridgeBlockReason;
 };
 
+export type RuntimeBridgeStatusSnapshot = {
+  status: RuntimeBridgeStatus;
+  currentFrame: RuntimeFramePayload | null;
+  currentTimeSeconds: number;
+  timeScale: number;
+  dirtyScopes: DirtyEditScope[];
+  rebuildRequired: boolean;
+  canResume: boolean;
+  blockReason: RuntimeBridgeBlockReason;
+};
+
 export type RuntimeBridgePortSnapshot = {
   bridge: RuntimeBridgeState;
   lastCompileRequest: RuntimeCompileRequest | null;
@@ -129,6 +140,31 @@ export function applyRuntimeFrame(
       })),
     },
   };
+}
+
+export function applyRuntimeBridgeStatusSnapshot(
+  state: RuntimeBridgeState,
+  snapshot: RuntimeBridgeStatusSnapshot,
+): RuntimeBridgeState {
+  const nextState = {
+    ...state,
+    status: snapshot.status,
+    currentTimeSeconds: snapshot.currentTimeSeconds,
+    timeScale: snapshot.timeScale,
+    dirtyScopes: [...snapshot.dirtyScopes],
+    rebuildRequired: snapshot.rebuildRequired,
+    canResume: snapshot.canResume,
+    blockReason: snapshot.blockReason,
+  };
+
+  if (!snapshot.currentFrame) {
+    return {
+      ...nextState,
+      currentFrame: null,
+    };
+  }
+
+  return applyRuntimeFrame(nextState, snapshot.currentFrame);
 }
 
 export function markRuntimeBridgeSceneDirty(
