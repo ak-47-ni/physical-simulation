@@ -116,4 +116,79 @@ describe("App runtime features", () => {
       expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("132px");
     });
   });
+
+  it("continues advancing workspace positions after starting runtime", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "60" } });
+
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    expect(ball.style.left).toBe("132px");
+
+    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+
+    await waitFor(() => {
+      expect(ball.style.left).not.toBe("132px");
+    });
+
+    const firstRunningPosition = ball.style.left;
+
+    await waitFor(() => {
+      expect(ball.style.left).not.toBe(firstRunningPosition);
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+  });
+
+  it("freezes the visible runtime position after pausing playback", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "60" } });
+
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+
+    await waitFor(() => {
+      expect(ball.style.left).not.toBe("132px");
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+
+    const pausedPosition = ball.style.left;
+
+    await new Promise((resolve) => {
+      globalThis.setTimeout(resolve, 80);
+    });
+
+    expect(ball.style.left).toBe(pausedPosition);
+  });
+
+  it("restores the authored workspace position after resetting from playback", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "60" } });
+
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+
+    await waitFor(() => {
+      expect(ball.style.left).not.toBe("132px");
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^reset$/i }));
+
+    await waitFor(() => {
+      expect(ball.style.left).toBe("132px");
+      expect(ball.style.top).toBe("176px");
+    });
+  });
 });

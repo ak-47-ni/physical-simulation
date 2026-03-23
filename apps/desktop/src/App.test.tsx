@@ -288,6 +288,8 @@ describe("App selection sync", () => {
     expect(
       screen.getByText("Playback running. Move, placement, and constraint editing are temporarily locked."),
     ).toBeDefined();
+
+    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
   });
 
   it("blocks placement but still allows selection while the runtime is running", async () => {
@@ -304,5 +306,7 @@ describe("App selection sync", () => {
     expect(screen.getByTestId("scene-tree-item-board-1").getAttribute("data-selected")).toBe(
       "true",
     );
+
+    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
   });
 });

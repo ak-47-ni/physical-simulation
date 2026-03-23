@@ -38,6 +38,7 @@ import {
 import { createDesktopRuntimeBridgePort } from "./state/desktopRuntimeBridgePort";
 import { createRuntimeCompileRequestFromEditorState } from "./state/runtimeCompileRequest";
 import { useEditorHotkeys } from "./state/useEditorHotkeys";
+import { useRuntimePlaybackLoop } from "./state/useRuntimePlaybackLoop";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import { projectRuntimeSceneEntities } from "./workspace/runtimeSceneView";
 import type { EditorTool } from "./workspace/tools";
@@ -170,6 +171,11 @@ export function App() {
   }, [entities]);
 
   useEffect(() => runtimePort.subscribe(setRuntimeSnapshot), [runtimePort]);
+
+  useRuntimePlaybackLoop({
+    runtimePort,
+    snapshot: runtimeSnapshot,
+  });
 
   useEffect(() => {
     void runtimePort.compile(
