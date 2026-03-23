@@ -16,6 +16,7 @@ export type RuntimeBridgeCommandAction =
   | "compile"
   | "start"
   | "pause"
+  | "tick"
   | "step"
   | "reset"
   | "set-time-scale";
@@ -84,6 +85,7 @@ export type RuntimeBridgePort = {
   compile: (request: RuntimeCompileRequest) => Promise<RuntimeBridgePortSnapshot>;
   start: () => Promise<RuntimeBridgePortSnapshot>;
   pause: () => Promise<RuntimeBridgePortSnapshot>;
+  tick: () => Promise<RuntimeBridgePortSnapshot>;
   step: () => Promise<RuntimeBridgePortSnapshot>;
   reset: () => Promise<RuntimeBridgePortSnapshot>;
   setTimeScale: (timeScale: number) => Promise<RuntimeBridgePortSnapshot>;
@@ -220,6 +222,14 @@ export function stepRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState
   });
 }
 
+export function tickRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState {
+  if (state.status !== "running") {
+    return clearRuntimeBridgeFeedback(state);
+  }
+
+  return stepRuntimeBridge(state);
+}
+
 export function resetRuntimeBridge(_state: RuntimeBridgeState): RuntimeBridgeState {
   return createInitialRuntimeBridgeState();
 }
@@ -354,6 +364,42 @@ export function createMockRuntimeBridgePort(
         ...currentSnapshot,
         bridge: pauseRuntimeBridge(currentSnapshot.bridge),
       })),
+    tick: async () =>
+      update((currentSnapshot) => {
+        let bridge = tickRuntimeBridge(currentSnapshot.bridge);
+
+        if (currentSnapshot.bridge.status !== "running") {
+          return {
+            ...currentSnapshot,
+            bridge,
+          };
+        }
+
+        const nextFrameNumber = (bridge.currentFrame?.frameNumber ?? 0) + 1;
+        const frame =
+          options.createFrame?.({
+            ...currentSnapshot,
+            bridge,
+            nextFrameNumber,
+          }) ??
+          {
+            frameNumber: nextFrameNumber,
+            entities: [],
+          };
+
+        bridge = applyRuntimeFrame(bridge, frame);
+        trajectorySamplesByAnalyzer =
+          options.createTrajectorySamples?.({
+            bridge,
+            frame,
+            currentSamplesByAnalyzer: cloneTrajectorySampleMap(trajectorySamplesByAnalyzer),
+          }) ?? trajectorySamplesByAnalyzer;
+
+        return {
+          ...currentSnapshot,
+          bridge,
+        };
+      }),
     step: async () =>
       update((currentSnapshot) => {
         let bridge = stepRuntimeBridge(currentSnapshot.bridge);

@@ -244,6 +244,62 @@ describe("runtimeBridge", () => {
     });
   });
 
+  it("ticks the mock runtime bridge port only while running and preserves the compile request", async () => {
+    const scene = createEmptySceneDocument();
+    const request = createCompileRequestFromScene(scene, ["analysis"]);
+    const port = createMockRuntimeBridgePort({
+      createFrame: ({ nextFrameNumber }) =>
+        createRuntimeFramePayload({
+          frameNumber: nextFrameNumber,
+          entities: [
+            {
+              entityId: "probe-1",
+              position: { x: nextFrameNumber * 2, y: 4 },
+              rotation: 0,
+              velocity: { x: 2, y: 0 },
+            },
+          ],
+        }),
+    });
+
+    await port.compile(request);
+
+    const idleTick = await port.tick();
+    expect(idleTick.bridge.currentFrame).toBeNull();
+    expect(idleTick.bridge.currentTimeSeconds).toBe(0);
+    expect(idleTick.lastCompileRequest).toEqual(request);
+
+    await port.start();
+    const runningTick = await port.tick();
+
+    expect(runningTick.bridge.status).toBe("running");
+    expect(runningTick.bridge.currentTimeSeconds).toBeCloseTo(1 / 60, 5);
+    expect(runningTick.bridge.currentFrame).toEqual({
+      frameNumber: 1,
+      entities: [
+        {
+          id: "probe-1",
+          transform: {
+            x: 2,
+            y: 4,
+            rotation: 0,
+          },
+          velocity: { x: 2, y: 0 },
+          acceleration: undefined,
+        },
+      ],
+    });
+    expect(runningTick.lastCompileRequest).toEqual(request);
+
+    await port.pause();
+    const pausedTick = await port.tick();
+
+    expect(pausedTick.bridge.status).toBe("paused");
+    expect(pausedTick.bridge.currentTimeSeconds).toBeCloseTo(1 / 60, 5);
+    expect(pausedTick.bridge.currentFrame?.frameNumber).toBe(1);
+    expect(pausedTick.lastCompileRequest).toEqual(request);
+  });
+
   it("reads mock trajectory samples by analyzer id and clears them on reset", async () => {
     const scene = createEmptySceneDocument();
     const request = createCompileRequestFromScene(scene, ["analysis"]);

@@ -50,7 +50,7 @@ export function createDesktopRuntimeBridgePort(
   }
 
   function publishCommandFailure(
-    action: "compile" | "start" | "pause" | "step" | "reset" | "set-time-scale",
+    action: "compile" | "start" | "pause" | "tick" | "step" | "reset" | "set-time-scale",
     error: unknown,
   ): never {
     const message = readRuntimeBridgeErrorMessage(error);
@@ -82,6 +82,8 @@ export function createDesktopRuntimeBridgePort(
           ? "start"
           : command === "pause_runtime"
             ? "pause"
+            : command === "tick_runtime"
+              ? "tick"
             : command === "step_runtime"
               ? "step"
               : command === "reset_runtime"
@@ -127,6 +129,7 @@ export function createDesktopRuntimeBridgePort(
     },
     start: async () => runStatusCommand("start_runtime"),
     pause: async () => runStatusCommand("pause_runtime"),
+    tick: async () => runStatusCommand("tick_runtime"),
     step: async () => runStatusCommand("step_runtime"),
     reset: async () => runStatusCommand("reset_runtime"),
     setTimeScale: async (timeScale) =>
