@@ -511,4 +511,402 @@ describe("WorkspaceCanvas", () => {
     expect(pointPicks).toEqual([{ x: 280, y: 220 }]);
     expect(selectedEntityIds).toEqual([]);
   });
+
+  it("renders display entities separately from authoring entities", () => {
+    const state = createInitialEditorState();
+
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        displayEntities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 236,
+            y: 288,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        entities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={state}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    expect(ball.style.left).toBe("236px");
+    expect(ball.style.top).toBe("288px");
+  });
+
+  it("renders spring overlays from projected display entity centers", () => {
+    render(
+      <WorkspaceCanvas
+        constraints={[
+          {
+            id: "spring-1",
+            kind: "spring",
+            entityAId: "ball-1",
+            entityBId: "board-1",
+            restLength: 236,
+            stiffness: 32,
+          },
+        ]}
+        display={createDisplaySettings()}
+        displayEntities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 236,
+            y: 288,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+          {
+            id: "board-1",
+            kind: "board",
+            label: "Board 1",
+            x: 400,
+            y: 262,
+            width: 120,
+            height: 18,
+            mass: 5,
+            friction: 0.42,
+            restitution: 0.18,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        entities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+          {
+            id: "board-1",
+            kind: "board",
+            label: "Board 1",
+            x: 320,
+            y: 260,
+            width: 120,
+            height: 18,
+            mass: 5,
+            friction: 0.42,
+            restitution: 0.18,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={createInitialEditorState()}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    const spring = screen.getByTestId("scene-constraint-spring-spring-1") as HTMLElement;
+
+    expect(spring.style.left).toBe("260px");
+    expect(spring.style.top).toBe("312px");
+  });
+
+  it("keeps track overlays visible while attached entities are projected", () => {
+    render(
+      <WorkspaceCanvas
+        constraints={[
+          {
+            id: "track-1",
+            kind: "track",
+            entityId: "ball-1",
+            origin: { x: 144, y: 204 },
+            axis: { x: 168, y: 44 },
+          },
+        ]}
+        display={createDisplaySettings()}
+        displayEntities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 236,
+            y: 288,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        entities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={createInitialEditorState()}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    expect(screen.getByTestId("scene-constraint-track-track-1")).toBeDefined();
+    expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("236px");
+  });
+
+  it("keeps labels and lock markers while rendering projected runtime entities", () => {
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        displayEntities={[
+          {
+            id: "board-1",
+            kind: "board",
+            label: "Ramp",
+            x: 400,
+            y: 262,
+            width: 148,
+            height: 24,
+            mass: 5,
+            friction: 0.42,
+            restitution: 0.18,
+            locked: true,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        entities={[
+          {
+            id: "board-1",
+            kind: "board",
+            label: "Ramp",
+            x: 320,
+            y: 260,
+            width: 148,
+            height: 24,
+            mass: 5,
+            friction: 0.42,
+            restitution: 0.18,
+            locked: true,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={createInitialEditorState()}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    const board = screen.getByTestId("scene-entity-board-1") as HTMLElement;
+
+    expect(board.style.left).toBe("400px");
+    expect(board.style.top).toBe("262px");
+    expect(board.textContent).toContain("Ramp");
+    expect(screen.getByTestId("scene-entity-lock-board-1")).toBeDefined();
+  });
+
+  it("blocks dragging bodies while authoring is locked", () => {
+    const moves: Array<{ id: string; x: number; y: number }> = [];
+
+    render(
+      <WorkspaceCanvas
+        authoringLocked
+        display={createDisplaySettings()}
+        entities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={(id, position) => {
+          moves.push({ id, ...position });
+        }}
+        state={createInitialEditorState()}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    fireEvent.mouseDown(screen.getByTestId("scene-entity-ball-1"), { clientX: 120, clientY: 180 });
+    fireEvent.mouseMove(window, { clientX: 180, clientY: 240 });
+    fireEvent.mouseUp(window);
+
+    expect(moves).toEqual([]);
+  });
+
+  it("blocks place-body stage clicks while authoring is locked", () => {
+    const created: Array<{ x: number; y: number }> = [];
+
+    render(
+      <WorkspaceCanvas
+        authoringLocked
+        display={createDisplaySettings()}
+        entities={[]}
+        onCreateEntity={(position) => {
+          created.push(position);
+        }}
+        onMoveEntity={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-body",
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 248, clientY: 204 });
+
+    expect(created).toEqual([]);
+  });
+
+  it("keeps selection available and blocks constraint picks while authoring is locked", () => {
+    const entityPicks: string[] = [];
+    const selectedEntityIds: string[] = [];
+
+    render(
+      <WorkspaceCanvas
+        authoringLocked
+        constraintPlacement={{
+          anchorEntityId: null,
+          hint: "Select first body for the spring",
+          kind: "spring",
+          mode: "pick-entity",
+        }}
+        display={createDisplaySettings()}
+        entities={[
+          {
+            id: "ball-1",
+            kind: "ball",
+            label: "Ball 1",
+            x: 120,
+            y: 180,
+            radius: 24,
+            mass: 1,
+            friction: 0.12,
+            restitution: 0.82,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onPlaceConstraintEntity={(entityId) => {
+          entityPicks.push(entityId);
+        }}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-constraint" as never,
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={(entityId) => {
+          selectedEntityIds.push(entityId);
+        }}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+
+    expect(entityPicks).toEqual([]);
+    expect(selectedEntityIds).toEqual(["ball-1"]);
+  });
+
+  it("shows a playback lock hint while authoring is locked", () => {
+    render(
+      <WorkspaceCanvas
+        authoringLocked
+        display={createDisplaySettings()}
+        entities={[]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={createInitialEditorState()}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    expect(
+      screen.getByText("Playback running. Move, placement, and constraint editing are temporarily locked."),
+    ).toBeDefined();
+  });
 });

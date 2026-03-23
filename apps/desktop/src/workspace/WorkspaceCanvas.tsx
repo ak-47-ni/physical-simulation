@@ -13,9 +13,11 @@ type ConstraintPlacementState = {
 };
 
 type WorkspaceCanvasProps = {
+  authoringLocked?: boolean;
   constraintPlacement?: ConstraintPlacementState | null;
   constraints?: EditorConstraint[];
   display: SceneDisplaySettings;
+  displayEntities?: EditorSceneEntity[];
   entities: EditorSceneEntity[];
   onCancelPlacement?: () => void;
   onCreateEntity: (position: { x: number; y: number }) => void;
@@ -53,6 +55,9 @@ const actionButtonStyle: CSSProperties = {
   padding: "8px 12px",
   cursor: "pointer",
 };
+
+const authoringLockMessage =
+  "Playback running. Move, placement, and constraint editing are temporarily locked.";
 
 function getEntityVisualStyle(
   entity: EditorSceneEntity,
@@ -182,9 +187,11 @@ function getForceVector(entity: EditorSceneEntity): { dx: number; dy: number } |
 
 export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   const {
+    authoringLocked = false,
     constraintPlacement,
     constraints = [],
     display,
+    displayEntities,
     entities,
     onCancelPlacement,
     onCreateEntity,
@@ -197,6 +204,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     onToolChange,
   } = props;
   const [dragSession, setDragSession] = useState<DragSession | null>(null);
+  const renderedEntities = displayEntities ?? entities;
 
   useEffect(() => {
     if (!dragSession) {
@@ -229,7 +237,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   }, [dragSession, onMoveEntity]);
 
   function beginEntityDrag(entity: EditorSceneEntity, event: MouseEvent<HTMLButtonElement>) {
-    if (state.activeTool !== "select") {
+    if (authoringLocked || state.activeTool !== "select") {
       return;
     }
 
@@ -254,6 +262,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       y: Math.round(event.clientY - stageBounds.top),
     };
 
+    if (authoringLocked) {
+      return;
+    }
+
     if (state.activeTool === "place-body") {
       onCreateEntity(position);
       return;
@@ -265,6 +277,11 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   }
 
   function handleEntityClick(entityId: string) {
+    if (authoringLocked) {
+      onSelectEntity(entityId);
+      return;
+    }
+
     if (state.activeTool === "place-constraint" && constraintPlacement?.mode === "pick-entity") {
       onPlaceConstraintEntity?.(entityId);
       return;
@@ -274,7 +291,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   }
 
   function getEntityById(entityId: string | null) {
-    return entityId ? entities.find((entity) => entity.id === entityId) ?? null : null;
+    return entityId ? renderedEntities.find((entity) => entity.id === entityId) ?? null : null;
   }
 
   function renderConstraint(constraint: EditorConstraint) {
@@ -341,6 +358,11 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           </button>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {authoringLocked ? (
+            <span style={{ color: "#a04b00", fontSize: "13px", fontWeight: 600 }}>
+              {authoringLockMessage}
+            </span>
+          ) : null}
           {constraintPlacement ? (
             <>
               <span style={{ color: "#516276", fontSize: "13px" }}>{constraintPlacement.hint}</span>
@@ -383,7 +405,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
         />
 
         {display.showVelocityVectors
-          ? entities.map((entity) => {
+          ? renderedEntities.map((entity) => {
               const vector = getVelocityVector(entity);
 
               if (!vector) {
@@ -401,7 +423,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           : null}
 
         {display.showForceVectors
-          ? entities.map((entity) => {
+          ? renderedEntities.map((entity) => {
               const vector = getForceVector(entity);
 
               if (!vector) {
@@ -420,7 +442,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
 
         {constraints.map(renderConstraint)}
 
-        {entities.map((entity) => (
+        {renderedEntities.map((entity) => (
           <button
             key={entity.id}
             aria-label={`Select ${entity.label}`}

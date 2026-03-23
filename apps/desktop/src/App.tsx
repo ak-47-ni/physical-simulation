@@ -39,6 +39,7 @@ import { createDesktopRuntimeBridgePort } from "./state/desktopRuntimeBridgePort
 import { createRuntimeCompileRequestFromEditorState } from "./state/runtimeCompileRequest";
 import { useEditorHotkeys } from "./state/useEditorHotkeys";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
+import { projectRuntimeSceneEntities } from "./workspace/runtimeSceneView";
 import type { EditorTool } from "./workspace/tools";
 
 const GRAVITY_ACCELERATION = 9.8;
@@ -310,6 +311,11 @@ export function App() {
   const selectedEntity = entities.find((entity) => entity.id === editorState.selectedEntityId) ?? null;
   const selectedConstraint =
     constraints.find((constraint) => constraint.id === editorState.selectedConstraintId) ?? null;
+  const displayEntities = projectRuntimeSceneEntities({
+    editorEntities: entities,
+    runtimeFrame: runtimeSnapshot.bridge.currentFrame,
+  });
+  const authoringLocked = runtimeSnapshot.bridge.status === "running";
 
   function handleDuplicateSelectedEntity() {
     if (!selectedEntity) {
@@ -594,9 +600,11 @@ export function App() {
     >
       <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr) auto", gap: "14px" }}>
         <WorkspaceCanvas
+          authoringLocked={authoringLocked}
           constraintPlacement={constraintPlacement}
           constraints={constraints}
           display={displaySettings}
+          displayEntities={displayEntities}
           entities={entities}
           onCancelPlacement={handleCancelConstraintPlacement}
           onCreateEntity={handleCreateEntity}
