@@ -16,6 +16,8 @@ describe("RuntimeStatusBanner", () => {
           blockReason: null,
           lastErrorMessage: "compile failed: spring endpoint missing",
           lastBlockedAction: null,
+          playbackMode: "realtime",
+          canSeek: false,
         }}
       />,
     );
@@ -31,6 +33,8 @@ describe("RuntimeStatusBanner", () => {
           blockReason: null,
           lastErrorMessage: null,
           lastBlockedAction: null,
+          playbackMode: "realtime",
+          canSeek: false,
         }}
       />,
     );
@@ -46,6 +50,8 @@ describe("RuntimeStatusBanner", () => {
           blockReason: "rebuild-required",
           lastErrorMessage: null,
           lastBlockedAction: null,
+          playbackMode: "realtime",
+          canSeek: false,
         }}
       />,
     );
@@ -63,6 +69,8 @@ describe("RuntimeStatusBanner", () => {
           blockReason: null,
           lastErrorMessage: null,
           lastBlockedAction: null,
+          playbackMode: "realtime",
+          canSeek: false,
         }}
       />,
     );
@@ -80,12 +88,33 @@ describe("RuntimeStatusBanner", () => {
           blockReason: null,
           lastErrorMessage: null,
           lastBlockedAction: null,
+          playbackMode: "realtime",
+          canSeek: false,
         }}
       />,
     );
 
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
       "Runtime is paused. Use Step for one frame or Start to continue.",
+    );
+  });
+
+  it("shows cached-playback preparation guidance while frames are building", () => {
+    render(
+      <RuntimeStatusBanner
+        runtime={{
+          status: "preparing",
+          blockReason: null,
+          lastErrorMessage: null,
+          lastBlockedAction: null,
+          playbackMode: "precomputed",
+          canSeek: false,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
+      "Preparing cached playback. Frames are being built before scrubbing unlocks.",
     );
   });
 });

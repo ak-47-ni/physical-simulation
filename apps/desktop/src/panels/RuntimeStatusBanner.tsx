@@ -4,6 +4,7 @@ import type {
   RuntimeBridgeBlockReason,
   RuntimeBridgeBlockedAction,
   RuntimeBridgeStatus,
+  RuntimePlaybackMode,
 } from "../state/runtimeBridge";
 
 type RuntimeStatusBannerProps = {
@@ -12,6 +13,8 @@ type RuntimeStatusBannerProps = {
     blockReason: RuntimeBridgeBlockReason;
     lastErrorMessage: string | null;
     lastBlockedAction: RuntimeBridgeBlockedAction | null;
+    playbackMode: RuntimePlaybackMode;
+    canSeek: boolean;
   };
 };
 
@@ -47,17 +50,30 @@ function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
     };
   }
 
+  if (runtime.status === "preparing") {
+    return {
+      tone: "info",
+      message: "Preparing cached playback. Frames are being built before scrubbing unlocks.",
+    };
+  }
+
   if (runtime.status === "running") {
     return {
       tone: "info",
-      message: "Runtime is playing. Motion and live samples should keep updating.",
+      message:
+        runtime.playbackMode === "precomputed"
+          ? "Cached playback is running. Pause to scrub or enter a target time."
+          : "Runtime is playing. Motion and live samples should keep updating.",
     };
   }
 
   if (runtime.status === "paused") {
     return {
       tone: "info",
-      message: "Runtime is paused. Use Step for one frame or Start to continue.",
+      message:
+        runtime.playbackMode === "precomputed" && runtime.canSeek
+          ? "Cached playback is paused. Drag the timeline or enter a time to inspect a moment."
+          : "Runtime is paused. Use Step for one frame or Start to continue.",
     };
   }
 

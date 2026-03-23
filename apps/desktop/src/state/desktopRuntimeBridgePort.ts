@@ -4,8 +4,10 @@ import {
   readRuntimeBridgeErrorMessage,
   setRuntimeBridgeBlockedAction,
   setRuntimeBridgeErrorMessage,
+  type RuntimePlaybackConfig,
   type RuntimeBridgePort,
   type RuntimeBridgePortSnapshot,
+  type RuntimeBridgeCommandAction,
   type RuntimeBridgeStatusSnapshot,
   type RuntimeTrajectorySample,
 } from "./runtimeBridge";
@@ -50,7 +52,7 @@ export function createDesktopRuntimeBridgePort(
   }
 
   function publishCommandFailure(
-    action: "compile" | "start" | "pause" | "tick" | "step" | "reset" | "set-time-scale",
+    action: RuntimeBridgeCommandAction,
     error: unknown,
   ): never {
     const message = readRuntimeBridgeErrorMessage(error);
@@ -77,20 +79,7 @@ export function createDesktopRuntimeBridgePort(
     try {
       status = await invoke<RuntimeBridgeStatusSnapshot>(command, payload);
     } catch (error) {
-      return publishCommandFailure(
-        command === "start_runtime"
-          ? "start"
-          : command === "pause_runtime"
-            ? "pause"
-            : command === "tick_runtime"
-              ? "tick"
-            : command === "step_runtime"
-              ? "step"
-              : command === "reset_runtime"
-                ? "reset"
-                : "set-time-scale",
-        error,
-      );
+      return publishCommandFailure(readRuntimeCommandAction(command), error);
     }
 
     const currentSnapshot = snapshot;
@@ -134,9 +123,35 @@ export function createDesktopRuntimeBridgePort(
     reset: async () => runStatusCommand("reset_runtime"),
     setTimeScale: async (timeScale) =>
       runStatusCommand("set_runtime_time_scale", { timeScale }),
+    setPlaybackConfig: async (config: RuntimePlaybackConfig) =>
+      runStatusCommand("set_runtime_playback_config", { config }),
+    seek: async (timeSeconds) => runStatusCommand("seek_runtime", { timeSeconds }),
     readTrajectorySamples: async (analyzerId) =>
       invoke<RuntimeTrajectorySample[]>("read_trajectory_samples", { analyzerId }),
   };
+}
+
+function readRuntimeCommandAction(command: string): RuntimeBridgeCommandAction {
+  switch (command) {
+    case "start_runtime":
+      return "start";
+    case "pause_runtime":
+      return "pause";
+    case "tick_runtime":
+      return "tick";
+    case "step_runtime":
+      return "step";
+    case "reset_runtime":
+      return "reset";
+    case "set_runtime_time_scale":
+      return "set-time-scale";
+    case "set_runtime_playback_config":
+      return "set-playback-config";
+    case "seek_runtime":
+      return "seek";
+    default:
+      return "set-time-scale";
+  }
 }
 
 function resolveTauriInvoke(): RuntimeBridgeInvoke | null {

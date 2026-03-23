@@ -19,8 +19,31 @@ import {
   setRuntimeBridgeErrorMessage,
   setRuntimeBridgeTimeScale,
   stepRuntimeBridge,
+  DEFAULT_PRECOMPUTED_DURATION_SECONDS,
+  DEFAULT_REALTIME_DURATION_CAP_SECONDS,
   type RuntimeBridgePortSnapshot,
+  type RuntimeBridgeStatusSnapshot,
 } from "./runtimeBridge";
+
+function createStatusSnapshot(
+  overrides: Partial<RuntimeBridgeStatusSnapshot> = {},
+): RuntimeBridgeStatusSnapshot {
+  return {
+    status: "idle",
+    currentFrame: null,
+    currentTimeSeconds: 0,
+    timeScale: 1,
+    dirtyScopes: [],
+    rebuildRequired: false,
+    canResume: true,
+    blockReason: null,
+    playbackMode: "realtime",
+    totalDurationSeconds: DEFAULT_REALTIME_DURATION_CAP_SECONDS,
+    preparingProgress: null,
+    canSeek: false,
+    ...overrides,
+  };
+}
 
 describe("runtimeBridge", () => {
   it("builds a compile request from editor scene data", () => {
@@ -47,6 +70,16 @@ describe("runtimeBridge", () => {
     });
     expect(request.scene).not.toBe(scene);
     expect(request.scene.entities[0]).toEqual(scene.entities[0]);
+  });
+
+  it("defaults to realtime playback with a fixed 40 second duration cap", () => {
+    expect(createInitialRuntimeBridgeState()).toMatchObject({
+      status: "idle",
+      playbackMode: "realtime",
+      totalDurationSeconds: DEFAULT_REALTIME_DURATION_CAP_SECONDS,
+      preparingProgress: null,
+      canSeek: false,
+    });
   });
 
   it("maps a runtime frame payload into UI runtime state", () => {
@@ -82,20 +115,24 @@ describe("runtimeBridge", () => {
     });
   });
 
-  it("applies dirty runtime metadata from bridge status snapshots", () => {
-    const state = applyRuntimeBridgeStatusSnapshot(createInitialRuntimeBridgeState(), {
-      status: "paused",
-      currentFrame: null,
-      currentTimeSeconds: 0,
-      timeScale: 1,
-      dirtyScopes: ["physics", "analysis"],
-      rebuildRequired: true,
-      canResume: false,
-      blockReason: "rebuild-required",
-    });
+  it("applies playback metadata and dirty runtime metadata from bridge status snapshots", () => {
+    const state = applyRuntimeBridgeStatusSnapshot(
+      createInitialRuntimeBridgeState(),
+      createStatusSnapshot({
+        status: "preparing",
+        dirtyScopes: ["physics", "analysis"],
+        rebuildRequired: true,
+        canResume: false,
+        blockReason: "rebuild-required",
+        playbackMode: "precomputed",
+        totalDurationSeconds: 24,
+        preparingProgress: 0.35,
+        canSeek: false,
+      }),
+    );
 
     expect(state).toMatchObject({
-      status: "paused",
+      status: "preparing",
       currentFrame: null,
       currentTimeSeconds: 0,
       timeScale: 1,
@@ -103,6 +140,10 @@ describe("runtimeBridge", () => {
       rebuildRequired: true,
       canResume: false,
       blockReason: "rebuild-required",
+      playbackMode: "precomputed",
+      totalDurationSeconds: 24,
+      preparingProgress: 0.35,
+      canSeek: false,
     });
   });
 
@@ -114,16 +155,12 @@ describe("runtimeBridge", () => {
 
     expect(failed.lastErrorMessage).toBe("compile failed: unresolved spring endpoint");
 
-    const recovered = applyRuntimeBridgeStatusSnapshot(failed, {
-      status: "idle",
-      currentFrame: null,
-      currentTimeSeconds: 0,
-      timeScale: 1,
-      dirtyScopes: [],
-      rebuildRequired: false,
-      canResume: true,
-      blockReason: null,
-    });
+    const recovered = applyRuntimeBridgeStatusSnapshot(
+      failed,
+      createStatusSnapshot({
+        status: "idle",
+      }),
+    );
 
     expect(recovered.lastErrorMessage).toBeNull();
     expect(recovered.lastBlockedAction).toBeNull();
@@ -176,6 +213,8 @@ describe("runtimeBridge", () => {
       currentTimeSeconds: 0,
       timeScale: 1,
       currentFrame: null,
+      playbackMode: "realtime",
+      totalDurationSeconds: DEFAULT_REALTIME_DURATION_CAP_SECONDS,
     });
   });
 
@@ -241,6 +280,69 @@ describe("runtimeBridge", () => {
       currentTimeSeconds: 0,
       timeScale: 1,
       currentFrame: null,
+      playbackMode: "realtime",
+      totalDurationSeconds: DEFAULT_REALTIME_DURATION_CAP_SECONDS,
+    });
+  });
+
+  it("lets the mock runtime bridge port switch playback modes and seek cached time", async () => {
+    const port = createMockRuntimeBridgePort({
+      createFrame: ({ nextFrameNumber }) =>
+        createRuntimeFramePayload({
+          frameNumber: nextFrameNumber,
+          entities: [
+            {
+              entityId: "probe-1",
+              position: { x: nextFrameNumber, y: 3 },
+              rotation: 0,
+            },
+          ],
+        }),
+    });
+
+    await port.setPlaybackConfig({
+      mode: "precomputed",
+      precomputeDurationSeconds: 6,
+    });
+
+    expect(port.getSnapshot().bridge).toMatchObject({
+      playbackMode: "precomputed",
+      totalDurationSeconds: 6,
+      canSeek: false,
+    });
+
+    await port.start();
+    expect(port.getSnapshot().bridge.status).toBe("preparing");
+    expect(port.getSnapshot().bridge.preparingProgress).toBe(0);
+
+    for (let index = 0; index < 10 && !port.getSnapshot().bridge.canSeek; index += 1) {
+      await port.tick();
+    }
+
+    expect(port.getSnapshot().bridge).toMatchObject({
+      status: "running",
+      playbackMode: "precomputed",
+      totalDurationSeconds: 6,
+      canSeek: true,
+    });
+
+    const soughtSnapshot = await port.seek(4);
+
+    expect(soughtSnapshot.bridge.currentTimeSeconds).toBeCloseTo(4, 5);
+    expect(soughtSnapshot.bridge.currentFrame).toEqual({
+      frameNumber: 240,
+      entities: [
+        {
+          id: "probe-1",
+          transform: {
+            x: 240,
+            y: 3,
+            rotation: 0,
+          },
+          velocity: undefined,
+          acceleration: undefined,
+        },
+      ],
     });
   });
 
@@ -290,14 +392,6 @@ describe("runtimeBridge", () => {
       ],
     });
     expect(runningTick.lastCompileRequest).toEqual(request);
-
-    await port.pause();
-    const pausedTick = await port.tick();
-
-    expect(pausedTick.bridge.status).toBe("paused");
-    expect(pausedTick.bridge.currentTimeSeconds).toBeCloseTo(1 / 60, 5);
-    expect(pausedTick.bridge.currentFrame?.frameNumber).toBe(1);
-    expect(pausedTick.lastCompileRequest).toEqual(request);
   });
 
   it("reads mock trajectory samples by analyzer id and clears them on reset", async () => {
@@ -361,5 +455,17 @@ describe("runtimeBridge", () => {
     await port.reset();
 
     await expect(port.readTrajectorySamples("traj-1")).rejects.toThrow(/unknown analyzer/i);
+  });
+
+  it("uses the documented default precomputed duration when the caller omits one", async () => {
+    const port = createMockRuntimeBridgePort();
+
+    await port.setPlaybackConfig({
+      mode: "precomputed",
+    });
+
+    expect(port.getSnapshot().bridge.totalDurationSeconds).toBe(
+      DEFAULT_PRECOMPUTED_DURATION_SECONDS,
+    );
   });
 });

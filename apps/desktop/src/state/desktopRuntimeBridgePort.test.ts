@@ -7,6 +7,7 @@ import {
 import {
   createMockRuntimeBridgePort,
   createRuntimeCompileRequest,
+  DEFAULT_REALTIME_DURATION_CAP_SECONDS,
   type RuntimeBridgePortSnapshot,
   type RuntimeBridgeStatusSnapshot,
 } from "./runtimeBridge";
@@ -14,6 +15,26 @@ import {
   createDesktopRuntimeBridgePort,
   type RuntimeBridgeInvoke,
 } from "./desktopRuntimeBridgePort";
+
+function createStatusSnapshot(
+  overrides: Partial<RuntimeBridgeStatusSnapshot> = {},
+): RuntimeBridgeStatusSnapshot {
+  return {
+    status: "idle",
+    currentFrame: null,
+    currentTimeSeconds: 0,
+    timeScale: 1,
+    dirtyScopes: [],
+    rebuildRequired: false,
+    canResume: true,
+    blockReason: null,
+    playbackMode: "realtime",
+    totalDurationSeconds: DEFAULT_REALTIME_DURATION_CAP_SECONDS,
+    preparingProgress: null,
+    canSeek: false,
+    ...overrides,
+  };
+}
 
 describe("desktopRuntimeBridgePort", () => {
   it("returns the provided fallback port when no tauri invoke transport is available", () => {
@@ -29,8 +50,7 @@ describe("desktopRuntimeBridgePort", () => {
 
   it("routes commands through tauri invoke and publishes runtime snapshots", async () => {
     const request = createRuntimeCompileRequest(createEmptySceneDocument(), ["analysis"]);
-    let statusSnapshot: RuntimeBridgeStatusSnapshot = {
-      status: "idle" as const,
+    let statusSnapshot = createStatusSnapshot({
       currentFrame: createRuntimeFramePayload({
         frameNumber: 0,
         entities: [
@@ -41,13 +61,7 @@ describe("desktopRuntimeBridgePort", () => {
           },
         ],
       }),
-      currentTimeSeconds: 0,
-      timeScale: 1,
-      dirtyScopes: [],
-      rebuildRequired: false,
-      canResume: true,
-      blockReason: null,
-    };
+    });
     const commands: string[] = [];
     const invoke: RuntimeBridgeInvoke = async <T>(
       command: string,
@@ -62,16 +76,17 @@ describe("desktopRuntimeBridgePort", () => {
 
       if (command === "set_runtime_time_scale") {
         expect(payload).toEqual({ timeScale: 2 });
-        statusSnapshot = {
+        statusSnapshot = createStatusSnapshot({
           ...statusSnapshot,
+          currentFrame: statusSnapshot.currentFrame,
           timeScale: 2,
-        };
+        });
 
         return statusSnapshot as T;
       }
 
       if (command === "step_runtime") {
-        statusSnapshot = {
+        statusSnapshot = createStatusSnapshot({
           ...statusSnapshot,
           currentFrame: createRuntimeFramePayload({
             frameNumber: 1,
@@ -85,7 +100,8 @@ describe("desktopRuntimeBridgePort", () => {
             ],
           }),
           currentTimeSeconds: 1 / 30,
-        };
+          timeScale: 2,
+        });
 
         return statusSnapshot as T;
       }
@@ -147,6 +163,92 @@ describe("desktopRuntimeBridgePort", () => {
     expect(snapshots).toHaveLength(3);
   });
 
+  it("routes playback-config updates and seek commands through tauri invoke", async () => {
+    let statusSnapshot = createStatusSnapshot();
+    const commands: string[] = [];
+    const invoke: RuntimeBridgeInvoke = async <T>(
+      command: string,
+      payload?: Record<string, unknown>,
+    ) => {
+      commands.push(command);
+
+      if (command === "set_runtime_playback_config") {
+        expect(payload).toEqual({
+          config: {
+            mode: "precomputed",
+            precomputeDurationSeconds: 12,
+          },
+        });
+
+        statusSnapshot = createStatusSnapshot({
+          playbackMode: "precomputed",
+          totalDurationSeconds: 12,
+          canSeek: false,
+        });
+
+        return statusSnapshot as T;
+      }
+
+      if (command === "seek_runtime") {
+        expect(payload).toEqual({ timeSeconds: 4 });
+
+        statusSnapshot = createStatusSnapshot({
+          ...statusSnapshot,
+          status: "paused",
+          currentTimeSeconds: 4,
+          playbackMode: "precomputed",
+          totalDurationSeconds: 12,
+          canSeek: true,
+          currentFrame: createRuntimeFramePayload({
+            frameNumber: 240,
+            entities: [
+              {
+                entityId: "ball-1",
+                position: { x: 240, y: 160 },
+                rotation: 0,
+              },
+            ],
+          }),
+        });
+
+        return statusSnapshot as T;
+      }
+
+      throw new Error(`unexpected command: ${command}`);
+    };
+    const fallbackPort = createMockRuntimeBridgePort();
+    const port = createDesktopRuntimeBridgePort({ fallbackPort, invoke });
+
+    await port.setPlaybackConfig({
+      mode: "precomputed",
+      precomputeDurationSeconds: 12,
+    });
+    const snapshot = await port.seek(4);
+
+    expect(snapshot.bridge).toMatchObject({
+      playbackMode: "precomputed",
+      totalDurationSeconds: 12,
+      currentTimeSeconds: 4,
+      canSeek: true,
+    });
+    expect(snapshot.bridge.currentFrame).toEqual({
+      frameNumber: 240,
+      entities: [
+        {
+          id: "ball-1",
+          transform: {
+            x: 240,
+            y: 160,
+            rotation: 0,
+          },
+          velocity: undefined,
+          acceleration: undefined,
+        },
+      ],
+    });
+    expect(commands).toEqual(["set_runtime_playback_config", "seek_runtime"]);
+  });
+
   it("preserves backend command failures on the runtime snapshot", async () => {
     const request = createRuntimeCompileRequest(createEmptySceneDocument(), ["analysis"]);
     const fallbackPort = createMockRuntimeBridgePort();
@@ -166,8 +268,7 @@ describe("desktopRuntimeBridgePort", () => {
 
   it("routes playback ticks through tauri invoke and preserves the last compile request", async () => {
     const request = createRuntimeCompileRequest(createEmptySceneDocument(), ["analysis"]);
-    let statusSnapshot: RuntimeBridgeStatusSnapshot = {
-      status: "idle",
+    let statusSnapshot = createStatusSnapshot({
       currentFrame: createRuntimeFramePayload({
         frameNumber: 0,
         entities: [
@@ -178,13 +279,7 @@ describe("desktopRuntimeBridgePort", () => {
           },
         ],
       }),
-      currentTimeSeconds: 0,
-      timeScale: 1,
-      dirtyScopes: [],
-      rebuildRequired: false,
-      canResume: true,
-      blockReason: null,
-    };
+    });
     const commands: string[] = [];
     const invoke: RuntimeBridgeInvoke = async <T>(command: string) => {
       commands.push(command);
@@ -194,16 +289,17 @@ describe("desktopRuntimeBridgePort", () => {
       }
 
       if (command === "start_runtime") {
-        statusSnapshot = {
+        statusSnapshot = createStatusSnapshot({
           ...statusSnapshot,
           status: "running",
-        };
+          currentFrame: statusSnapshot.currentFrame,
+        });
 
         return statusSnapshot as T;
       }
 
       if (command === "tick_runtime") {
-        statusSnapshot = {
+        statusSnapshot = createStatusSnapshot({
           ...statusSnapshot,
           status: "running",
           currentFrame: createRuntimeFramePayload({
@@ -218,7 +314,7 @@ describe("desktopRuntimeBridgePort", () => {
             ],
           }),
           currentTimeSeconds: 1 / 60,
-        };
+        });
 
         return statusSnapshot as T;
       }
@@ -253,57 +349,35 @@ describe("desktopRuntimeBridgePort", () => {
     expect(commands).toEqual(["compile_scene", "start_runtime", "tick_runtime"]);
   });
 
-  it("publishes tick command failures with the readable runtime error path", async () => {
-    const request = createRuntimeCompileRequest(createEmptySceneDocument(), ["analysis"]);
-    let started = false;
+  it("publishes readable runtime failures for seek commands", async () => {
     const fallbackPort = createMockRuntimeBridgePort();
     const port = createDesktopRuntimeBridgePort({
       fallbackPort,
       invoke: async <T>(command: string) => {
-        if (command === "compile_scene") {
-          return {
-            status: "idle",
-            currentFrame: null,
-            currentTimeSeconds: 0,
-            timeScale: 1,
-            dirtyScopes: [],
-            rebuildRequired: false,
-            canResume: true,
-            blockReason: null,
-          } as T;
+        if (command === "set_runtime_playback_config") {
+          return createStatusSnapshot({
+            playbackMode: "precomputed",
+            totalDurationSeconds: 8,
+          }) as T;
         }
 
-        if (command === "start_runtime") {
-          started = true;
-
-          return {
-            status: "running",
-            currentFrame: null,
-            currentTimeSeconds: 0,
-            timeScale: 1,
-            dirtyScopes: [],
-            rebuildRequired: false,
-            canResume: true,
-            blockReason: null,
-          } as T;
-        }
-
-        if (command === "tick_runtime" && started) {
-          throw new Error("runtime tick failed: classroom loop stalled");
+        if (command === "seek_runtime") {
+          throw "seek failed: cached playback is not ready";
         }
 
         throw new Error(`unexpected command: ${command}`);
       },
     });
 
-    await port.compile(request);
-    await port.start();
+    await port.setPlaybackConfig({
+      mode: "precomputed",
+      precomputeDurationSeconds: 8,
+    });
 
-    await expect(port.tick()).rejects.toThrow("runtime tick failed: classroom loop stalled");
+    await expect(port.seek(4)).rejects.toThrow("seek failed: cached playback is not ready");
     expect(port.getSnapshot().bridge.lastErrorMessage).toBe(
-      "runtime tick failed: classroom loop stalled",
+      "seek failed: cached playback is not ready",
     );
     expect(port.getSnapshot().bridge.lastBlockedAction).toBeNull();
-    expect(port.getSnapshot().lastCompileRequest).toEqual(request);
   });
 });

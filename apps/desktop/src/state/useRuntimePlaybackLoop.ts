@@ -29,12 +29,15 @@ function cancelBrowserFrame(handle: number) {
   globalThis.clearTimeout(handle);
 }
 
-function shouldPlayRuntime(snapshot: RuntimeBridgePortSnapshot | undefined): boolean {
+function shouldPollRuntime(snapshot: RuntimeBridgePortSnapshot | undefined): boolean {
   if (!snapshot) {
     return false;
   }
 
-  return snapshot.bridge.status === "running" && !snapshot.bridge.rebuildRequired;
+  return (
+    (snapshot.bridge.status === "running" || snapshot.bridge.status === "preparing") &&
+    !snapshot.bridge.rebuildRequired
+  );
 }
 
 function hasPlaybackFeedback(snapshot: RuntimeBridgePortSnapshot): boolean {
@@ -79,7 +82,7 @@ export function useRuntimePlaybackLoop(options: UseRuntimePlaybackLoopOptions = 
 
     const currentSnapshot = runtimePort.getSnapshot();
 
-    if (!shouldPlayRuntime(currentSnapshot) || hasPlaybackFeedback(currentSnapshot)) {
+    if (!shouldPollRuntime(currentSnapshot) || hasPlaybackFeedback(currentSnapshot)) {
       return;
     }
 
@@ -96,7 +99,7 @@ export function useRuntimePlaybackLoop(options: UseRuntimePlaybackLoopOptions = 
 
       if (
         !playbackEnabledRef.current ||
-        !shouldPlayRuntime(nextSnapshot) ||
+        !shouldPollRuntime(nextSnapshot) ||
         hasPlaybackFeedback(nextSnapshot)
       ) {
         return;
@@ -107,7 +110,7 @@ export function useRuntimePlaybackLoop(options: UseRuntimePlaybackLoopOptions = 
   });
 
   useEffect(() => {
-    const shouldPlay = shouldPlayRuntime(options.snapshot) && !hasPlaybackFeedback(options.snapshot);
+    const shouldPlay = shouldPollRuntime(options.snapshot) && !hasPlaybackFeedback(options.snapshot);
 
     playbackEnabledRef.current = shouldPlay;
 
