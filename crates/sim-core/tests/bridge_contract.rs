@@ -106,7 +106,10 @@ fn bridge_contract_snapshot_controls_report_runtime_state_transitions() {
         .expect("scene should compile into an idle snapshot");
     assert_eq!(compiled.status, BridgeStatus::Idle);
     assert_eq!(
-        compiled.current_frame.as_ref().map(|frame| frame.frame_number),
+        compiled
+            .current_frame
+            .as_ref()
+            .map(|frame| frame.frame_number),
         Some(0)
     );
 
@@ -116,22 +119,34 @@ fn bridge_contract_snapshot_controls_report_runtime_state_transitions() {
     assert_eq!(running.status, BridgeStatus::Running);
     assert!(running.can_resume);
 
-    let stepped = bridge.step_snapshot().expect("step should return a stepped snapshot");
+    let stepped = bridge
+        .step_snapshot()
+        .expect("step should return a stepped snapshot");
     assert_eq!(stepped.status, BridgeStatus::Running);
     assert_eq!(
-        stepped.current_frame.as_ref().map(|frame| frame.frame_number),
+        stepped
+            .current_frame
+            .as_ref()
+            .map(|frame| frame.frame_number),
         Some(1)
     );
     assert!(stepped.current_time_seconds > 0.0);
 
-    let paused = bridge.pause_snapshot().expect("pause should return a paused snapshot");
+    let paused = bridge
+        .pause_snapshot()
+        .expect("pause should return a paused snapshot");
     assert_eq!(paused.status, BridgeStatus::Paused);
     assert_eq!(
-        paused.current_frame.as_ref().map(|frame| frame.frame_number),
+        paused
+            .current_frame
+            .as_ref()
+            .map(|frame| frame.frame_number),
         Some(1)
     );
 
-    let reset = bridge.reset_snapshot().expect("reset should return a reset snapshot");
+    let reset = bridge
+        .reset_snapshot()
+        .expect("reset should return a reset snapshot");
     assert_eq!(reset.status, BridgeStatus::Idle);
     assert_eq!(reset.current_time_seconds, 0.0);
     assert_eq!(
@@ -267,7 +282,10 @@ fn bridge_contract_status_snapshot_reports_rebuild_block_after_dirty_edits() {
     assert_eq!(snapshot.status, BridgeStatus::Paused);
     assert!(snapshot.rebuild_required);
     assert!(!snapshot.can_resume);
-    assert_eq!(snapshot.block_reason, Some(BridgeBlockReason::RebuildRequired));
+    assert_eq!(
+        snapshot.block_reason,
+        Some(BridgeBlockReason::RebuildRequired)
+    );
 }
 
 #[test]

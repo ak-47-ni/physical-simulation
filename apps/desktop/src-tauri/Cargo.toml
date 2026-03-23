@@ -10,3 +10,6 @@ tauri = { version = "2", features = ["test"] }
 
 [build-dependencies]
 tauri-build = { version = "2" }
+
+[dev-dependencies]
+serde_json = "1"

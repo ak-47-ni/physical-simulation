@@ -3,6 +3,7 @@ pub mod bridge;
 pub mod constraint;
 pub mod entity;
 pub mod force;
+pub mod playback;
 pub mod runtime;
 pub mod scene;
 pub mod solver;

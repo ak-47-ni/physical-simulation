@@ -67,10 +67,7 @@ pub fn step_bodies(
     enforce_track_bindings(bodies, constraints, &index_by_id);
 }
 
-pub fn project_track_bindings(
-    bodies: &mut [RuntimeBodyState],
-    constraints: &[CompiledConstraint],
-) {
+pub fn project_track_bindings(bodies: &mut [RuntimeBodyState], constraints: &[CompiledConstraint]) {
     let index_by_id = bodies
         .iter()
         .enumerate()
