@@ -1,0 +1,397 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { createEmptySceneDocument } from "../../../../packages/scene-schema/src";
+import {
+  createCompileRequestFromScene,
+  createMockRuntimeBridgePort,
+} from "../state/runtimeBridge";
+import { AnalysisPanel } from "./AnalysisPanel";
+
+afterEach(() => {
+  cleanup();
+});
+
+describe("AnalysisPanel", () => {
+  it("toggles trajectory, vector overlays, and chart visibility", () => {
+    render(<AnalysisPanel />);
+
+    expect(screen.queryByTestId("trajectory-overlay")).toBeNull();
+    expect(screen.queryByTestId("velocity-vector-overlay")).toBeNull();
+    expect(screen.queryByTestId("force-vector-overlay")).toBeNull();
+    expect(screen.queryByTestId("analysis-chart-panel")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /show trajectories/i }));
+    fireEvent.click(screen.getByRole("button", { name: /show velocity vectors/i }));
+    fireEvent.click(screen.getByRole("button", { name: /show force vectors/i }));
+    fireEvent.click(screen.getByRole("button", { name: /open chart panel/i }));
+
+    expect(screen.getByTestId("trajectory-overlay")).toBeDefined();
+    expect(screen.getByTestId("velocity-vector-overlay")).toBeDefined();
+    expect(screen.getByTestId("force-vector-overlay")).toBeDefined();
+    expect(screen.getByTestId("analysis-chart-panel")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /close chart panel/i }));
+
+    expect(screen.queryByTestId("analysis-chart-panel")).toBeNull();
+  });
+
+  it("accepts analyzer samples into the panel state", () => {
+    render(<AnalysisPanel />);
+
+    fireEvent.change(screen.getByLabelText(/sample label/i), {
+      target: { value: "Probe A" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample value/i), {
+      target: { value: "9.81" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample unit/i), {
+      target: { value: "m/s^2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /accept sample/i }));
+
+    expect(screen.getByText("Probe A")).toBeDefined();
+    expect(screen.getByText("9.81 m/s^2")).toBeDefined();
+  });
+
+  it("groups accepted samples by metric and switches the chart metric view", () => {
+    render(<AnalysisPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: /open chart panel/i }));
+
+    expect(screen.getByText("Selected metric: displacement")).toBeDefined();
+    expect(screen.getByText("Samples in view: 0")).toBeDefined();
+
+    fireEvent.change(screen.getByLabelText(/sample metric/i), {
+      target: { value: "velocity" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample label/i), {
+      target: { value: "Probe V1" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample value/i), {
+      target: { value: "3.8" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample unit/i), {
+      target: { value: "m/s" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /accept sample/i }));
+
+    fireEvent.change(screen.getByLabelText(/sample metric/i), {
+      target: { value: "velocity" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample label/i), {
+      target: { value: "Probe V" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample value/i), {
+      target: { value: "4.2" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample unit/i), {
+      target: { value: "m/s" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /accept sample/i }));
+
+    fireEvent.change(screen.getByLabelText(/sample metric/i), {
+      target: { value: "energy" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample label/i), {
+      target: { value: "Probe E" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample value/i), {
+      target: { value: "12.4" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample unit/i), {
+      target: { value: "J" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /accept sample/i }));
+
+    expect(screen.getByText("Velocity samples (2)")).toBeDefined();
+    expect(screen.getByText("Energy samples (1)")).toBeDefined();
+    expect(screen.getByText("Probe V1")).toBeDefined();
+    expect(screen.getByText("Probe V")).toBeDefined();
+    expect(screen.getByText("Probe E")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /view velocity chart/i }));
+
+    expect(screen.getByText("Velocity overview")).toBeDefined();
+    expect(screen.getByText("Latest: 4.2 m/s")).toBeDefined();
+    expect(screen.getByText("Range: 3.8 to 4.2 m/s")).toBeDefined();
+    expect(screen.getByText("Selected metric: velocity")).toBeDefined();
+    expect(screen.getByText("Samples in view: 2")).toBeDefined();
+    expect(screen.getByText("Latest sample: 4.2 m/s")).toBeDefined();
+    expect(screen.getByText("Series points: 2")).toBeDefined();
+    expect(screen.getByText("Key points")).toBeDefined();
+    expect(screen.getByText("Point 1")).toBeDefined();
+    expect(screen.getByText("Delta baseline")).toBeDefined();
+    expect(screen.getByText("+0.4 m/s")).toBeDefined();
+  });
+
+  it("supports controlled overlay display state updates", () => {
+    const displayChanges: Array<{
+      showTrajectories: boolean;
+      showVelocityVectors: boolean;
+      showForceVectors: boolean;
+    }> = [];
+
+    const { rerender } = render(
+      <AnalysisPanel
+        display={{
+          showTrajectories: false,
+          showVelocityVectors: false,
+          showForceVectors: false,
+        }}
+        onDisplayChange={(nextDisplay) => {
+          displayChanges.push(nextDisplay);
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /show trajectories/i }));
+    fireEvent.click(screen.getByRole("button", { name: /show velocity vectors/i }));
+    fireEvent.click(screen.getByRole("button", { name: /show force vectors/i }));
+
+    expect(displayChanges).toEqual([
+      {
+        showTrajectories: true,
+        showVelocityVectors: false,
+        showForceVectors: false,
+      },
+      {
+        showTrajectories: false,
+        showVelocityVectors: true,
+        showForceVectors: false,
+      },
+      {
+        showTrajectories: false,
+        showVelocityVectors: false,
+        showForceVectors: true,
+      },
+    ]);
+
+    rerender(
+      <AnalysisPanel
+        display={{
+          showTrajectories: true,
+          showVelocityVectors: true,
+          showForceVectors: true,
+        }}
+        onDisplayChange={(nextDisplay) => {
+          displayChanges.push(nextDisplay);
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("trajectory-overlay")).toBeDefined();
+    expect(screen.getByTestId("velocity-vector-overlay")).toBeDefined();
+    expect(screen.getByTestId("force-vector-overlay")).toBeDefined();
+  });
+
+  it("supports controlled analysis state updates", () => {
+    const nextStates: Array<{
+      overlays: {
+        showTrajectories: boolean;
+        showVelocityVectors: boolean;
+        showForceVectors: boolean;
+        chartPanelOpen: boolean;
+      };
+      selectedMetric: "displacement" | "velocity" | "acceleration" | "energy";
+      samples: Array<{
+        id: string;
+        label: string;
+        metric: "displacement" | "velocity" | "acceleration" | "energy";
+        value: number;
+        unit: string;
+      }>;
+      draft: {
+        label: string;
+        metric: "displacement" | "velocity" | "acceleration" | "energy";
+        value: string;
+        unit: string;
+      };
+    }> = [];
+
+    const { rerender } = render(
+      <AnalysisPanel
+        state={{
+          overlays: {
+            showTrajectories: false,
+            showVelocityVectors: false,
+            showForceVectors: false,
+            chartPanelOpen: false,
+          },
+          selectedMetric: "displacement",
+          samples: [],
+          draft: {
+            label: "",
+            metric: "displacement",
+            value: "",
+            unit: "",
+          },
+        }}
+        onStateChange={(nextState) => {
+          nextStates.push(nextState);
+        }}
+      />,
+    );
+
+    function rerenderWithLatestState() {
+      rerender(
+        <AnalysisPanel
+          state={nextStates.at(-1)}
+          onStateChange={(nextState) => {
+            nextStates.push(nextState);
+          }}
+        />,
+      );
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: /show trajectories/i }));
+
+    expect(nextStates.at(-1)?.overlays.showTrajectories).toBe(true);
+    rerenderWithLatestState();
+
+    fireEvent.change(screen.getByLabelText(/sample metric/i), {
+      target: { value: "velocity" },
+    });
+    rerenderWithLatestState();
+    fireEvent.change(screen.getByLabelText(/sample label/i), {
+      target: { value: "Probe V" },
+    });
+    rerenderWithLatestState();
+    fireEvent.change(screen.getByLabelText(/sample value/i), {
+      target: { value: "5.1" },
+    });
+    rerenderWithLatestState();
+    fireEvent.change(screen.getByLabelText(/sample unit/i), {
+      target: { value: "m/s" },
+    });
+    rerenderWithLatestState();
+
+    const lastDraftState = nextStates.at(-1);
+
+    expect(lastDraftState?.draft).toEqual({
+      label: "Probe V",
+      metric: "velocity",
+      value: "5.1",
+      unit: "m/s",
+    });
+
+    rerender(
+      <AnalysisPanel
+        state={lastDraftState}
+        onStateChange={(nextState) => {
+          nextStates.push(nextState);
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /accept sample/i }));
+
+    expect(nextStates.at(-1)?.samples).toEqual([
+      {
+        id: "Probe V-1",
+        label: "Probe V",
+        metric: "velocity",
+        value: 5.1,
+        unit: "m/s",
+      },
+    ]);
+  });
+
+  it("renders runtime trajectory readout and derived chart series from props", () => {
+    render(
+      <AnalysisPanel
+        trajectorySamples={[
+          {
+            frameNumber: 0,
+            timeSeconds: 0,
+            position: { x: 0, y: 3 },
+            velocity: { x: 1.5, y: 0 },
+            acceleration: { x: 0, y: -9.81 },
+          },
+          {
+            frameNumber: 1,
+            timeSeconds: 0.1,
+            position: { x: 0.15, y: 2.95 },
+            velocity: { x: 1.5, y: -0.981 },
+            acceleration: { x: 0, y: -9.81 },
+          },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /open chart panel/i }));
+    fireEvent.click(screen.getByRole("button", { name: /view velocity chart/i }));
+
+    expect(screen.getByText("Runtime trajectory")).toBeDefined();
+    expect(screen.getByText("Trajectory samples: 2")).toBeDefined();
+    expect(screen.getByText("Latest runtime time: 0.10 s")).toBeDefined();
+    expect(screen.getByText("Latest position: 0.15, 2.95")).toBeDefined();
+    expect(screen.getByText("Runtime-derived points: 2")).toBeDefined();
+    expect(screen.getByText("Runtime latest value: 1.79 m/s")).toBeDefined();
+  });
+
+  it("loads runtime trajectory samples from runtime port props", async () => {
+    const port = createMockRuntimeBridgePort({
+      createFrame: ({ nextFrameNumber }) => ({
+        frameNumber: nextFrameNumber,
+        entities: [
+          {
+            entityId: "probe-1",
+            position: { x: nextFrameNumber, y: 2 },
+            rotation: 0,
+            velocity: { x: 1.5, y: -0.5 * nextFrameNumber },
+            acceleration: { x: 0, y: -9.81 },
+          },
+        ],
+      }),
+      createTrajectorySamples: ({ bridge, currentSamplesByAnalyzer }) => ({
+        "traj-1": [
+          ...(currentSamplesByAnalyzer["traj-1"] ?? []),
+          {
+            frameNumber: bridge.currentFrame?.frameNumber ?? 0,
+            timeSeconds: bridge.currentTimeSeconds,
+            position: {
+              x: bridge.currentFrame?.entities[0]?.transform.x ?? 0,
+              y: bridge.currentFrame?.entities[0]?.transform.y ?? 0,
+            },
+            velocity: bridge.currentFrame?.entities[0]?.velocity ?? { x: 0, y: 0 },
+            acceleration: bridge.currentFrame?.entities[0]?.acceleration ?? { x: 0, y: 0 },
+          },
+        ],
+      }),
+    });
+    const request = createCompileRequestFromScene(createEmptySceneDocument(), ["analysis"]);
+
+    render(<AnalysisPanel runtimePort={port} analyzerId="traj-1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /open chart panel/i }));
+    fireEvent.click(screen.getByRole("button", { name: /view velocity chart/i }));
+
+    await port.compile(request);
+    await port.step();
+    await port.step();
+
+    await waitFor(() => {
+      expect(screen.getByText("Trajectory samples: 2")).toBeDefined();
+      expect(screen.getByText("Velocity overview")).toBeDefined();
+      expect(screen.getByText("Samples in view: 2")).toBeDefined();
+      expect(screen.getByText("Series points: 2")).toBeDefined();
+      expect(screen.getByText("Latest sample: 1.8028 m/s")).toBeDefined();
+      expect(screen.getByText("Point 2")).toBeDefined();
+      expect(screen.getByText("+0.2217 m/s")).toBeDefined();
+      expect(screen.getByText("Runtime latest value: 1.80 m/s")).toBeDefined();
+    });
+  });
+
+  it("shows runtime trajectory loading state before samples arrive", async () => {
+    const port = createMockRuntimeBridgePort();
+
+    render(<AnalysisPanel runtimePort={port} analyzerId="traj-1" />);
+
+    fireEvent.click(screen.getByRole("button", { name: /open chart panel/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Runtime trajectory source: loading")).toBeDefined();
+    });
+  });
+});
