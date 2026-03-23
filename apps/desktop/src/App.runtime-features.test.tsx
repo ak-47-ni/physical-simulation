@@ -30,11 +30,14 @@ describe("App runtime features", () => {
   it("routes transport controls through app runtime state", () => {
     render(<App />);
     const transport = within(screen.getByTestId("bottom-transport-bar"));
+    const topRow = within(screen.getByTestId("playback-transport-top-row"));
 
     expect(screen.getByText("0.00 s")).toBeDefined();
     expect(screen.getByText("State: idle")).toBeDefined();
 
-    fireEvent.click(transport.getByRole("button", { name: "2x" }));
+    fireEvent.change(topRow.getByRole("combobox", { name: /speed/i }), {
+      target: { value: "2" },
+    });
     fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
 
     expect(screen.getByText("0.03 s")).toBeDefined();
@@ -50,8 +53,8 @@ describe("App runtime features", () => {
     fireEvent.click(transport.getByRole("button", { name: /^reset$/i }));
     expect(screen.getByText("0.00 s")).toBeDefined();
     expect(screen.getByText("State: idle")).toBeDefined();
-    expect(transport.getByRole("button", { name: "1x" }).getAttribute("aria-pressed")).toBe(
-      "true",
+    expect((topRow.getByRole("combobox", { name: /speed/i }) as HTMLSelectElement).value).toBe(
+      "1",
     );
   });
 
@@ -282,17 +285,17 @@ describe("App runtime features", () => {
     const centerPane = screen.getByTestId("shell-center-pane");
     const bottomPane = screen.getByTestId("shell-bottom-pane");
 
-    expect(within(centerPane).getByTestId("bottom-transport-bar")).toBeDefined();
+    expect(within(centerPane).getByTestId("playback-transport-deck")).toBeDefined();
     expect(within(centerPane).getByTestId("workspace-canvas")).toBeDefined();
+    expect(within(centerPane).getByTestId("annotation-layer")).toBeDefined();
     expect(within(bottomPane).queryByTestId("bottom-transport-bar")).toBeNull();
     expect(within(bottomPane).getByTestId("analysis-panel")).toBeDefined();
   });
 
-  it("defaults to realtime playback with a 40 second cap and disabled seek controls", () => {
+  it("defaults to realtime playback with disabled seek controls", () => {
     render(<App />);
 
     expect((screen.getByLabelText("Playback mode") as HTMLSelectElement).value).toBe("realtime");
-    expect(screen.getAllByText("Realtime cap: 40 s").length).toBeGreaterThan(0);
     expect((screen.getByLabelText("Playback progress") as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByLabelText("Playback time") as HTMLInputElement).disabled).toBe(true);
   });

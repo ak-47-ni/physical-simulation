@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 
 import {
   BottomTransportBar,
+  DEFAULT_TIME_SCALE_PRESETS,
   type BottomTransportRuntimeView,
 } from "./BottomTransportBar";
 
@@ -32,16 +33,20 @@ const deckStyle: CSSProperties = {
   gap: "12px",
 };
 
-const settingsRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "12px",
-  flexWrap: "wrap",
+const topRowStyle: CSSProperties = {
+  display: "grid",
+  gap: "10px",
   padding: "14px 16px",
   borderRadius: "16px",
   background: "rgba(255, 255, 255, 0.92)",
   border: "1px solid rgba(108, 128, 173, 0.18)",
+};
+
+const settingsRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "end",
+  gap: "12px",
+  flexWrap: "wrap",
 };
 
 const fieldRowStyle: CSSProperties = {
@@ -74,11 +79,8 @@ const timelineCardStyle: CSSProperties = {
   borderRadius: "16px",
   background: "rgba(255, 255, 255, 0.92)",
   border: "1px solid rgba(108, 128, 173, 0.18)",
-};
-
-const metaCopyStyle: CSSProperties = {
-  color: "#5a6d88",
-  fontSize: "13px",
+  justifySelf: "start",
+  width: "min(100%, 640px)",
 };
 
 function clampTime(value: number, maxSeconds: number): number {
@@ -87,6 +89,10 @@ function clampTime(value: number, maxSeconds: number): number {
   }
 
   return Math.max(0, Math.min(maxSeconds, value));
+}
+
+function formatTimeScaleOption(preset: number): string {
+  return `${preset}x`;
 }
 
 export function PlaybackTransportDeck(props: PlaybackTransportDeckProps) {
@@ -103,79 +109,91 @@ export function PlaybackTransportDeck(props: PlaybackTransportDeckProps) {
     onStep,
     onTimeScaleChange,
     precomputeDurationSeconds,
-    preparationProgress,
-    realtimeCapSeconds,
     runtime,
     seekEnabled,
     timelineMaxSeconds,
   } = props;
   const controlsLocked = isPreparing || runtime.status === "running";
   const clampedTimeSeconds = clampTime(currentTimeSeconds, timelineMaxSeconds);
-  const progressCopy =
-    mode === "precomputed"
-      ? isPreparing
-        ? `Preparing cache… ${Math.round(preparationProgress * 100)}%`
-        : seekEnabled
-          ? `Cached playback ready: ${timelineMaxSeconds.toFixed(0)} s`
-          : "Build the cache to enable seeking."
-      : `Realtime cap: ${realtimeCapSeconds} s`;
 
   return (
     <section data-testid="playback-transport-deck" style={deckStyle}>
-      <div style={settingsRowStyle}>
-        <div style={fieldRowStyle}>
+      <div data-testid="playback-transport-top-row" style={topRowStyle}>
+        <div style={settingsRowStyle}>
+          <div style={fieldRowStyle}>
+            <label style={fieldStyle}>
+              <span>Playback mode</span>
+              <select
+                aria-label="Playback mode"
+                disabled={controlsLocked}
+                style={inputStyle}
+                value={mode}
+                onChange={(event) => onModeChange(event.target.value as PlaybackMode)}
+              >
+                <option value="realtime">Realtime</option>
+                <option value="precomputed">Precomputed</option>
+              </select>
+            </label>
+
+            {mode === "precomputed" ? (
+              <label style={fieldStyle}>
+                <span>Precompute duration</span>
+                <input
+                  aria-label="Precompute duration"
+                  disabled={controlsLocked}
+                  max={120}
+                  min={0.5}
+                  step={0.5}
+                  style={{ ...inputStyle, width: "120px" }}
+                  type="number"
+                  value={precomputeDurationSeconds}
+                  onChange={(event) => {
+                    const nextDuration = Number(event.target.value);
+
+                    if (Number.isFinite(nextDuration) && nextDuration > 0) {
+                      onPrecomputeDurationChange(nextDuration);
+                    }
+                  }}
+                />
+              </label>
+            ) : null}
+          </div>
+
           <label style={fieldStyle}>
-            <span>Playback mode</span>
+            <span>Speed</span>
             <select
-              aria-label="Playback mode"
-              disabled={controlsLocked}
-              style={inputStyle}
-              value={mode}
-              onChange={(event) => onModeChange(event.target.value as PlaybackMode)}
+              aria-label="Speed"
+              disabled={runtime.status === "preparing"}
+              style={{ ...inputStyle, width: "112px" }}
+              value={String(runtime.timeScale)}
+              onChange={(event) => onTimeScaleChange(Number(event.target.value))}
             >
-              <option value="realtime">Realtime</option>
-              <option value="precomputed">Precomputed</option>
+              {DEFAULT_TIME_SCALE_PRESETS.map((preset) => (
+                <option key={preset} value={preset}>
+                  {formatTimeScaleOption(preset)}
+                </option>
+              ))}
             </select>
           </label>
-
-          {mode === "precomputed" ? (
-            <label style={fieldStyle}>
-              <span>Precompute duration</span>
-              <input
-                aria-label="Precompute duration"
-                disabled={controlsLocked}
-                max={120}
-                min={0.5}
-                step={0.5}
-                style={{ ...inputStyle, width: "120px" }}
-                type="number"
-                value={precomputeDurationSeconds}
-                onChange={(event) => {
-                  const nextDuration = Number(event.target.value);
-
-                  if (Number.isFinite(nextDuration) && nextDuration > 0) {
-                    onPrecomputeDurationChange(nextDuration);
-                  }
-                }}
-              />
-            </label>
-          ) : null}
         </div>
 
-        <span style={metaCopyStyle}>{progressCopy}</span>
+        <BottomTransportBar
+          runtime={runtime}
+          showPlaybackControls={false}
+          timeScalePresets={[]}
+          onPause={onPause}
+          onReset={onReset}
+          onStart={onStart}
+          onStep={onStep}
+          onTimeScaleChange={onTimeScaleChange}
+        />
       </div>
 
-      <BottomTransportBar
-        runtime={runtime}
-        showPlaybackControls={false}
-        onPause={onPause}
-        onReset={onReset}
-        onStart={onStart}
-        onStep={onStep}
-        onTimeScaleChange={onTimeScaleChange}
-      />
-
-      <div style={timelineCardStyle}>
+      <div
+        data-align="left"
+        data-testid="playback-transport-progress-row"
+        style={timelineCardStyle}
+      >
         <label style={fieldStyle}>
           <span>Playback progress</span>
           <input
@@ -207,8 +225,6 @@ export function PlaybackTransportDeck(props: PlaybackTransportDeckProps) {
               onChange={(event) => onSeek(Number(event.target.value))}
             />
           </label>
-
-          {mode === "realtime" ? <strong>Realtime cap: {realtimeCapSeconds} s</strong> : null}
         </div>
       </div>
     </section>
