@@ -4,6 +4,10 @@
   "packageManager": "pnpm@10.30.2",
   "scripts": {
     "coord": "node scripts/coord.mjs",
+    "desktop:build": "pnpm --filter desktop run build",
+    "desktop:dev": "pnpm --filter desktop run dev",
+    "desktop:tauri:check": "cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml",
+    "desktop:tauri:dev": "cargo run --manifest-path apps/desktop/src-tauri/Cargo.toml",
     "test:coord": "vitest run scripts/coord.test.mjs",
     "test": "pnpm -r test"
   },
