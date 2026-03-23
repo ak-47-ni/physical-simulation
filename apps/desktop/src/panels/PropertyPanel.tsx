@@ -3,6 +3,8 @@ import type { CSSProperties } from "react";
 import type { SceneDisplaySettings } from "../io/sceneFile";
 import type { EditorConstraint } from "../state/editorConstraints";
 import type { EditorEntityPhysics, EditorSceneEntity } from "../state/editorStore";
+import { MeasurementInput } from "./property/MeasurementInput";
+import { ScenePhysicsCard } from "./property/ScenePhysicsCard";
 
 type ConstraintPanelUpdate = {
   axis?: { x: number; y: number };
@@ -11,11 +13,35 @@ type ConstraintPanelUpdate = {
   stiffness?: number;
 };
 
+type ScenePhysicsPanelState = {
+  gravity: number;
+  gravityUnitLabel: string;
+  lengthUnit: string;
+  lengthUnitOptions: readonly string[];
+  lockReason?: string | null;
+  massUnit: string;
+  massUnitOptions: readonly string[];
+  pixelsPerMeter: number;
+  velocityUnit: string;
+  velocityUnitOptions: readonly string[];
+};
+
+type ScenePhysicsPanelUpdate = {
+  gravity?: number;
+  lengthUnit?: string;
+  massUnit?: string;
+  pixelsPerMeter?: number;
+  velocityUnit?: string;
+};
+
 type PropertyPanelProps = {
+  authoringLocked?: boolean;
+  authoringLockReason?: string | null;
   display: SceneDisplaySettings;
   onDeleteSelectedConstraint?: () => void;
   onDeleteSelectedEntity: () => void;
   onDuplicateSelectedEntity: () => void;
+  onScenePhysicsChange?: (scenePhysics: ScenePhysicsPanelUpdate) => void;
   onUpdateDisplaySetting: (display: Partial<SceneDisplaySettings>) => void;
   onUpdateSelectedConstraint?: (constraint: ConstraintPanelUpdate) => void;
   onUpdateSelectedEntityLabel: (label: string) => void;
@@ -23,6 +49,7 @@ type PropertyPanelProps = {
   onUpdateSelectedEntityPhysics: (physics: Partial<EditorEntityPhysics>) => void;
   onUpdateSelectedEntityRadius: (radius: number) => void;
   onUpdateSelectedEntitySize: (size: { width: number; height: number }) => void;
+  scenePhysics?: ScenePhysicsPanelState | null;
   selectedConstraint?: EditorConstraint | null;
   selectedEntity: EditorSceneEntity | null;
 };
@@ -92,19 +119,38 @@ function ReadonlyField(props: { label: string; value: string }) {
 }
 
 function PositionInput(props: {
+  disabled?: boolean;
   label: string;
+  suffix?: string;
   value: number;
   onChange: (value: number) => void;
 }) {
+  if (props.suffix) {
+    return (
+      <MeasurementInput
+        disabled={props.disabled}
+        label={props.label}
+        suffix={props.suffix}
+        value={props.value}
+        onChange={props.onChange}
+      />
+    );
+  }
+
   return (
     <label style={{ display: "grid", gap: "4px" }}>
       <span style={{ color: "#6a7890", fontSize: "12px" }}>{props.label}</span>
       <input
         aria-label={props.label}
+        disabled={props.disabled}
         style={inputStyle}
         type="number"
         value={props.value}
         onChange={(event) => {
+          if (props.disabled) {
+            return;
+          }
+
           const nextValue = Number(event.target.value);
 
           if (!Number.isFinite(nextValue)) {
@@ -119,6 +165,7 @@ function PositionInput(props: {
 }
 
 function TextInput(props: {
+  disabled?: boolean;
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -128,10 +175,15 @@ function TextInput(props: {
       <span style={{ color: "#6a7890", fontSize: "12px" }}>{props.label}</span>
       <input
         aria-label={props.label}
+        disabled={props.disabled}
         style={textInputStyle}
         type="text"
         value={props.value}
         onChange={(event) => {
+          if (props.disabled) {
+            return;
+          }
+
           props.onChange(event.target.value);
         }}
       />
@@ -140,6 +192,7 @@ function TextInput(props: {
 }
 
 function CheckboxInput(props: {
+  disabled?: boolean;
   label: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -157,8 +210,13 @@ function CheckboxInput(props: {
       <input
         aria-label={props.label}
         checked={props.checked}
+        disabled={props.disabled}
         type="checkbox"
         onChange={(event) => {
+          if (props.disabled) {
+            return;
+          }
+
           props.onChange(event.target.checked);
         }}
       />
@@ -169,10 +227,13 @@ function CheckboxInput(props: {
 
 export function PropertyPanel(props: PropertyPanelProps) {
   const {
+    authoringLocked = false,
+    authoringLockReason = null,
     display,
     onDeleteSelectedConstraint = () => undefined,
     onDeleteSelectedEntity,
     onDuplicateSelectedEntity,
+    onScenePhysicsChange = () => undefined,
     onUpdateDisplaySetting,
     onUpdateSelectedConstraint = () => undefined,
     onUpdateSelectedEntityLabel,
@@ -180,14 +241,46 @@ export function PropertyPanel(props: PropertyPanelProps) {
     onUpdateSelectedEntityPhysics,
     onUpdateSelectedEntityRadius,
     onUpdateSelectedEntitySize,
+    scenePhysics = null,
     selectedConstraint = null,
     selectedEntity,
   } = props;
+  const lengthUnitLabel = scenePhysics?.lengthUnit ?? null;
+  const velocityUnitLabel = scenePhysics?.velocityUnit ?? null;
+  const massUnitLabel = scenePhysics?.massUnit ?? null;
+  const selectionLockReason = authoringLocked ? authoringLockReason : null;
+  const scenePhysicsLockReason = scenePhysics?.lockReason ?? selectionLockReason;
 
   return (
     <div style={{ display: "grid", gap: "16px" }}>
+      {scenePhysics ? (
+        <ScenePhysicsCard
+          disabled={authoringLocked}
+          gravity={scenePhysics.gravity}
+          gravityUnitLabel={scenePhysics.gravityUnitLabel}
+          lengthUnit={scenePhysics.lengthUnit}
+          lengthUnitOptions={scenePhysics.lengthUnitOptions}
+          lockReason={scenePhysicsLockReason}
+          massUnit={scenePhysics.massUnit}
+          massUnitOptions={scenePhysics.massUnitOptions}
+          pixelsPerMeter={scenePhysics.pixelsPerMeter}
+          velocityUnit={scenePhysics.velocityUnit}
+          velocityUnitOptions={scenePhysics.velocityUnitOptions}
+          onGravityChange={(gravity) => onScenePhysicsChange({ gravity })}
+          onLengthUnitChange={(lengthUnit) => onScenePhysicsChange({ lengthUnit })}
+          onMassUnitChange={(massUnit) => onScenePhysicsChange({ massUnit })}
+          onPixelsPerMeterChange={(pixelsPerMeter) => onScenePhysicsChange({ pixelsPerMeter })}
+          onVelocityUnitChange={(velocityUnit) => onScenePhysicsChange({ velocityUnit })}
+        />
+      ) : null}
+
       <section style={cardStyle}>
         <h2 style={sectionLabelStyle}>Selection</h2>
+        {selectionLockReason ? (
+          <span style={{ color: "#9a3412", fontSize: "13px", lineHeight: 1.5 }}>
+            {selectionLockReason}
+          </span>
+        ) : null}
         {selectedConstraint ? (
           <>
             <ReadonlyField label="Constraint" value={selectedConstraint.label} />
@@ -217,11 +310,14 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   }}
                 >
                   <PositionInput
+                    disabled={authoringLocked}
                     label="Rest length"
+                    suffix={lengthUnitLabel ?? undefined}
                     value={selectedConstraint.restLength}
                     onChange={(restLength) => onUpdateSelectedConstraint({ restLength })}
                   />
                   <PositionInput
+                    disabled={authoringLocked}
                     label="Stiffness"
                     value={selectedConstraint.stiffness}
                     onChange={(stiffness) => onUpdateSelectedConstraint({ stiffness })}
@@ -242,7 +338,9 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   }}
                 >
                   <PositionInput
+                    disabled={authoringLocked}
                     label="Origin X"
+                    suffix={lengthUnitLabel ?? undefined}
                     value={selectedConstraint.origin.x}
                     onChange={(x) =>
                       onUpdateSelectedConstraint({
@@ -251,7 +349,9 @@ export function PropertyPanel(props: PropertyPanelProps) {
                     }
                   />
                   <PositionInput
+                    disabled={authoringLocked}
                     label="Origin Y"
+                    suffix={lengthUnitLabel ?? undefined}
                     value={selectedConstraint.origin.y}
                     onChange={(y) =>
                       onUpdateSelectedConstraint({
@@ -260,7 +360,9 @@ export function PropertyPanel(props: PropertyPanelProps) {
                     }
                   />
                   <PositionInput
+                    disabled={authoringLocked}
                     label="Axis X"
+                    suffix={lengthUnitLabel ?? undefined}
                     value={selectedConstraint.axis.x}
                     onChange={(x) =>
                       onUpdateSelectedConstraint({
@@ -269,7 +371,9 @@ export function PropertyPanel(props: PropertyPanelProps) {
                     }
                   />
                   <PositionInput
+                    disabled={authoringLocked}
                     label="Axis Y"
+                    suffix={lengthUnitLabel ?? undefined}
                     value={selectedConstraint.axis.y}
                     onChange={(y) =>
                       onUpdateSelectedConstraint({
@@ -280,33 +384,61 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 </div>
               </>
             )}
-            <button style={dangerButtonStyle} type="button" onClick={onDeleteSelectedConstraint}>
+            <button
+              disabled={authoringLocked}
+              style={dangerButtonStyle}
+              type="button"
+              onClick={onDeleteSelectedConstraint}
+            >
               Delete constraint
             </button>
           </>
         ) : selectedEntity ? (
           <>
             <TextInput
+              disabled={authoringLocked}
               label="Entity name"
               value={selectedEntity.label}
               onChange={onUpdateSelectedEntityLabel}
             />
-            <ReadonlyField label="Position" value={`${selectedEntity.x}, ${selectedEntity.y}`} />
+            <ReadonlyField
+              label="Position"
+              value={
+                lengthUnitLabel
+                  ? `${selectedEntity.x} ${lengthUnitLabel}, ${selectedEntity.y} ${lengthUnitLabel}`
+                  : `${selectedEntity.x}, ${selectedEntity.y}`
+              }
+            />
+            {velocityUnitLabel ? (
+              <ReadonlyField
+                label="Velocity"
+                value={`${selectedEntity.velocityX} ${velocityUnitLabel}, ${selectedEntity.velocityY} ${velocityUnitLabel}`}
+              />
+            ) : null}
+            {massUnitLabel ? (
+              <ReadonlyField label="Mass" value={`${selectedEntity.mass} ${massUnitLabel}`} />
+            ) : null}
             <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
               <PositionInput
+                disabled={authoringLocked}
                 label="Position X"
+                suffix={lengthUnitLabel ?? undefined}
                 value={selectedEntity.x}
                 onChange={(x) => onUpdateSelectedEntityPosition({ x, y: selectedEntity.y })}
               />
               <PositionInput
+                disabled={authoringLocked}
                 label="Position Y"
+                suffix={lengthUnitLabel ?? undefined}
                 value={selectedEntity.y}
                 onChange={(y) => onUpdateSelectedEntityPosition({ x: selectedEntity.x, y })}
               />
             </div>
             {selectedEntity.kind === "ball" ? (
               <PositionInput
+                disabled={authoringLocked}
                 label="Radius"
+                suffix={lengthUnitLabel ?? undefined}
                 value={selectedEntity.radius}
                 onChange={onUpdateSelectedEntityRadius}
               />
@@ -315,14 +447,18 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}
               >
                 <PositionInput
+                  disabled={authoringLocked}
                   label="Width"
+                  suffix={lengthUnitLabel ?? undefined}
                   value={selectedEntity.width}
                   onChange={(width) =>
                     onUpdateSelectedEntitySize({ width, height: selectedEntity.height })
                   }
                 />
                 <PositionInput
+                  disabled={authoringLocked}
                   label="Height"
+                  suffix={lengthUnitLabel ?? undefined}
                   value={selectedEntity.height}
                   onChange={(height) =>
                     onUpdateSelectedEntitySize({ width: selectedEntity.width, height })
@@ -332,21 +468,26 @@ export function PropertyPanel(props: PropertyPanelProps) {
             )}
             <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
               <PositionInput
+                disabled={authoringLocked}
                 label="Mass"
+                suffix={massUnitLabel ?? undefined}
                 value={selectedEntity.mass}
                 onChange={(mass) => onUpdateSelectedEntityPhysics({ mass })}
               />
               <PositionInput
+                disabled={authoringLocked}
                 label="Friction"
                 value={selectedEntity.friction}
                 onChange={(friction) => onUpdateSelectedEntityPhysics({ friction })}
               />
               <PositionInput
+                disabled={authoringLocked}
                 label="Restitution"
                 value={selectedEntity.restitution}
                 onChange={(restitution) => onUpdateSelectedEntityPhysics({ restitution })}
               />
               <CheckboxInput
+                disabled={authoringLocked}
                 label="Locked in simulation"
                 checked={selectedEntity.locked}
                 onChange={(locked) => onUpdateSelectedEntityPhysics({ locked })}
@@ -354,21 +495,35 @@ export function PropertyPanel(props: PropertyPanelProps) {
             </div>
             <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
               <PositionInput
+                disabled={authoringLocked}
                 label="Velocity X"
+                suffix={velocityUnitLabel ?? undefined}
                 value={selectedEntity.velocityX}
                 onChange={(velocityX) => onUpdateSelectedEntityPhysics({ velocityX })}
               />
               <PositionInput
+                disabled={authoringLocked}
                 label="Velocity Y"
+                suffix={velocityUnitLabel ?? undefined}
                 value={selectedEntity.velocityY}
                 onChange={(velocityY) => onUpdateSelectedEntityPhysics({ velocityY })}
               />
             </div>
             <div style={{ display: "grid", gap: "8px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-              <button style={actionButtonStyle} type="button" onClick={onDuplicateSelectedEntity}>
+              <button
+                disabled={authoringLocked}
+                style={actionButtonStyle}
+                type="button"
+                onClick={onDuplicateSelectedEntity}
+              >
                 Duplicate entity
               </button>
-              <button style={dangerButtonStyle} type="button" onClick={onDeleteSelectedEntity}>
+              <button
+                disabled={authoringLocked}
+                style={dangerButtonStyle}
+                type="button"
+                onClick={onDeleteSelectedEntity}
+              >
                 Delete entity
               </button>
             </div>

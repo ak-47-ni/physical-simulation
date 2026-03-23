@@ -267,4 +267,113 @@ describe("PropertyPanel", () => {
       { axis: { x: 180, y: 84 } },
     ]);
   });
+
+  it("renders scene physics controls and unit-aware readouts for the selected entity", () => {
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings()}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onScenePhysicsChange={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        scenePhysics={{
+          gravity: 9.8,
+          gravityUnitLabel: "m/s²",
+          lengthUnit: "m",
+          lengthUnitOptions: ["m", "cm"],
+          lockReason: null,
+          massUnit: "kg",
+          massUnitOptions: ["kg", "g"],
+          pixelsPerMeter: 100,
+          velocityUnit: "m/s",
+          velocityUnitOptions: ["m/s", "cm/s"],
+        }}
+        selectedEntity={{
+          id: "ball-1",
+          kind: "ball",
+          label: "Ball 1",
+          x: 132,
+          y: 176,
+          radius: 26,
+          mass: 1.2,
+          friction: 0.14,
+          restitution: 0.82,
+          locked: false,
+          velocityX: 4,
+          velocityY: -2,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Scene physics")).toBeDefined();
+    expect(screen.getByText("132 m, 176 m")).toBeDefined();
+    expect(screen.getByText("4 m/s, -2 m/s")).toBeDefined();
+    expect(screen.getByText("1.2 kg")).toBeDefined();
+    expect(screen.getByText("m/s²")).toBeDefined();
+    expect(screen.getAllByText("m").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("kg").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("m/s").length).toBeGreaterThan(0);
+  });
+
+  it("disables property and scene physics inputs while authoring is locked but keeps actions visible", () => {
+    render(
+      <PropertyPanel
+        authoringLocked
+        authoringLockReason="Authoring is locked while runtime is playing."
+        display={createSceneDisplaySettings()}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onScenePhysicsChange={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        scenePhysics={{
+          gravity: 980,
+          gravityUnitLabel: "cm/s²",
+          lengthUnit: "cm",
+          lengthUnitOptions: ["m", "cm"],
+          lockReason: "Scene physics is locked while runtime is playing.",
+          massUnit: "g",
+          massUnitOptions: ["kg", "g"],
+          pixelsPerMeter: 100,
+          velocityUnit: "cm/s",
+          velocityUnitOptions: ["m/s", "cm/s"],
+        }}
+        selectedEntity={{
+          id: "ball-1",
+          kind: "ball",
+          label: "Ball 1",
+          x: 132,
+          y: 176,
+          radius: 26,
+          mass: 1200,
+          friction: 0.14,
+          restitution: 0.82,
+          locked: false,
+          velocityX: 400,
+          velocityY: -200,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Authoring is locked while runtime is playing.")).toBeDefined();
+    expect((screen.getByLabelText("Entity name") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Position X") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Radius") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Mass") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Velocity X") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Gravity") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Length unit") as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Pixels per meter") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /duplicate entity/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /delete entity/i })).toBeDefined();
+  });
 });
