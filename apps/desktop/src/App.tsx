@@ -463,7 +463,8 @@ export function App() {
         return;
       }
 
-      const entityA = getEntityCenterForConstraint(constraintPlacement.anchorEntityId);
+      const anchorEntityId = constraintPlacement.anchorEntityId;
+      const entityA = getEntityCenterForConstraint(anchorEntityId);
       const entityB = getEntityCenterForConstraint(entityId);
 
       if (!entityA || !entityB) {
@@ -474,7 +475,7 @@ export function App() {
         ...current,
         createSpringConstraintFromEntities(current, [
           {
-            id: constraintPlacement.anchorEntityId,
+            id: anchorEntityId,
             ...entityA,
           },
           {
@@ -500,7 +501,8 @@ export function App() {
       return;
     }
 
-    const origin = getEntityCenterForConstraint(constraintPlacement.anchorEntityId);
+    const anchorEntityId = constraintPlacement.anchorEntityId;
+    const origin = getEntityCenterForConstraint(anchorEntityId);
 
     if (!origin) {
       return;
@@ -511,7 +513,7 @@ export function App() {
       createTrackConstraintFromEntityAndPoint(
         current,
         {
-          id: constraintPlacement.anchorEntityId,
+          id: anchorEntityId,
           ...origin,
         },
         position,

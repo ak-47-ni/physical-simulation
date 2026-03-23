@@ -16,8 +16,8 @@ export const DEFAULT_GRAVITY_SOURCE_ID = "gravity-primary";
 const DEFAULT_ANALYZER_ID = "traj-primary";
 
 export type PersistedSpringConstraint = {
-  entityAId: string | null;
-  entityBId: string | null;
+  entityAId: string;
+  entityBId: string;
   id: string;
   kind: "spring";
   restLength: number;
@@ -26,7 +26,7 @@ export type PersistedSpringConstraint = {
 
 export type PersistedTrackConstraint = {
   axis: Vector2;
-  entityId: string | null;
+  entityId: string;
   id: string;
   kind: "track";
   origin: Vector2;
@@ -72,7 +72,7 @@ export function createSceneDocumentFromEditorState(
   const scene = createEmptySceneDocument();
 
   scene.entities = input.entities.map(mapEditorEntityToSceneEntity);
-  scene.constraints = (input.constraints ?? []).map(mapEditorConstraintToSceneConstraint);
+  scene.constraints = (input.constraints ?? []).flatMap(mapEditorConstraintToSceneConstraint);
   scene.forceSources = [
     createGravityForceSource({
       acceleration: input.gravity ?? DEFAULT_SCENE_GRAVITY,
@@ -124,23 +124,23 @@ export function createGravityForceSource(input?: {
 }
 
 export function isPersistedSpringConstraint(
-  value: SceneConstraint,
+  value: { id: string; kind: string },
 ): value is PersistedSpringConstraint {
   return (
     value.kind === "spring" &&
-    readNullableString(value, "entityAId") !== undefined &&
-    readNullableString(value, "entityBId") !== undefined &&
+    typeof readString(value, "entityAId") === "string" &&
+    typeof readString(value, "entityBId") === "string" &&
     typeof readNumber(value, "restLength") === "number" &&
     typeof readNumber(value, "stiffness") === "number"
   );
 }
 
 export function isPersistedTrackConstraint(
-  value: SceneConstraint,
+  value: { id: string; kind: string },
 ): value is PersistedTrackConstraint {
   return (
     value.kind === "track" &&
-    readNullableString(value, "entityId") !== undefined &&
+    typeof readString(value, "entityId") === "string" &&
     readVector(value, "origin") !== undefined &&
     readVector(value, "axis") !== undefined
   );
@@ -199,9 +199,13 @@ function mapEditorEntityToSceneEntity(entity: EditorSceneEntity): SceneEntity {
 
 function mapEditorConstraintToSceneConstraint(
   constraint: EditorConstraint,
-): PersistedSceneConstraint {
+): PersistedSceneConstraint[] {
   if (constraint.kind === "spring") {
-    return {
+    if (!constraint.entityAId || !constraint.entityBId) {
+      return [];
+    }
+
+    const sceneConstraint: PersistedSpringConstraint = {
       entityAId: constraint.entityAId,
       entityBId: constraint.entityBId,
       id: constraint.id,
@@ -209,15 +213,23 @@ function mapEditorConstraintToSceneConstraint(
       restLength: constraint.restLength,
       stiffness: constraint.stiffness,
     };
+
+    return [sceneConstraint];
   }
 
-  return {
+  if (!constraint.entityId) {
+    return [];
+  }
+
+  const sceneConstraint: PersistedTrackConstraint = {
     axis: cloneVector(constraint.axis),
     entityId: constraint.entityId,
     id: constraint.id,
     kind: "track",
     origin: cloneVector(constraint.origin),
   };
+
+  return [sceneConstraint];
 }
 
 function mapSceneEntityToEditorEntity(entity: SceneEntity): EditorSceneEntity[] {
@@ -313,6 +325,12 @@ function readNullableString<T extends object, K extends string>(
   const candidate = (value as Record<string, unknown>)[key];
 
   return candidate === null || typeof candidate === "string" ? candidate : undefined;
+}
+
+function readString<T extends object, K extends string>(value: T, key: K): string | undefined {
+  const candidate = (value as Record<string, unknown>)[key];
+
+  return typeof candidate === "string" ? candidate : undefined;
 }
 
 function readNumber<T extends object, K extends string>(value: T, key: K): number | undefined {

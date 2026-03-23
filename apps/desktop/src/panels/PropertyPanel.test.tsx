@@ -179,7 +179,12 @@ describe("PropertyPanel", () => {
   });
 
   it("edits selected spring constraints and exposes a delete action", () => {
-    const constraintUpdates: Array<Record<string, number>> = [];
+    const constraintUpdates: Array<{
+      axis?: { x: number; y: number };
+      origin?: { x: number; y: number };
+      restLength?: number;
+      stiffness?: number;
+    }> = [];
     const deleted: string[] = [];
 
     render(
