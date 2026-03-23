@@ -34,7 +34,7 @@ fn runtime_scene_request() -> CompileSceneRequest {
 }
 
 #[test]
-fn bridge_time_scale_updates_step_duration_and_status_snapshot() {
+fn bridge_time_scale_updates_status_snapshot_without_changing_step_duration() {
     let mut bridge = SimulationBridge::new(0.1);
     bridge
         .compile_scene(runtime_scene_request())
@@ -55,7 +55,7 @@ fn bridge_time_scale_updates_step_duration_and_status_snapshot() {
             .map(|frame| frame.frame_number),
         Some(1)
     );
-    assert!((first_step.current_time_seconds - 0.05).abs() < 1e-9);
+    assert!((first_step.current_time_seconds - 0.1).abs() < 1e-9);
 
     bridge
         .set_time_scale(2.0)
@@ -71,7 +71,7 @@ fn bridge_time_scale_updates_step_duration_and_status_snapshot() {
             .map(|frame| frame.frame_number),
         Some(2)
     );
-    assert!((second_step.current_time_seconds - 0.25).abs() < 1e-9);
+    assert!((second_step.current_time_seconds - 0.2).abs() < 1e-9);
 }
 
 #[test]

@@ -48,7 +48,10 @@ fn bridge_playback_running_tick_advances_the_runtime_frame() {
 
     assert_eq!(snapshot.status, BridgeStatus::Running);
     assert_eq!(
-        snapshot.current_frame.as_ref().map(|frame| frame.frame_number),
+        snapshot
+            .current_frame
+            .as_ref()
+            .map(|frame| frame.frame_number),
         Some(1)
     );
     assert!((snapshot.current_time_seconds - 0.1).abs() < 1e-9);
@@ -71,7 +74,10 @@ fn bridge_playback_paused_tick_does_not_advance_the_runtime_frame() {
 
     assert_eq!(snapshot.status, BridgeStatus::Paused);
     assert_eq!(
-        snapshot.current_frame.as_ref().map(|frame| frame.frame_number),
+        snapshot
+            .current_frame
+            .as_ref()
+            .map(|frame| frame.frame_number),
         Some(0)
     );
     assert_eq!(snapshot.current_time_seconds, 0.0);
@@ -95,14 +101,17 @@ fn bridge_playback_reset_after_ticks_returns_to_frame_zero() {
 
     assert_eq!(snapshot.status, BridgeStatus::Idle);
     assert_eq!(
-        snapshot.current_frame.as_ref().map(|frame| frame.frame_number),
+        snapshot
+            .current_frame
+            .as_ref()
+            .map(|frame| frame.frame_number),
         Some(0)
     );
     assert_eq!(snapshot.current_time_seconds, 0.0);
 }
 
 #[test]
-fn bridge_playback_tick_uses_the_current_time_scale() {
+fn bridge_playback_tick_keeps_a_fixed_runtime_step_in_realtime_mode() {
     let mut bridge = SimulationBridge::new(0.1);
     bridge
         .compile_scene(runtime_scene_request())
@@ -116,8 +125,8 @@ fn bridge_playback_tick_uses_the_current_time_scale() {
 
     let half_speed = bridge
         .tick_snapshot()
-        .expect("half-speed playback tick should succeed");
-    assert!((half_speed.current_time_seconds - 0.05).abs() < 1e-9);
+        .expect("half-speed playback tick should still use the fixed runtime step");
+    assert!((half_speed.current_time_seconds - 0.1).abs() < 1e-9);
 
     bridge
         .set_time_scale(2.0)
@@ -125,6 +134,6 @@ fn bridge_playback_tick_uses_the_current_time_scale() {
 
     let double_speed = bridge
         .tick_snapshot()
-        .expect("double-speed playback tick should succeed");
-    assert!((double_speed.current_time_seconds - 0.25).abs() < 1e-9);
+        .expect("double-speed playback tick should still use the fixed runtime step");
+    assert!((double_speed.current_time_seconds - 0.2).abs() < 1e-9);
 }

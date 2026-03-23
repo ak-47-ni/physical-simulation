@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySample};
 use crate::entity::{CompiledShape, Vector2};
 use crate::scene::CompiledScene;
@@ -135,8 +137,19 @@ impl RuntimeScene {
             .map(TrajectoryAnalyzerState::samples)
     }
 
+    pub fn all_analyzer_samples(&self) -> HashMap<String, Vec<TrajectorySample>> {
+        self.analyzers
+            .iter()
+            .map(|analyzer| (analyzer.id().to_string(), analyzer.samples().to_vec()))
+            .collect()
+    }
+
     pub fn elapsed_time_seconds(&self) -> f64 {
         self.elapsed_time_seconds
+    }
+
+    pub fn frame_number(&self) -> u64 {
+        self.frame_number
     }
 
     pub fn set_fixed_delta_seconds(&mut self, fixed_delta_seconds: f64) {

@@ -4,8 +4,12 @@ use crate::analyzer::{AnalyzerDefinition, TrajectorySample};
 use crate::constraint::ConstraintDefinition;
 use crate::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use crate::force::ForceSourceDefinition;
+use crate::playback::{
+    InvalidPlaybackConfig, PRECOMPUTE_CHUNK_STEPS, PlaybackConfig, PlaybackMode, PrecomputeSession,
+    PreparedPlayback,
+};
 use crate::runtime::{RuntimeFramePayload, RuntimeScene};
-use crate::scene::{compile_scene, CompileSceneRequest, CompiledScene, SceneCompileError};
+use crate::scene::{CompileSceneRequest, CompiledScene, SceneCompileError, compile_scene};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BridgeError {
@@ -23,6 +27,15 @@ pub enum BridgeError {
     InvalidTimeScale {
         value: f64,
     },
+    InvalidPlaybackConfig {
+        field: &'static str,
+        value: f64,
+    },
+    InvalidSeekTime {
+        value: f64,
+    },
+    PlaybackCacheNotReady,
+    PlaybackConfigLockedWhileActive,
     RuntimeNotInitialized,
     UnknownAnalyzer {
         id: String,
@@ -38,8 +51,13 @@ pub enum BridgeError {
 pub struct SimulationBridge {
     base_delta_seconds: f64,
     time_scale: f64,
+    playback_config: PlaybackConfig,
     compiled_scene: Option<CompiledScene>,
     runtime: Option<RuntimeScene>,
+    precompute_session: Option<PrecomputeSession>,
+    prepared_playback: Option<PreparedPlayback>,
+    playback_cursor_frame: usize,
+    playback_cursor_phase: f64,
     dirty_scopes: Vec<DirtyEditScope>,
     status: BridgeStatus,
 }
@@ -49,6 +67,7 @@ pub struct SimulationBridge {
 pub enum BridgeStatus {
     Idle,
     Running,
+    Preparing,
     Paused,
 }
 
@@ -65,6 +84,10 @@ pub struct BridgeStatusSnapshot {
     pub current_frame: Option<RuntimeFramePayload>,
     pub current_time_seconds: f64,
     pub time_scale: f64,
+    pub playback_mode: PlaybackMode,
+    pub total_duration_seconds: f64,
+    pub preparing_progress: Option<f64>,
+    pub seekable: bool,
     pub dirty_scopes: Vec<DirtyEditScope>,
     pub rebuild_required: bool,
     pub can_resume: bool,
@@ -76,8 +99,13 @@ impl SimulationBridge {
         Self {
             base_delta_seconds: fixed_delta_seconds.max(f64::EPSILON),
             time_scale: 1.0,
+            playback_config: PlaybackConfig::default(),
             compiled_scene: None,
             runtime: None,
+            precompute_session: None,
+            prepared_playback: None,
+            playback_cursor_frame: 0,
+            playback_cursor_phase: 0.0,
             dirty_scopes: Vec::new(),
             status: BridgeStatus::Idle,
         }
@@ -88,11 +116,12 @@ impl SimulationBridge {
         request: CompileSceneRequest,
     ) -> Result<RuntimeFramePayload, BridgeError> {
         let compiled_scene = compile_scene(&request).map_err(BridgeError::SceneCompile)?;
-        let runtime = RuntimeScene::new(compiled_scene.clone(), self.step_delta_seconds());
+        let runtime = RuntimeScene::new(compiled_scene.clone(), self.fixed_delta_seconds());
         let frame = runtime.current_frame();
 
         self.compiled_scene = Some(compiled_scene);
         self.runtime = Some(runtime);
+        self.clear_precomputed_playback();
         self.dirty_scopes.clear();
         self.status = BridgeStatus::Idle;
 
@@ -124,7 +153,34 @@ impl SimulationBridge {
 
     pub fn start_or_resume(&mut self) -> Result<RuntimeFramePayload, BridgeError> {
         self.guard_runtime_ready()?;
-        self.status = BridgeStatus::Running;
+
+        match self.playback_config.mode {
+            PlaybackMode::Realtime => {
+                if self.realtime_has_reached_duration_cap() {
+                    self.restore_runtime_baseline()?;
+                }
+
+                self.status = BridgeStatus::Running;
+            }
+            PlaybackMode::Precomputed => {
+                if self.prepared_playback.is_none() {
+                    if self.precompute_session.is_none() {
+                        self.begin_precompute_session()?;
+                    }
+
+                    self.status = BridgeStatus::Preparing;
+                    return self.current_frame();
+                }
+
+                if self.playback_cursor_is_at_end() {
+                    self.playback_cursor_frame = 0;
+                    self.playback_cursor_phase = 0.0;
+                }
+
+                self.status = BridgeStatus::Running;
+            }
+        }
+
         self.current_frame()
     }
 
@@ -147,6 +203,17 @@ impl SimulationBridge {
     pub fn step(&mut self) -> Result<RuntimeFramePayload, BridgeError> {
         self.guard_runtime_ready()?;
 
+        if self.playback_config.mode == PlaybackMode::Precomputed {
+            if self.prepared_playback.is_none() {
+                return Err(BridgeError::PlaybackCacheNotReady);
+            }
+
+            self.playback_cursor_phase = 0.0;
+            self.advance_cached_cursor_by_steps(1);
+            self.status = BridgeStatus::Paused;
+            return self.current_frame();
+        }
+
         let runtime = self
             .runtime
             .as_mut()
@@ -163,27 +230,39 @@ impl SimulationBridge {
     pub fn tick_snapshot(&mut self) -> Result<BridgeStatusSnapshot, BridgeError> {
         self.ensure_runtime_initialized()?;
 
-        if self.status == BridgeStatus::Running {
-            self.step()?;
+        match self.status {
+            BridgeStatus::Running => match self.playback_config.mode {
+                PlaybackMode::Realtime => {
+                    if !self.realtime_has_reached_duration_cap() {
+                        self.step()?;
+                    }
+
+                    if self.realtime_has_reached_duration_cap() {
+                        self.status = BridgeStatus::Idle;
+                    }
+                }
+                PlaybackMode::Precomputed => {
+                    self.advance_cached_cursor_for_tick();
+                }
+            },
+            BridgeStatus::Preparing => {
+                self.advance_precompute_session()?;
+            }
+            BridgeStatus::Idle | BridgeStatus::Paused => {}
         }
 
         Ok(self.status_snapshot())
     }
 
     pub fn reset(&mut self) -> Result<RuntimeFramePayload, BridgeError> {
-        let compiled_scene = self
-            .compiled_scene
-            .clone()
-            .ok_or(BridgeError::RuntimeNotInitialized)?;
         self.time_scale = 1.0;
-        let runtime = RuntimeScene::new(compiled_scene, self.step_delta_seconds());
-        let frame = runtime.current_frame();
-
-        self.runtime = Some(runtime);
+        self.restore_runtime_baseline()?;
+        self.precompute_session = None;
+        self.playback_cursor_phase = 0.0;
         self.dirty_scopes.clear();
         self.status = BridgeStatus::Idle;
 
-        Ok(frame)
+        self.current_frame()
     }
 
     pub fn reset_snapshot(&mut self) -> Result<BridgeStatusSnapshot, BridgeError> {
@@ -192,6 +271,10 @@ impl SimulationBridge {
     }
 
     pub fn current_frame(&self) -> Result<RuntimeFramePayload, BridgeError> {
+        if let Some(frame) = self.cached_current_frame() {
+            return Ok(frame);
+        }
+
         let runtime = self
             .runtime
             .as_ref()
@@ -201,6 +284,20 @@ impl SimulationBridge {
     }
 
     pub fn analyzer_samples(&self, id: &str) -> Result<Vec<TrajectorySample>, BridgeError> {
+        if let Some(prepared_playback) = self.prepared_playback.as_ref() {
+            return prepared_playback
+                .analyzer_samples(id)
+                .map(|samples| samples.to_vec())
+                .ok_or_else(|| BridgeError::UnknownAnalyzer { id: id.to_string() });
+        }
+
+        if let Some(precompute_session) = self.precompute_session.as_ref() {
+            return precompute_session
+                .analyzer_samples(id)
+                .map(|samples| samples.to_vec())
+                .ok_or_else(|| BridgeError::UnknownAnalyzer { id: id.to_string() });
+        }
+
         let runtime = self
             .runtime
             .as_ref()
@@ -233,10 +330,66 @@ impl SimulationBridge {
 
         self.time_scale = time_scale;
 
-        let step_delta_seconds = self.step_delta_seconds();
-        if let Some(runtime) = self.runtime.as_mut() {
-            runtime.set_fixed_delta_seconds(step_delta_seconds);
+        Ok(self.status_snapshot())
+    }
+
+    pub fn playback_config(&self) -> &PlaybackConfig {
+        &self.playback_config
+    }
+
+    pub fn set_playback_config(
+        &mut self,
+        playback_config: PlaybackConfig,
+    ) -> Result<BridgeStatusSnapshot, BridgeError> {
+        if matches!(self.status, BridgeStatus::Running | BridgeStatus::Preparing) {
+            return Err(BridgeError::PlaybackConfigLockedWhileActive);
         }
+
+        playback_config
+            .validate()
+            .map_err(|InvalidPlaybackConfig { field, value }| {
+                BridgeError::InvalidPlaybackConfig { field, value }
+            })?;
+
+        self.playback_config = playback_config;
+
+        if self.runtime.is_some() {
+            self.restore_runtime_baseline()?;
+        }
+
+        self.clear_precomputed_playback();
+        self.status = BridgeStatus::Idle;
+
+        Ok(self.status_snapshot())
+    }
+
+    pub fn set_playback_config_snapshot(
+        &mut self,
+        playback_config: PlaybackConfig,
+    ) -> Result<BridgeStatusSnapshot, BridgeError> {
+        self.set_playback_config(playback_config)
+    }
+
+    pub fn seek_to_time_snapshot(
+        &mut self,
+        time_seconds: f64,
+    ) -> Result<BridgeStatusSnapshot, BridgeError> {
+        if !time_seconds.is_finite() || time_seconds < 0.0 {
+            return Err(BridgeError::InvalidSeekTime {
+                value: time_seconds,
+            });
+        }
+
+        let prepared_playback = self
+            .prepared_playback
+            .as_ref()
+            .ok_or(BridgeError::PlaybackCacheNotReady)?;
+        let frame_index = ((time_seconds / self.fixed_delta_seconds()).round() as usize)
+            .min(prepared_playback.last_index());
+
+        self.playback_cursor_frame = frame_index;
+        self.playback_cursor_phase = 0.0;
+        self.status = BridgeStatus::Paused;
 
         Ok(self.status_snapshot())
     }
@@ -252,6 +405,7 @@ impl SimulationBridge {
             }
         }
 
+        self.clear_precomputed_playback();
         self.status = if self.runtime.is_some() {
             BridgeStatus::Paused
         } else {
@@ -271,18 +425,23 @@ impl SimulationBridge {
 
     pub fn status_snapshot(&self) -> BridgeStatusSnapshot {
         let rebuild_required = self.rebuild_required();
-        let current_time_seconds = self
-            .runtime
-            .as_ref()
-            .map(RuntimeScene::elapsed_time_seconds)
-            .unwrap_or(0.0);
-        let current_frame = self.runtime.as_ref().map(RuntimeScene::current_frame);
+        let current_time_seconds = self.current_playback_time_seconds();
+        let current_frame = self
+            .cached_current_frame()
+            .or_else(|| self.runtime.as_ref().map(RuntimeScene::current_frame));
 
         BridgeStatusSnapshot {
             status: self.status,
             current_frame,
             current_time_seconds,
             time_scale: self.time_scale,
+            playback_mode: self.playback_config.mode,
+            total_duration_seconds: self.playback_config.total_duration_seconds(),
+            preparing_progress: self
+                .precompute_session
+                .as_ref()
+                .map(PrecomputeSession::progress),
+            seekable: self.prepared_playback.is_some(),
             dirty_scopes: self.dirty_scopes.clone(),
             rebuild_required,
             can_resume: !rebuild_required,
@@ -316,8 +475,135 @@ impl SimulationBridge {
             .any(DirtyEditScope::requires_rebuild)
     }
 
-    fn step_delta_seconds(&self) -> f64 {
-        (self.base_delta_seconds * self.time_scale).max(f64::EPSILON)
+    fn fixed_delta_seconds(&self) -> f64 {
+        self.base_delta_seconds
+    }
+
+    fn duration_step_count(&self, duration_seconds: f64) -> u64 {
+        ((duration_seconds / self.fixed_delta_seconds()).round() as u64).max(1)
+    }
+
+    fn realtime_has_reached_duration_cap(&self) -> bool {
+        let Some(runtime) = self.runtime.as_ref() else {
+            return false;
+        };
+
+        runtime.frame_number()
+            >= self.duration_step_count(self.playback_config.realtime_duration_seconds)
+    }
+
+    fn cached_current_frame(&self) -> Option<RuntimeFramePayload> {
+        self.prepared_playback
+            .as_ref()
+            .and_then(|prepared_playback| prepared_playback.frame(self.playback_cursor_frame))
+            .cloned()
+    }
+
+    fn current_playback_time_seconds(&self) -> f64 {
+        if self.prepared_playback.is_some() {
+            return self.playback_cursor_frame as f64 * self.fixed_delta_seconds();
+        }
+
+        self.runtime
+            .as_ref()
+            .map(|runtime| runtime.frame_number() as f64 * self.fixed_delta_seconds())
+            .unwrap_or(0.0)
+    }
+
+    fn playback_cursor_is_at_end(&self) -> bool {
+        self.prepared_playback
+            .as_ref()
+            .map(|prepared_playback| self.playback_cursor_frame >= prepared_playback.last_index())
+            .unwrap_or(false)
+    }
+
+    fn clear_precomputed_playback(&mut self) {
+        self.precompute_session = None;
+        self.prepared_playback = None;
+        self.playback_cursor_frame = 0;
+        self.playback_cursor_phase = 0.0;
+    }
+
+    fn restore_runtime_baseline(&mut self) -> Result<(), BridgeError> {
+        let compiled_scene = self
+            .compiled_scene
+            .clone()
+            .ok_or(BridgeError::RuntimeNotInitialized)?;
+        self.runtime = Some(RuntimeScene::new(
+            compiled_scene,
+            self.fixed_delta_seconds(),
+        ));
+        self.playback_cursor_frame = 0;
+        self.playback_cursor_phase = 0.0;
+        Ok(())
+    }
+
+    fn begin_precompute_session(&mut self) -> Result<(), BridgeError> {
+        let compiled_scene = self
+            .compiled_scene
+            .clone()
+            .ok_or(BridgeError::RuntimeNotInitialized)?;
+        let total_steps =
+            self.duration_step_count(self.playback_config.precompute_duration_seconds);
+
+        self.precompute_session = Some(PrecomputeSession::new(
+            RuntimeScene::new(compiled_scene, self.fixed_delta_seconds()),
+            total_steps,
+        ));
+        self.prepared_playback = None;
+        self.playback_cursor_frame = 0;
+        self.playback_cursor_phase = 0.0;
+
+        Ok(())
+    }
+
+    fn advance_precompute_session(&mut self) -> Result<(), BridgeError> {
+        let finished = self
+            .precompute_session
+            .as_mut()
+            .ok_or(BridgeError::PlaybackCacheNotReady)?
+            .advance(PRECOMPUTE_CHUNK_STEPS);
+
+        if finished {
+            let prepared_playback = self
+                .precompute_session
+                .take()
+                .ok_or(BridgeError::PlaybackCacheNotReady)?
+                .finalize();
+            self.prepared_playback = Some(prepared_playback);
+            self.playback_cursor_frame = 0;
+            self.playback_cursor_phase = 0.0;
+            self.status = BridgeStatus::Running;
+        } else {
+            self.status = BridgeStatus::Preparing;
+        }
+
+        Ok(())
+    }
+
+    fn advance_cached_cursor_for_tick(&mut self) {
+        self.playback_cursor_phase += self.time_scale;
+        let whole_steps = self.playback_cursor_phase.floor() as usize;
+        self.playback_cursor_phase -= whole_steps as f64;
+
+        if whole_steps == 0 {
+            return;
+        }
+
+        self.advance_cached_cursor_by_steps(whole_steps);
+        if self.playback_cursor_is_at_end() {
+            self.status = BridgeStatus::Idle;
+            self.playback_cursor_phase = 0.0;
+        }
+    }
+
+    fn advance_cached_cursor_by_steps(&mut self, step_count: usize) {
+        let Some(prepared_playback) = self.prepared_playback.as_ref() else {
+            return;
+        };
+
+        self.playback_cursor_frame =
+            (self.playback_cursor_frame + step_count).min(prepared_playback.last_index());
     }
 }
 
@@ -450,7 +736,9 @@ pub enum SceneForceSourcePayload {
 impl SceneForceSourcePayload {
     fn into_force_source_definition(self) -> ForceSourceDefinition {
         match self {
-            Self::Gravity { id, acceleration } => ForceSourceDefinition::Gravity { id, acceleration },
+            Self::Gravity { id, acceleration } => {
+                ForceSourceDefinition::Gravity { id, acceleration }
+            }
         }
     }
 }

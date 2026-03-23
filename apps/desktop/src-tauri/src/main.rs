@@ -4,6 +4,7 @@ use sim_core::analyzer::TrajectorySample;
 use sim_core::bridge::{
     BridgeError, BridgeStatusSnapshot, DirtyEditScope, RuntimeCompileRequest, SimulationBridge,
 };
+use sim_core::playback::PlaybackConfig;
 use sim_core::scene::SceneCompileError;
 
 const FIXED_STEP_SECONDS: f64 = 1.0 / 60.0;
@@ -21,7 +22,9 @@ fn compile_scene(
     state: tauri::State<'_, RuntimeBridgeState>,
     request: RuntimeCompileRequest,
 ) -> Result<BridgeStatusSnapshot, String> {
-    with_bridge(state, |bridge| bridge.compile_runtime_request_snapshot(request))
+    with_bridge(state, |bridge| {
+        bridge.compile_runtime_request_snapshot(request)
+    })
 }
 
 #[tauri::command]
@@ -91,6 +94,22 @@ fn set_runtime_time_scale(
 }
 
 #[tauri::command]
+fn set_runtime_playback_config(
+    state: tauri::State<'_, RuntimeBridgeState>,
+    config: PlaybackConfig,
+) -> Result<BridgeStatusSnapshot, String> {
+    with_bridge(state, |bridge| bridge.set_playback_config_snapshot(config))
+}
+
+#[tauri::command]
+fn seek_runtime_to_time(
+    state: tauri::State<'_, RuntimeBridgeState>,
+    time_seconds: f64,
+) -> Result<BridgeStatusSnapshot, String> {
+    with_bridge(state, |bridge| bridge.seek_to_time_snapshot(time_seconds))
+}
+
+#[tauri::command]
 fn runtime_status(
     state: tauri::State<'_, RuntimeBridgeState>,
 ) -> Result<BridgeStatusSnapshot, String> {
@@ -135,6 +154,14 @@ fn format_bridge_error(error: BridgeError) -> String {
             format!("incomplete entity record: {id} ({kind}) is missing {missing_field}")
         }
         BridgeError::InvalidTimeScale { value } => format!("invalid time scale: {value}"),
+        BridgeError::InvalidPlaybackConfig { field, value } => {
+            format!("invalid playback config: {field} must be positive (received {value})")
+        }
+        BridgeError::InvalidSeekTime { value } => format!("invalid seek time: {value}"),
+        BridgeError::PlaybackCacheNotReady => "cached playback is not ready".to_string(),
+        BridgeError::PlaybackConfigLockedWhileActive => {
+            "runtime playback config is locked while playback is active".to_string()
+        }
         BridgeError::RuntimeNotInitialized => "runtime not initialized".to_string(),
         BridgeError::UnknownAnalyzer { id } => format!("unknown analyzer: {id}"),
         BridgeError::UnsupportedSceneRecord { section, record } => {
@@ -159,9 +186,9 @@ fn format_scene_compile_error(error: SceneCompileError) -> String {
         SceneCompileError::InvalidSpringStiffness {
             constraint_id,
             value,
-        } => format!(
-            "invalid spring stiffness: {constraint_id} must be positive (received {value})"
-        ),
+        } => {
+            format!("invalid spring stiffness: {constraint_id} must be positive (received {value})")
+        }
         SceneCompileError::InvalidShapeParameters { entity_id, kind } => {
             format!("invalid shape parameters: {entity_id} ({kind})")
         }
@@ -204,6 +231,8 @@ pub fn register_runtime_commands<R: tauri::Runtime>(
             analyzer_samples,
             read_trajectory_samples,
             set_runtime_time_scale,
+            set_runtime_playback_config,
+            seek_runtime_to_time,
             runtime_status,
             mark_scene_dirty
         ])
@@ -232,13 +261,17 @@ fn main() {
 mod tests {
     use std::time::Duration;
 
+    use serde_json::json;
     use sim_core::bridge::BridgeStatus;
+    use sim_core::playback::PlaybackMode;
     use sim_core::scene::SceneCompileError;
     use tauri::Manager;
-    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+    use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
     use tauri::webview::InvokeRequest;
 
-    use super::{BridgeError, BridgeStatusSnapshot, build_desktop_app, format_bridge_error, run_desktop_app};
+    use super::{
+        BridgeError, BridgeStatusSnapshot, build_desktop_app, format_bridge_error, run_desktop_app,
+    };
 
     #[test]
     fn build_desktop_app_registers_runtime_status_command() {
@@ -305,7 +338,10 @@ mod tests {
             },
         ));
 
-        assert_eq!(message, "invalid track axis: track-1 must use a non-zero axis");
+        assert_eq!(
+            message,
+            "invalid track axis: track-1 must use a non-zero axis"
+        );
     }
 
     #[test]
@@ -317,15 +353,190 @@ mod tests {
         assert_eq!(message, "unknown analyzer: traj-missing");
     }
 
+    #[test]
+    fn build_desktop_app_registers_playback_config_and_seek_commands() {
+        let app =
+            build_desktop_app(mock_builder(), mock_context(noop_assets())).expect("app builds");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("webview builds");
+
+        let config_response = get_ipc_response(
+            &webview,
+            invoke_request_with_body(
+                "set_runtime_playback_config",
+                json!({
+                    "config": {
+                        "mode": "precomputed",
+                        "realtimeDurationSeconds": 40.0,
+                        "precomputeDurationSeconds": 2.0
+                    }
+                }),
+            ),
+        )
+        .expect("playback config command succeeds");
+        let config_snapshot = config_response
+            .deserialize::<BridgeStatusSnapshot>()
+            .expect("playback config snapshot deserializes");
+
+        assert_eq!(config_snapshot.playback_mode, PlaybackMode::Precomputed);
+        assert_eq!(config_snapshot.total_duration_seconds, 2.0);
+        assert!(!config_snapshot.seekable);
+
+        let compile_response = get_ipc_response(
+            &webview,
+            invoke_request_with_body(
+                "compile_scene",
+                json!({
+                    "request": runtime_compile_request_body(),
+                }),
+            ),
+        )
+        .expect("compile scene command succeeds");
+        let compile_snapshot = compile_response
+            .deserialize::<BridgeStatusSnapshot>()
+            .expect("compile snapshot deserializes");
+        assert_eq!(compile_snapshot.status, BridgeStatus::Idle);
+
+        let preparing_response = get_ipc_response(&webview, invoke_request("start_runtime"))
+            .expect("start runtime command succeeds");
+        let preparing_snapshot = preparing_response
+            .deserialize::<BridgeStatusSnapshot>()
+            .expect("preparing snapshot deserializes");
+        assert_eq!(preparing_snapshot.status, BridgeStatus::Preparing);
+        assert_eq!(preparing_snapshot.preparing_progress, Some(0.0));
+
+        let progress_response = get_ipc_response(&webview, invoke_request("tick_runtime"))
+            .expect("precompute progress tick succeeds");
+        let progress_snapshot = progress_response
+            .deserialize::<BridgeStatusSnapshot>()
+            .expect("progress snapshot deserializes");
+        assert_eq!(progress_snapshot.status, BridgeStatus::Preparing);
+        assert_eq!(progress_snapshot.preparing_progress, Some(0.5));
+
+        let ready_response = get_ipc_response(&webview, invoke_request("tick_runtime"))
+            .expect("precompute completion tick succeeds");
+        let ready_snapshot = ready_response
+            .deserialize::<BridgeStatusSnapshot>()
+            .expect("ready snapshot deserializes");
+        assert_eq!(ready_snapshot.status, BridgeStatus::Running);
+        assert!(ready_snapshot.seekable);
+
+        let seek_response = get_ipc_response(
+            &webview,
+            invoke_request_with_body("seek_runtime_to_time", json!({ "timeSeconds": 0.149 })),
+        )
+        .expect("seek runtime command succeeds");
+        let seek_snapshot = seek_response
+            .deserialize::<BridgeStatusSnapshot>()
+            .expect("seek snapshot deserializes");
+
+        assert_eq!(seek_snapshot.status, BridgeStatus::Paused);
+        assert_eq!(
+            seek_snapshot
+                .current_frame
+                .as_ref()
+                .map(|frame| frame.frame_number),
+            Some(9)
+        );
+        assert!((seek_snapshot.current_time_seconds - 0.15).abs() < 1e-9);
+    }
+
+    #[test]
+    fn build_desktop_app_keeps_new_transport_errors_teacher_readable() {
+        let app =
+            build_desktop_app(mock_builder(), mock_context(noop_assets())).expect("app builds");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("webview builds");
+
+        let seek_error = get_ipc_response(
+            &webview,
+            invoke_request_with_body("seek_runtime_to_time", json!({ "timeSeconds": 1.0 })),
+        )
+        .expect_err("seek should fail before cached playback exists");
+        assert_eq!(seek_error.as_str(), Some("cached playback is not ready"));
+
+        get_ipc_response(
+            &webview,
+            invoke_request_with_body(
+                "compile_scene",
+                json!({
+                    "request": runtime_compile_request_body(),
+                }),
+            ),
+        )
+        .expect("compile scene command succeeds");
+        get_ipc_response(&webview, invoke_request("start_runtime"))
+            .expect("start runtime command succeeds");
+
+        let config_error = get_ipc_response(
+            &webview,
+            invoke_request_with_body(
+                "set_runtime_playback_config",
+                json!({
+                    "config": {
+                        "mode": "precomputed",
+                        "realtimeDurationSeconds": 40.0,
+                        "precomputeDurationSeconds": 2.0
+                    }
+                }),
+            ),
+        )
+        .expect_err("changing playback config while active should be blocked");
+        assert_eq!(
+            config_error.as_str(),
+            Some("runtime playback config is locked while playback is active")
+        );
+    }
+
     fn invoke_request(command: &str) -> InvokeRequest {
+        invoke_request_with_body(command, serde_json::Value::Object(Default::default()))
+    }
+
+    fn invoke_request_with_body(command: &str, body: serde_json::Value) -> InvokeRequest {
         InvokeRequest {
             cmd: command.into(),
             callback: tauri::ipc::CallbackFn(0),
             error: tauri::ipc::CallbackFn(1),
             url: "http://tauri.localhost".parse().expect("valid invoke url"),
-            body: tauri::ipc::InvokeBody::default(),
+            body: tauri::ipc::InvokeBody::from(body),
             headers: Default::default(),
             invoke_key: INVOKE_KEY.to_string(),
         }
+    }
+
+    fn runtime_compile_request_body() -> serde_json::Value {
+        json!({
+            "scene": {
+                "schemaVersion": 1,
+                "entities": [
+                    {
+                        "id": "probe",
+                        "kind": "ball",
+                        "x": 0.0,
+                        "y": 3.0,
+                        "radius": 1.0,
+                        "mass": 1.0,
+                        "friction": 0.2,
+                        "restitution": 0.1,
+                        "velocityX": 1.5,
+                        "velocityY": 0.0
+                    }
+                ],
+                "constraints": [],
+                "forceSources": [
+                    {
+                        "id": "gravity-earth",
+                        "kind": "gravity",
+                        "acceleration": { "x": 0.0, "y": -9.81 }
+                    }
+                ],
+                "analyzers": [],
+                "annotations": []
+            },
+            "dirtyScopes": [],
+            "rebuildRequired": false
+        })
     }
 }

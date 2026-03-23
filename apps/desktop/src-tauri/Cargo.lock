@@ -553,6 +553,7 @@ dependencies = [
 name = "desktop-shell"
 version = "0.1.0"
 dependencies = [
+ "serde_json",
  "sim-core",
  "tauri",
  "tauri-build",

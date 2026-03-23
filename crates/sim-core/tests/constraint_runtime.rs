@@ -8,12 +8,7 @@ fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
 }
 
-fn body(
-    id: &str,
-    position: Vector2,
-    velocity: Vector2,
-    is_static: bool,
-) -> EntityDefinition {
+fn body(id: &str, position: Vector2, velocity: Vector2, is_static: bool) -> EntityDefinition {
     EntityDefinition {
         id: id.to_string(),
         shape: ShapeDefinition::Block {
@@ -50,8 +45,12 @@ fn runtime_for_scene(
     RuntimeScene::new(compiled, fixed_delta_seconds)
 }
 
-fn payload_frame<'a>(frame: &'a RuntimeFramePayload, entity_id: &str) -> &'a sim_core::runtime::RuntimeEntityFrame {
-    frame.entities
+fn payload_frame<'a>(
+    frame: &'a RuntimeFramePayload,
+    entity_id: &str,
+) -> &'a sim_core::runtime::RuntimeEntityFrame {
+    frame
+        .entities
         .iter()
         .find(|entity| entity.entity_id == entity_id)
         .expect("entity should exist in frame")
@@ -92,8 +91,14 @@ fn constraint_runtime_spring_acceleration_changes_with_stretch() {
 
     let relaxed_frame = relaxed_runtime.step();
     let stretched_frame = stretched_runtime.step();
-    let relaxed_acceleration = payload_frame(&relaxed_frame, "payload").acceleration.x.abs();
-    let stretched_acceleration = payload_frame(&stretched_frame, "payload").acceleration.x.abs();
+    let relaxed_acceleration = payload_frame(&relaxed_frame, "payload")
+        .acceleration
+        .x
+        .abs();
+    let stretched_acceleration = payload_frame(&stretched_frame, "payload")
+        .acceleration
+        .x
+        .abs();
 
     assert!(stretched_acceleration > relaxed_acceleration);
 }
@@ -101,12 +106,7 @@ fn constraint_runtime_spring_acceleration_changes_with_stretch() {
 #[test]
 fn constraint_runtime_track_projection_applies_to_initial_and_reset_state() {
     let mut runtime = runtime_for_scene(
-        vec![body(
-            "slider",
-            vector2(0.0, 4.0),
-            vector2(3.0, 2.0),
-            false,
-        )],
+        vec![body("slider", vector2(0.0, 4.0), vector2(3.0, 2.0), false)],
         vec![ConstraintDefinition::Track {
             id: "track-horizontal".to_string(),
             entity_id: "slider".to_string(),
@@ -130,12 +130,7 @@ fn constraint_runtime_track_projection_applies_to_initial_and_reset_state() {
 #[test]
 fn constraint_runtime_track_projection_holds_across_many_steps() {
     let mut runtime = runtime_for_scene(
-        vec![body(
-            "slider",
-            vector2(0.0, 4.0),
-            vector2(3.0, 2.0),
-            false,
-        )],
+        vec![body("slider", vector2(0.0, 4.0), vector2(3.0, 2.0), false)],
         vec![ConstraintDefinition::Track {
             id: "track-diagonal".to_string(),
             entity_id: "slider".to_string(),
