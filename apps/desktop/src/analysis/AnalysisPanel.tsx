@@ -1,10 +1,9 @@
 import type { CSSProperties } from "react";
 
-import type { RuntimeBridgePort } from "../state/runtimeBridge";
+import type { RuntimeBridgePort, RuntimeTrajectorySample } from "../state/runtimeBridge";
 import {
   buildRuntimeTrajectoryReadout,
   createAnalyzerSamplesFromTrajectory,
-  type RuntimeTrajectorySample,
 } from "./analysisTrajectorySamples";
 import {
   buildAnalyzerChartSeries,
