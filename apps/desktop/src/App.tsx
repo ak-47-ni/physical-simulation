@@ -10,8 +10,8 @@ import {
   type SceneDisplaySettings,
 } from "./io/sceneFile";
 import { ShellLayout } from "./layout/ShellLayout";
-import { BottomTransportBar } from "./panels/BottomTransportBar";
 import { ObjectLibraryPanel } from "./panels/ObjectLibraryPanel";
+import { PlaybackTransportDeck } from "./panels/PlaybackTransportDeck";
 import { PropertyPanel } from "./panels/PropertyPanel";
 import { SceneTreePanel } from "./panels/SceneTreePanel";
 import {
@@ -52,8 +52,10 @@ import {
   type MassUnit,
   type VelocityUnit,
 } from "./state/sceneUnits";
+import {
+  useDualPlaybackController,
+} from "./state/useDualPlaybackController";
 import { useEditorHotkeys } from "./state/useEditorHotkeys";
-import { useRuntimePlaybackLoop } from "./state/useRuntimePlaybackLoop";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import { projectRuntimeSceneEntities } from "./workspace/runtimeSceneView";
 import {
@@ -331,11 +333,6 @@ export function App() {
 
   useEffect(() => runtimePort.subscribe(setRuntimeSnapshot), [runtimePort]);
 
-  useRuntimePlaybackLoop({
-    runtimePort,
-    snapshot: runtimeSnapshot,
-  });
-
   useEffect(() => {
     void runtimePort.compile(
       createRuntimeCompileRequestFromEditorState({
@@ -347,6 +344,36 @@ export function App() {
       }),
     );
   }, [annotationState.strokes, constraints, entities, runtimePort, sceneSettings]);
+
+  const {
+    currentPlaybackTimeSeconds,
+    handlePlaybackModeChange,
+    handlePrecomputeDurationChange,
+    handleTransportPause,
+    handleTransportReset,
+    handleTransportStart,
+    handleTransportStep,
+    handleTransportTimeScaleChange,
+    isPreparing,
+    playbackLocked,
+    playbackMode,
+    precomputeDurationSeconds,
+    preparationProgress,
+    realtimeCapSeconds,
+    seekEnabled,
+    seekPrecomputedPlayback,
+    timelineMaxSeconds,
+    transportRuntime,
+    visibleRuntimeFrame,
+  } = useDualPlaybackController({
+    analyzerId: PRIMARY_ANALYZER_ID,
+    annotationStrokes: annotationState.strokes,
+    constraints,
+    entities,
+    runtimePort,
+    runtimeSnapshot,
+    sceneSettings,
+  });
 
   function handleToolChange(tool: EditorTool) {
     setEditorState((current) => ({
@@ -483,10 +510,10 @@ export function App() {
     constraints.find((constraint) => constraint.id === editorState.selectedConstraintId) ?? null;
   const displayEntities = projectRuntimeSceneEntities({
     editorEntities: entities,
-    runtimeFrame: runtimeSnapshot.bridge.currentFrame,
+    runtimeFrame: visibleRuntimeFrame,
     viewport: workspaceViewport,
   });
-  const authoringLocked = runtimeSnapshot.bridge.status === "running";
+  const authoringLocked = playbackLocked;
   const scenePhysicsState = createScenePhysicsPanelState(sceneSettings, authoringLocked);
 
   function handleDuplicateSelectedEntity() {
@@ -595,9 +622,18 @@ export function App() {
         entities,
         settings: sceneSettings,
         units: {
-          lengthUnit: isLengthUnit(nextLengthUnit ?? "") ? nextLengthUnit : undefined,
-          velocityUnit: isVelocityUnit(nextVelocityUnit ?? "") ? nextVelocityUnit : undefined,
-          massUnit: isMassUnit(nextMassUnit ?? "") ? nextMassUnit : undefined,
+          lengthUnit:
+            typeof nextLengthUnit === "string" && isLengthUnit(nextLengthUnit)
+              ? nextLengthUnit
+              : undefined,
+          velocityUnit:
+            typeof nextVelocityUnit === "string" && isVelocityUnit(nextVelocityUnit)
+              ? nextVelocityUnit
+              : undefined,
+          massUnit:
+            typeof nextMassUnit === "string" && isMassUnit(nextMassUnit)
+              ? nextMassUnit
+              : undefined,
         },
       });
 
@@ -760,38 +796,18 @@ export function App() {
   return (
     <ShellLayout
       bottomPane={
-        <div style={{ display: "grid", gap: "14px" }}>
-          <BottomTransportBar
-            runtime={runtimeSnapshot.bridge}
-            onPause={() => {
-              void runtimePort.pause();
-            }}
-            onReset={() => {
-              void runtimePort.reset();
-            }}
-            onStart={() => {
-              void runtimePort.start();
-            }}
-            onStep={() => {
-              void runtimePort.step();
-            }}
-            onTimeScaleChange={(timeScale) => {
-              void runtimePort.setTimeScale(timeScale);
-            }}
-          />
-          <AnalysisPanel
-            analyzerId={PRIMARY_ANALYZER_ID}
-            display={{
-              showTrajectories: displaySettings.showTrajectories,
-              showVelocityVectors: displaySettings.showVelocityVectors,
-              showForceVectors: displaySettings.showForceVectors,
-            }}
-            onDisplayChange={(nextDisplay) => {
-              handleUpdateDisplaySetting(nextDisplay);
-            }}
-            runtimePort={runtimePort}
-          />
-        </div>
+        <AnalysisPanel
+          analyzerId={PRIMARY_ANALYZER_ID}
+          display={{
+            showTrajectories: displaySettings.showTrajectories,
+            showVelocityVectors: displaySettings.showVelocityVectors,
+            showForceVectors: displaySettings.showForceVectors,
+          }}
+          onDisplayChange={(nextDisplay) => {
+            handleUpdateDisplaySetting(nextDisplay);
+          }}
+          runtimePort={runtimePort}
+        />
       }
       leftPane={
         <ObjectLibraryPanel
@@ -831,7 +847,27 @@ export function App() {
         </div>
       }
     >
-      <div style={{ display: "grid", gridTemplateRows: "minmax(0, 1fr) auto", gap: "14px" }}>
+      <div style={{ display: "grid", gridTemplateRows: "auto minmax(0, 1fr) auto", gap: "14px" }}>
+        <PlaybackTransportDeck
+          currentTimeSeconds={currentPlaybackTimeSeconds}
+          isPreparing={isPreparing}
+          mode={playbackMode}
+          onModeChange={handlePlaybackModeChange}
+          onPause={handleTransportPause}
+          onPrecomputeDurationChange={handlePrecomputeDurationChange}
+          onReset={handleTransportReset}
+          onSeek={seekPrecomputedPlayback}
+          onStart={handleTransportStart}
+          onStep={handleTransportStep}
+          onTimeScaleChange={handleTransportTimeScaleChange}
+          precomputeDurationSeconds={precomputeDurationSeconds}
+          preparationProgress={preparationProgress}
+          realtimeCapSeconds={realtimeCapSeconds}
+          runtime={transportRuntime}
+          seekEnabled={seekEnabled}
+          timelineMaxSeconds={timelineMaxSeconds}
+        />
+
         <WorkspaceCanvas
           authoringLocked={authoringLocked}
           constraintPlacement={constraintPlacement}

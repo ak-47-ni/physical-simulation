@@ -275,4 +275,93 @@ describe("App runtime features", () => {
       expect(ball.style.left).toBe("133px");
     });
   });
+
+  it("mounts the transport controls above the workspace and keeps analysis in the bottom pane", () => {
+    render(<App />);
+
+    const centerPane = screen.getByTestId("shell-center-pane");
+    const bottomPane = screen.getByTestId("shell-bottom-pane");
+
+    expect(within(centerPane).getByTestId("bottom-transport-bar")).toBeDefined();
+    expect(within(centerPane).getByTestId("workspace-canvas")).toBeDefined();
+    expect(within(bottomPane).queryByTestId("bottom-transport-bar")).toBeNull();
+    expect(within(bottomPane).getByTestId("analysis-panel")).toBeDefined();
+  });
+
+  it("defaults to realtime playback with a 40 second cap and disabled seek controls", () => {
+    render(<App />);
+
+    expect((screen.getByLabelText("Playback mode") as HTMLSelectElement).value).toBe("realtime");
+    expect(screen.getAllByText("Realtime cap: 40 s").length).toBeGreaterThan(0);
+    expect((screen.getByLabelText("Playback progress") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Playback time") as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("precomputes cached playback and seeks by timeline and time input", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    fireEvent.click(ball);
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
+    fireEvent.change(screen.getByLabelText("Playback mode"), { target: { value: "precomputed" } });
+
+    expect((screen.getByLabelText("Precompute duration") as HTMLInputElement).value).toBe("20");
+
+    fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
+    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("Playback progress") as HTMLInputElement).disabled).toBe(
+        false,
+      );
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+    fireEvent.change(screen.getByLabelText("Playback progress"), { target: { value: "0.5" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("0.50 s")).toBeDefined();
+      expect(ball.style.left).toBe("162px");
+    });
+
+    fireEvent.change(screen.getByLabelText("Playback time"), { target: { value: "0.25" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("0.25 s")).toBeDefined();
+      expect(ball.style.left).toBe("147px");
+    });
+  });
+
+  it("resets cached playback to time zero after changing duration while paused", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    fireEvent.click(ball);
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
+    fireEvent.change(screen.getByLabelText("Playback mode"), { target: { value: "precomputed" } });
+    fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
+    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("Playback progress") as HTMLInputElement).disabled).toBe(
+        false,
+      );
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+    fireEvent.change(screen.getByLabelText("Playback progress"), { target: { value: "0.5" } });
+
+    await waitFor(() => {
+      expect(ball.style.left).toBe("162px");
+    });
+
+    fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "2" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("0.00 s")).toBeDefined();
+      expect(ball.style.left).toBe("132px");
+    });
+  });
 });

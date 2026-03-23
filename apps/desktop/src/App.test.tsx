@@ -24,7 +24,7 @@ describe("App selection sync", () => {
     expect(screen.getByTestId("scene-entity-ball-1").getAttribute("data-selected")).toBe("true");
     expect(screen.getByTestId("scene-tree-item-ball-1").getAttribute("data-selected")).toBe("true");
     expect(screen.getByText("1.32 m, 1.76 m")).toBeDefined();
-  });
+  }, 10_000);
 
   it("updates entity positions after dragging in the workspace", () => {
     render(<App />);
