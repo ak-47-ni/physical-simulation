@@ -9,6 +9,19 @@ import {
 } from "../../../../packages/scene-schema/src";
 
 import type { EditorConstraint } from "./editorConstraints";
+import {
+  createSceneAuthoringSettings,
+  type SceneAuthoringSettings,
+} from "./sceneAuthoringSettings";
+import {
+  convertGravityValue,
+  convertLengthValue,
+  convertMassValue,
+  convertVelocityValue,
+  type LengthUnit,
+  type MassUnit,
+  type VelocityUnit,
+} from "./sceneUnits";
 import type { EditorSceneEntity } from "./editorStore";
 
 export const DEFAULT_SCENE_GRAVITY: Vector2 = { x: 0, y: 9.8 };
@@ -63,6 +76,23 @@ export type EditorSceneDocumentState = {
   entities: EditorSceneEntity[];
   selectedConstraintId: string | null;
   selectedEntityId: string | null;
+};
+
+type ConvertSceneAuthoringUnitsInput = {
+  constraints: EditorConstraint[];
+  entities: EditorSceneEntity[];
+  settings: SceneAuthoringSettings;
+  units: {
+    lengthUnit?: LengthUnit;
+    velocityUnit?: VelocityUnit;
+    massUnit?: MassUnit;
+  };
+};
+
+export type ConvertedSceneAuthoringState = {
+  constraints: EditorConstraint[];
+  entities: EditorSceneEntity[];
+  settings: SceneAuthoringSettings;
 };
 
 export function createSceneDocumentFromEditorState(
@@ -120,6 +150,32 @@ export function createGravityForceSource(input?: {
     acceleration: cloneVector(input?.acceleration ?? DEFAULT_SCENE_GRAVITY),
     id: input?.id ?? DEFAULT_GRAVITY_SOURCE_ID,
     kind: "gravity",
+  };
+}
+
+export function convertSceneAuthoringUnits(
+  input: ConvertSceneAuthoringUnitsInput,
+): ConvertedSceneAuthoringState {
+  const nextSettings = createSceneAuthoringSettings({
+    ...input.settings,
+    lengthUnit: input.units.lengthUnit ?? input.settings.lengthUnit,
+    velocityUnit: input.units.velocityUnit ?? input.settings.velocityUnit,
+    massUnit: input.units.massUnit ?? input.settings.massUnit,
+    gravity: convertGravityValue(
+      input.settings.gravity,
+      input.settings.lengthUnit,
+      input.units.lengthUnit ?? input.settings.lengthUnit,
+    ),
+  });
+
+  return {
+    constraints: input.constraints.map((constraint) =>
+      convertEditorConstraintUnits(constraint, input.settings, nextSettings),
+    ),
+    entities: input.entities.map((entity) =>
+      convertEditorEntityUnits(entity, input.settings, nextSettings),
+    ),
+    settings: nextSettings,
   };
 }
 
@@ -316,6 +372,77 @@ function cloneAnnotationStroke(stroke: AnnotationStroke): AnnotationStroke {
 
 function cloneVector(vector: Vector2): Vector2 {
   return { ...vector };
+}
+
+function convertEditorEntityUnits(
+  entity: EditorSceneEntity,
+  fromSettings: SceneAuthoringSettings,
+  toSettings: SceneAuthoringSettings,
+): EditorSceneEntity {
+  const convertedBase = {
+    ...entity,
+    mass: convertMassValue(entity.mass, fromSettings.massUnit, toSettings.massUnit),
+    velocityX: convertVelocityValue(
+      entity.velocityX,
+      fromSettings.velocityUnit,
+      toSettings.velocityUnit,
+    ),
+    velocityY: convertVelocityValue(
+      entity.velocityY,
+      fromSettings.velocityUnit,
+      toSettings.velocityUnit,
+    ),
+    x: convertLengthValue(entity.x, fromSettings.lengthUnit, toSettings.lengthUnit),
+    y: convertLengthValue(entity.y, fromSettings.lengthUnit, toSettings.lengthUnit),
+  };
+
+  if (entity.kind === "ball") {
+    return {
+      ...convertedBase,
+      kind: "ball",
+      radius: convertLengthValue(
+        entity.radius,
+        fromSettings.lengthUnit,
+        toSettings.lengthUnit,
+      ),
+    };
+  }
+
+  return {
+    ...convertedBase,
+    kind: entity.kind,
+    width: convertLengthValue(entity.width, fromSettings.lengthUnit, toSettings.lengthUnit),
+    height: convertLengthValue(entity.height, fromSettings.lengthUnit, toSettings.lengthUnit),
+  };
+}
+
+function convertEditorConstraintUnits(
+  constraint: EditorConstraint,
+  fromSettings: SceneAuthoringSettings,
+  toSettings: SceneAuthoringSettings,
+): EditorConstraint {
+  if (constraint.kind === "spring") {
+    return {
+      ...constraint,
+      restLength: convertLengthValue(
+        constraint.restLength,
+        fromSettings.lengthUnit,
+        toSettings.lengthUnit,
+      ),
+    };
+  }
+
+  return {
+    ...constraint,
+    origin: {
+      x: convertLengthValue(constraint.origin.x, fromSettings.lengthUnit, toSettings.lengthUnit),
+      y: convertLengthValue(constraint.origin.y, fromSettings.lengthUnit, toSettings.lengthUnit),
+    },
+    axis: {
+      x: convertLengthValue(constraint.axis.x, fromSettings.lengthUnit, toSettings.lengthUnit),
+      y: convertLengthValue(constraint.axis.y, fromSettings.lengthUnit, toSettings.lengthUnit),
+    },
+  };
 }
 
 function readNullableString<T extends object, K extends string>(

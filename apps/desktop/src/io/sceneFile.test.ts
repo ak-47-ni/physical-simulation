@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { createDefaultSceneAuthoringSettings } from "../state/sceneAuthoringSettings";
 import { createInitialSceneEntities } from "../state/editorStore";
 import { createSceneDocumentFromEditorState } from "../state/editorSceneDocument";
 import {
@@ -69,5 +70,57 @@ describe("scene file IO", () => {
     });
     expect(parsed.selectedConstraintId).toBe("track-1");
     expect(parsed.selectedEntityId).toBe("ball-1");
+  });
+
+  it("serializes and parses persisted scene authoring settings", () => {
+    const scene = createSceneDocumentFromEditorState({
+      entities: createInitialSceneEntities(),
+    });
+
+    const serialized = serializeSceneFile({
+      authoring: {
+        gravity: 981,
+        lengthUnit: "cm",
+        velocityUnit: "cm/s",
+        massUnit: "g",
+        pixelsPerMeter: 160,
+      },
+      display: createSceneDisplaySettings(),
+      scene,
+      selectedConstraintId: null,
+      selectedEntityId: "ball-1",
+    });
+    const parsed = parseSceneFile(serialized);
+
+    expect(parsed.version).toBe(2);
+    expect(parsed.authoring).toEqual({
+      gravity: 981,
+      lengthUnit: "cm",
+      velocityUnit: "cm/s",
+      massUnit: "g",
+      pixelsPerMeter: 160,
+    });
+  });
+
+  it("falls back to default authoring settings when parsing a legacy scene file", () => {
+    const legacySerialized = JSON.stringify({
+      format: "physics-sandbox-scene",
+      version: 1,
+      scene: createSceneDocumentFromEditorState({
+        entities: createInitialSceneEntities(),
+      }),
+      selectedConstraintId: null,
+      display: createSceneDisplaySettings({
+        showLabels: true,
+      }),
+      selectedEntityId: "board-1",
+    });
+
+    const parsed = parseSceneFile(legacySerialized);
+
+    expect(parsed.version).toBe(2);
+    expect(parsed.authoring).toEqual(createDefaultSceneAuthoringSettings());
+    expect(parsed.selectedEntityId).toBe("board-1");
+    expect(parsed.display.showLabels).toBe(true);
   });
 });
