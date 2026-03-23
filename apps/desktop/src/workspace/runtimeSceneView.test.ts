@@ -1,0 +1,170 @@
+import { describe, expect, it } from "vitest";
+
+import type { RuntimeFrameView } from "../state/runtimeBridge";
+import type { EditorSceneEntity } from "../state/editorStore";
+import { projectRuntimeSceneEntities } from "./runtimeSceneView";
+
+function createBallEntity(): EditorSceneEntity {
+  return {
+    id: "ball-1",
+    kind: "ball",
+    label: "Ball 1",
+    x: 120,
+    y: 180,
+    radius: 24,
+    mass: 1.2,
+    friction: 0.14,
+    restitution: 0.82,
+    locked: true,
+    velocityX: 8,
+    velocityY: -4,
+  };
+}
+
+function createBoardEntity(): EditorSceneEntity {
+  return {
+    id: "board-1",
+    kind: "board",
+    label: "Board 1",
+    x: 320,
+    y: 260,
+    width: 120,
+    height: 18,
+    mass: 5,
+    friction: 0.42,
+    restitution: 0.18,
+    locked: false,
+    velocityX: 0,
+    velocityY: 0,
+  };
+}
+
+function createRuntimeFrame(overrides: Partial<RuntimeFrameView> = {}): RuntimeFrameView {
+  return {
+    frameNumber: 12,
+    entities: [],
+    ...overrides,
+  };
+}
+
+describe("projectRuntimeSceneEntities", () => {
+  it("projects a ball runtime center into workspace top-left coordinates", () => {
+    const projected = projectRuntimeSceneEntities({
+      editorEntities: [createBallEntity()],
+      runtimeFrame: createRuntimeFrame({
+        entities: [
+          {
+            id: "ball-1",
+            transform: {
+              x: 260,
+              y: 312,
+              rotation: 0,
+            },
+          },
+        ],
+      }),
+    });
+
+    expect(projected).toEqual([
+      expect.objectContaining({
+        id: "ball-1",
+        x: 236,
+        y: 288,
+        radius: 24,
+      }),
+    ]);
+  });
+
+  it("projects sized bodies without losing their dimensions", () => {
+    const projected = projectRuntimeSceneEntities({
+      editorEntities: [createBoardEntity()],
+      runtimeFrame: createRuntimeFrame({
+        entities: [
+          {
+            id: "board-1",
+            transform: {
+              x: 460,
+              y: 271,
+              rotation: 0,
+            },
+          },
+        ],
+      }),
+    });
+
+    expect(projected).toEqual([
+      expect.objectContaining({
+        id: "board-1",
+        x: 400,
+        y: 262,
+        width: 120,
+        height: 18,
+      }),
+    ]);
+  });
+
+  it("preserves editor-authored labels and lock state while projecting runtime positions", () => {
+    const projected = projectRuntimeSceneEntities({
+      editorEntities: [createBallEntity()],
+      runtimeFrame: createRuntimeFrame({
+        entities: [
+          {
+            id: "ball-1",
+            transform: {
+              x: 260,
+              y: 312,
+              rotation: 0,
+            },
+          },
+        ],
+      }),
+    });
+
+    expect(projected[0]).toEqual(
+      expect.objectContaining({
+        id: "ball-1",
+        label: "Ball 1",
+        locked: true,
+        velocityX: 8,
+        velocityY: -4,
+      }),
+    );
+  });
+
+  it("falls back to editor positions when runtime data is missing for an entity", () => {
+    const ball = createBallEntity();
+    const board = createBoardEntity();
+
+    const projected = projectRuntimeSceneEntities({
+      editorEntities: [ball, board],
+      runtimeFrame: createRuntimeFrame({
+        entities: [
+          {
+            id: "ball-1",
+            transform: {
+              x: 260,
+              y: 312,
+              rotation: 0,
+            },
+          },
+        ],
+      }),
+    });
+
+    expect(projected[0]).toEqual(
+      expect.objectContaining({
+        id: "ball-1",
+        x: 236,
+        y: 288,
+      }),
+    );
+    expect(projected[1]).toBe(board);
+    expect(projected[1]).toEqual(
+      expect.objectContaining({
+        id: "board-1",
+        x: 320,
+        y: 260,
+      }),
+    );
+  });
+});
