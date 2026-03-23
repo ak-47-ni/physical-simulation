@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { createEmptySceneDocument, createUserPolygonEntity } from "../../../../packages/scene-schema/src";
+import { createInitialSceneEntities } from "../state/editorStore";
+import { createSceneDocumentFromEditorState } from "../state/editorSceneDocument";
 import {
   createSceneDisplaySettings,
   parseSceneFile,
@@ -8,26 +9,37 @@ import {
 } from "./sceneFile";
 
 describe("scene file IO", () => {
-  it("round-trips scene JSON while preserving annotations and display settings", () => {
-    const scene = createEmptySceneDocument();
-
-    scene.entities.push(
-      createUserPolygonEntity({
-        id: "ramp-1",
-        points: [
-          { x: 0, y: 0 },
-          { x: 4, y: 0 },
-          { x: 4, y: 2 },
-          { x: 0, y: 2 },
-        ],
-      }),
-    );
-    scene.annotations.push({
-      id: "stroke-1",
-      points: [
-        { x: 8, y: 12 },
-        { x: 24, y: 30 },
+  it("round-trips typed constraints, gravity, and selection metadata", () => {
+    const scene = createSceneDocumentFromEditorState({
+      annotations: [
+        {
+          id: "stroke-1",
+          points: [
+            { x: 8, y: 12 },
+            { x: 24, y: 30 },
+          ],
+        },
       ],
+      constraints: [
+        {
+          entityAId: "ball-1",
+          entityBId: "board-1",
+          id: "spring-1",
+          kind: "spring",
+          label: "Spring 1",
+          restLength: 236,
+          stiffness: 24,
+        },
+        {
+          axis: { x: 180, y: 60 },
+          entityId: "ball-1",
+          id: "track-1",
+          kind: "track",
+          label: "Track 1",
+          origin: { x: 156, y: 200 },
+        },
+      ],
+      entities: createInitialSceneEntities(),
     });
 
     const display = createSceneDisplaySettings({
@@ -39,12 +51,15 @@ describe("scene file IO", () => {
     const serialized = serializeSceneFile({
       display,
       scene,
-      selectedEntityId: "ramp-1",
+      selectedConstraintId: "track-1",
+      selectedEntityId: "ball-1",
     });
     const parsed = parseSceneFile(serialized);
 
     expect(parsed.scene.schemaVersion).toBe(1);
     expect(parsed.scene.annotations).toEqual(scene.annotations);
+    expect(parsed.scene.constraints).toEqual(scene.constraints);
+    expect(parsed.scene.forceSources).toEqual(scene.forceSources);
     expect(parsed.display).toEqual({
       gridVisible: false,
       showForceVectors: false,
@@ -52,6 +67,7 @@ describe("scene file IO", () => {
       showTrajectories: true,
       showVelocityVectors: false,
     });
-    expect(parsed.selectedEntityId).toBe("ramp-1");
+    expect(parsed.selectedConstraintId).toBe("track-1");
+    expect(parsed.selectedEntityId).toBe("ball-1");
   });
 });

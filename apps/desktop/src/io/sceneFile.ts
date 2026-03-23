@@ -1,5 +1,8 @@
-import type { AnnotationStroke, SceneDocument } from "../../../../packages/scene-schema/src";
-import { createEmptySceneDocument } from "../../../../packages/scene-schema/src";
+import {
+  cloneSceneDocument,
+  createEmptySceneDocument,
+  type SceneDocument,
+} from "../../../../packages/scene-schema/src";
 
 export type SceneDisplaySettings = {
   gridVisible: boolean;
@@ -13,12 +16,14 @@ export type SceneFilePayload = {
   format: "physics-sandbox-scene";
   version: 1;
   scene: SceneDocument;
+  selectedConstraintId: string | null;
   display: SceneDisplaySettings;
   selectedEntityId: string | null;
 };
 
 type SceneFileInput = {
   scene: SceneDocument;
+  selectedConstraintId: string | null;
   display: SceneDisplaySettings;
   selectedEntityId: string | null;
 };
@@ -41,6 +46,7 @@ export function serializeSceneFile(input: SceneFileInput): string {
     format: "physics-sandbox-scene",
     version: 1,
     scene: input.scene,
+    selectedConstraintId: input.selectedConstraintId,
     display: createSceneDisplaySettings(input.display),
     selectedEntityId: input.selectedEntityId,
   };
@@ -55,24 +61,20 @@ export function parseSceneFile(serialized: string): SceneFilePayload {
     throw new Error("Unsupported scene file format.");
   }
 
-  const scene = parsed.scene ?? createEmptySceneDocument();
-
   return {
     format: "physics-sandbox-scene",
     version: 1,
-    scene: {
+    scene: cloneSceneDocument({
       ...createEmptySceneDocument(),
-      ...scene,
-      annotations: cloneAnnotations(scene.annotations ?? []),
-    },
+      ...parsed.scene,
+      analyzers: parsed.scene?.analyzers ?? [],
+      annotations: parsed.scene?.annotations ?? [],
+      constraints: parsed.scene?.constraints ?? [],
+      entities: parsed.scene?.entities ?? [],
+      forceSources: parsed.scene?.forceSources ?? [],
+    }),
+    selectedConstraintId: parsed.selectedConstraintId ?? null,
     display: createSceneDisplaySettings(parsed.display),
     selectedEntityId: parsed.selectedEntityId ?? null,
   };
-}
-
-function cloneAnnotations(strokes: AnnotationStroke[]): AnnotationStroke[] {
-  return strokes.map((stroke) => ({
-    id: stroke.id,
-    points: stroke.points.map((point) => ({ ...point })),
-  }));
 }

@@ -8,6 +8,25 @@ describe("runtimeCompileRequest", () => {
     const entities = createInitialSceneEntities().map((entity, index) =>
       index === 0 ? { ...entity, velocityX: 6, velocityY: -4 } : entity,
     );
+    const constraints = [
+      {
+        entityAId: "ball-1",
+        entityBId: "board-1",
+        id: "spring-1",
+        kind: "spring" as const,
+        label: "Spring 1",
+        restLength: 236,
+        stiffness: 24,
+      },
+      {
+        axis: { x: 180, y: 60 },
+        entityId: "ball-1",
+        id: "track-1",
+        kind: "track" as const,
+        label: "Track 1",
+        origin: { x: 156, y: 200 },
+      },
+    ];
     const annotations = [
       {
         id: "stroke-1",
@@ -22,6 +41,7 @@ describe("runtimeCompileRequest", () => {
     const request = createRuntimeCompileRequestFromEditorState({
       analyzerId: "traj-primary",
       annotations,
+      constraints,
       dirtyScopes: ["physics", "annotation"],
       entities,
     });
@@ -36,6 +56,30 @@ describe("runtimeCompileRequest", () => {
             id: "traj-primary",
             kind: "trajectory",
             entityId: "ball-1",
+          },
+        ],
+        constraints: [
+          {
+            entityAId: "ball-1",
+            entityBId: "board-1",
+            id: "spring-1",
+            kind: "spring",
+            restLength: 236,
+            stiffness: 24,
+          },
+          {
+            axis: { x: 180, y: 60 },
+            entityId: "ball-1",
+            id: "track-1",
+            kind: "track",
+            origin: { x: 156, y: 200 },
+          },
+        ],
+        forceSources: [
+          {
+            acceleration: { x: 0, y: 9.8 },
+            id: "gravity-primary",
+            kind: "gravity",
           },
         ],
         annotations: [

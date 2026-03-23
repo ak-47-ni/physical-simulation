@@ -175,10 +175,11 @@ export function App() {
       createRuntimeCompileRequestFromEditorState({
         analyzerId: PRIMARY_ANALYZER_ID,
         annotations: annotationState.strokes,
+        constraints,
         entities,
       }),
     );
-  }, [annotationState.strokes, entities, runtimePort]);
+  }, [annotationState.strokes, constraints, entities, runtimePort]);
 
   function handleToolChange(tool: EditorTool) {
     setEditorState((current) => ({

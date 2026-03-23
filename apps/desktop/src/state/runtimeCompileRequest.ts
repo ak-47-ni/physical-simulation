@@ -6,6 +6,15 @@ import {
   type Vector2,
 } from "../../../../packages/scene-schema/src";
 
+import type { EditorConstraint } from "./editorConstraints";
+import {
+  createSceneDocumentFromEditorState,
+  isPersistedGravityForceSource,
+  isPersistedSpringConstraint,
+  isPersistedTrackConstraint,
+  type PersistedGravityForceSource,
+  type PersistedSceneConstraint,
+} from "./editorSceneDocument";
 import type { EditorSceneEntity } from "./editorStore";
 
 export type RuntimeSceneEntityPhysics = {
@@ -52,6 +61,9 @@ export type RuntimeSceneRecord = {
   kind: string;
 };
 
+export type RuntimeSceneConstraint = PersistedSceneConstraint | RuntimeSceneRecord;
+export type RuntimeForceSource = PersistedGravityForceSource | RuntimeSceneRecord;
+
 export type RuntimeSceneAnalyzer = RuntimeSceneRecord & {
   entityId?: string;
 };
@@ -64,8 +76,8 @@ export type RuntimeAnnotationStroke = {
 export type RuntimeSceneDocument = {
   schemaVersion: number;
   entities: RuntimeSceneEntity[];
-  constraints: RuntimeSceneRecord[];
-  forceSources: RuntimeSceneRecord[];
+  constraints: RuntimeSceneConstraint[];
+  forceSources: RuntimeForceSource[];
   analyzers: RuntimeSceneAnalyzer[];
   annotations: RuntimeAnnotationStroke[];
 };
@@ -85,11 +97,10 @@ type CreateRuntimeCompileRequestFromEditorStateInput = {
   analyzerEntityId?: string | null;
   analyzerId?: string;
   annotations?: AnnotationInput[];
+  constraints?: EditorConstraint[];
   dirtyScopes?: DirtyEditScope[];
   entities: EditorSceneEntity[];
 };
-
-const DEFAULT_ANALYZER_ID = "traj-primary";
 
 export function createEmptyRuntimeSceneDocument(): RuntimeSceneDocument {
   return {
@@ -116,22 +127,16 @@ export function createRuntimeCompileRequest(
 export function createRuntimeCompileRequestFromEditorState(
   input: CreateRuntimeCompileRequestFromEditorStateInput,
 ): RuntimeCompileRequest {
-  const analyzerEntityId = resolveAnalyzerEntityId(input.entities, input.analyzerEntityId);
-  const scene = createEmptyRuntimeSceneDocument();
-
-  scene.entities = input.entities.map(mapEditorEntityToRuntimeEntity);
-  scene.annotations = (input.annotations ?? []).map(cloneRuntimeAnnotationStroke);
-  scene.analyzers = analyzerEntityId
-    ? [
-        {
-          id: input.analyzerId ?? DEFAULT_ANALYZER_ID,
-          kind: "trajectory",
-          entityId: analyzerEntityId,
-        },
-      ]
-    : [];
-
-  return createRuntimeCompileRequest(scene, input.dirtyScopes);
+  return createRuntimeCompileRequest(
+    createSceneDocumentFromEditorState({
+      analyzerEntityId: input.analyzerEntityId,
+      analyzerId: input.analyzerId,
+      annotations: input.annotations,
+      constraints: input.constraints,
+      entities: input.entities,
+    }),
+    input.dirtyScopes,
+  );
 }
 
 export function cloneRuntimeSceneDocument(
@@ -140,50 +145,10 @@ export function cloneRuntimeSceneDocument(
   return {
     schemaVersion: scene.schemaVersion,
     entities: scene.entities.map(cloneRuntimeSceneEntity),
-    constraints: scene.constraints.map((constraint) => ({
-      id: constraint.id,
-      kind: constraint.kind,
-    })),
-    forceSources: scene.forceSources.map((source) => ({
-      id: source.id,
-      kind: source.kind,
-    })),
+    constraints: scene.constraints.map(cloneRuntimeSceneConstraint),
+    forceSources: scene.forceSources.map(cloneRuntimeForceSource),
     analyzers: scene.analyzers.map(cloneRuntimeSceneAnalyzer),
     annotations: scene.annotations.map(cloneRuntimeAnnotationStroke),
-  };
-}
-
-function mapEditorEntityToRuntimeEntity(entity: EditorSceneEntity): RuntimeSceneEntity {
-  const physics = {
-    mass: entity.mass,
-    friction: entity.friction,
-    restitution: entity.restitution,
-    locked: entity.locked,
-    velocityX: entity.velocityX,
-    velocityY: entity.velocityY,
-  };
-
-  if (entity.kind === "ball") {
-    return {
-      id: entity.id,
-      kind: "ball",
-      label: entity.label,
-      x: entity.x,
-      y: entity.y,
-      radius: entity.radius,
-      ...physics,
-    };
-  }
-
-  return {
-    id: entity.id,
-    kind: entity.kind,
-    label: entity.label,
-    x: entity.x,
-    y: entity.y,
-    width: entity.width,
-    height: entity.height,
-    ...physics,
   };
 }
 
@@ -239,6 +204,55 @@ function cloneRuntimeSceneAnalyzer(
   };
 }
 
+function cloneRuntimeSceneConstraint(
+  constraint:
+    | RuntimeSceneDocument["constraints"][number]
+    | LegacySceneDocument["constraints"][number],
+): RuntimeSceneConstraint {
+  if (isPersistedSpringConstraint(constraint)) {
+    return {
+      entityAId: constraint.entityAId,
+      entityBId: constraint.entityBId,
+      id: constraint.id,
+      kind: "spring",
+      restLength: constraint.restLength,
+      stiffness: constraint.stiffness,
+    };
+  }
+
+  if (isPersistedTrackConstraint(constraint)) {
+    return {
+      axis: { ...constraint.axis },
+      entityId: constraint.entityId,
+      id: constraint.id,
+      kind: "track",
+      origin: { ...constraint.origin },
+    };
+  }
+
+  return {
+    id: constraint.id,
+    kind: constraint.kind,
+  };
+}
+
+function cloneRuntimeForceSource(
+  source: RuntimeSceneDocument["forceSources"][number] | LegacySceneDocument["forceSources"][number],
+): RuntimeForceSource {
+  if (isPersistedGravityForceSource(source)) {
+    return {
+      acceleration: { ...source.acceleration },
+      id: source.id,
+      kind: "gravity",
+    };
+  }
+
+  return {
+    id: source.id,
+    kind: source.kind,
+  };
+}
+
 function cloneRuntimeAnnotationStroke(
   stroke: AnnotationInput | RuntimeAnnotationStroke,
 ): RuntimeAnnotationStroke {
@@ -246,17 +260,6 @@ function cloneRuntimeAnnotationStroke(
     id: stroke.id,
     points: stroke.points.map((point) => ({ ...point })),
   };
-}
-
-function resolveAnalyzerEntityId(
-  entities: EditorSceneEntity[],
-  explicitEntityId?: string | null,
-): string | null {
-  if (explicitEntityId && entities.some((entity) => entity.id === explicitEntityId)) {
-    return explicitEntityId;
-  }
-
-  return entities.find((entity) => !entity.locked)?.id ?? entities[0]?.id ?? null;
 }
 
 function readOptionalPhysics(
