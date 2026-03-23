@@ -1,7 +1,11 @@
-use sim_core::bridge::{BridgeError, BridgeStatus, SimulationBridge};
+use serde_json::json;
+use sim_core::bridge::{
+    BridgeBlockReason, BridgeError, BridgeStatus, DirtyEditScope, RuntimeCompileRequest,
+    SimulationBridge,
+};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
-use sim_core::scene::CompileSceneRequest;
+use sim_core::scene::{CompileSceneRequest, SceneCompileError};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
@@ -133,5 +137,150 @@ fn bridge_contract_snapshot_controls_report_runtime_state_transitions() {
     assert_eq!(
         reset.current_frame.as_ref().map(|frame| frame.frame_number),
         Some(0)
+    );
+}
+
+#[test]
+fn bridge_contract_accepts_typed_constraint_runtime_payloads() {
+    let request: RuntimeCompileRequest = serde_json::from_value(json!({
+        "scene": {
+            "schemaVersion": 1,
+            "entities": [
+                {
+                    "id": "anchor",
+                    "kind": "board",
+                    "x": -8.0,
+                    "y": -8.0,
+                    "width": 16.0,
+                    "height": 16.0,
+                    "locked": true
+                },
+                {
+                    "id": "payload",
+                    "kind": "ball",
+                    "x": 96.0,
+                    "y": 24.0,
+                    "radius": 12.0
+                }
+            ],
+            "constraints": [
+                {
+                    "id": "spring-1",
+                    "kind": "spring",
+                    "entityAId": "anchor",
+                    "entityBId": "payload",
+                    "restLength": 120.0,
+                    "stiffness": 18.0
+                }
+            ],
+            "forceSources": [
+                {
+                    "id": "gravity-1",
+                    "kind": "gravity",
+                    "acceleration": { "x": 0.0, "y": -9.81 }
+                }
+            ],
+            "analyzers": [],
+            "annotations": []
+        },
+        "dirtyScopes": [],
+        "rebuildRequired": false
+    }))
+    .expect("typed runtime compile request should deserialize");
+
+    let frame = SimulationBridge::new(0.1)
+        .compile_runtime_request(request)
+        .expect("typed constraints and gravity should compile");
+
+    assert_eq!(frame.frame_number, 0);
+    assert_eq!(frame.entities.len(), 2);
+}
+
+#[test]
+fn bridge_contract_invalid_constraint_payloads_return_readable_scene_errors() {
+    let request: RuntimeCompileRequest = serde_json::from_value(json!({
+        "scene": {
+            "schemaVersion": 1,
+            "entities": [
+                {
+                    "id": "anchor",
+                    "kind": "board",
+                    "x": -8.0,
+                    "y": -8.0,
+                    "width": 16.0,
+                    "height": 16.0,
+                    "locked": true
+                },
+                {
+                    "id": "payload",
+                    "kind": "ball",
+                    "x": 96.0,
+                    "y": 24.0,
+                    "radius": 12.0
+                }
+            ],
+            "constraints": [
+                {
+                    "id": "spring-1",
+                    "kind": "spring",
+                    "entityAId": "anchor",
+                    "entityBId": "payload",
+                    "restLength": 0.0,
+                    "stiffness": 18.0
+                }
+            ],
+            "forceSources": [
+                {
+                    "id": "gravity-1",
+                    "kind": "gravity",
+                    "acceleration": { "x": 0.0, "y": -9.81 }
+                }
+            ],
+            "analyzers": [],
+            "annotations": []
+        },
+        "dirtyScopes": ["physics"],
+        "rebuildRequired": true
+    }))
+    .expect("typed runtime compile request should deserialize");
+
+    assert_eq!(
+        SimulationBridge::new(0.1).compile_runtime_request(request),
+        Err(BridgeError::SceneCompile(
+            SceneCompileError::InvalidSpringRestLength {
+                constraint_id: "spring-1".to_string(),
+                value: 0.0,
+            }
+        ))
+    );
+}
+
+#[test]
+fn bridge_contract_status_snapshot_reports_rebuild_block_after_dirty_edits() {
+    let mut bridge = SimulationBridge::new(0.1);
+    bridge
+        .compile_scene(runtime_scene_request())
+        .expect("scene should compile into a bridge runtime");
+
+    let snapshot = bridge.mark_dirty_scopes(&[DirtyEditScope::Physics]);
+
+    assert_eq!(snapshot.status, BridgeStatus::Paused);
+    assert!(snapshot.rebuild_required);
+    assert!(!snapshot.can_resume);
+    assert_eq!(snapshot.block_reason, Some(BridgeBlockReason::RebuildRequired));
+}
+
+#[test]
+fn bridge_contract_unknown_trajectory_reads_return_stable_errors() {
+    let mut bridge = SimulationBridge::new(0.1);
+    bridge
+        .compile_scene(runtime_scene_request())
+        .expect("scene should compile into a bridge runtime");
+
+    assert_eq!(
+        bridge.read_trajectory_samples("missing-analyzer"),
+        Err(BridgeError::UnknownAnalyzer {
+            id: "missing-analyzer".to_string(),
+        })
     );
 }

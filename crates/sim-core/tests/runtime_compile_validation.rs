@@ -1,26 +1,12 @@
 use serde_json::json;
 use sim_core::bridge::{BridgeError, RuntimeCompileRequest, SceneKindRecord, SimulationBridge};
+use sim_core::scene::SceneCompileError;
 
-fn compile_request_with_scene_section(
-    section: &str,
-    records: serde_json::Value,
+fn compile_request(
+    constraints: serde_json::Value,
+    force_sources: serde_json::Value,
+    analyzers: serde_json::Value,
 ) -> RuntimeCompileRequest {
-    let constraints = if section == "constraints" {
-        records.clone()
-    } else {
-        json!([])
-    };
-    let force_sources = if section == "forceSources" {
-        records.clone()
-    } else {
-        json!([])
-    };
-    let analyzers = if section == "analyzers" {
-        records
-    } else {
-        json!([])
-    };
-
     serde_json::from_value(json!({
         "scene": {
             "schemaVersion": 1,
@@ -48,47 +34,60 @@ fn compile_request_with_scene_section(
 }
 
 #[test]
-fn runtime_compile_validation_rejects_unsupported_constraints() {
-    let request = compile_request_with_scene_section(
-        "constraints",
-        json!([{ "id": "spring-1", "kind": "spring" }]),
+fn runtime_compile_validation_rejects_invalid_spring_constraints() {
+    let request = compile_request(
+        json!([
+            {
+                "id": "spring-1",
+                "kind": "spring",
+                "entityAId": "poly-1",
+                "entityBId": "poly-1",
+                "restLength": 0.0,
+                "stiffness": 12.0
+            }
+        ]),
+        json!([
+            {
+                "id": "gravity-1",
+                "kind": "gravity",
+                "acceleration": { "x": 0.0, "y": -9.81 }
+            }
+        ]),
+        json!([]),
     );
 
     assert_eq!(
         SimulationBridge::new(1.0 / 60.0).compile_runtime_request(request),
-        Err(BridgeError::UnsupportedSceneRecord {
-            section: "constraints".to_string(),
-            record: SceneKindRecord {
-                id: "spring-1".to_string(),
-                kind: "spring".to_string(),
-            },
-        })
+        Err(BridgeError::SceneCompile(
+            SceneCompileError::InvalidSpringRestLength {
+                constraint_id: "spring-1".to_string(),
+                value: 0.0,
+            }
+        ))
     );
 }
 
 #[test]
-fn runtime_compile_validation_rejects_unsupported_force_sources() {
-    let request = compile_request_with_scene_section(
-        "forceSources",
-        json!([{ "id": "gravity-1", "kind": "gravity" }]),
-    );
+fn runtime_compile_validation_requires_explicit_gravity_force_sources() {
+    let request = compile_request(json!([]), json!([]), json!([]));
 
     assert_eq!(
         SimulationBridge::new(1.0 / 60.0).compile_runtime_request(request),
-        Err(BridgeError::UnsupportedSceneRecord {
-            section: "forceSources".to_string(),
-            record: SceneKindRecord {
-                id: "gravity-1".to_string(),
-                kind: "gravity".to_string(),
-            },
-        })
+        Err(BridgeError::SceneCompile(SceneCompileError::MissingGravity))
     );
 }
 
 #[test]
 fn runtime_compile_validation_rejects_trajectory_analyzers_without_entity_binding() {
-    let request = compile_request_with_scene_section(
-        "analyzers",
+    let request = compile_request(
+        json!([]),
+        json!([
+            {
+                "id": "gravity-1",
+                "kind": "gravity",
+                "acceleration": { "x": 0.0, "y": -9.81 }
+            }
+        ]),
         json!([{ "id": "traj-1", "kind": "trajectory" }]),
     );
 
@@ -104,8 +103,15 @@ fn runtime_compile_validation_rejects_trajectory_analyzers_without_entity_bindin
 
 #[test]
 fn runtime_compile_validation_rejects_unknown_analyzer_kinds() {
-    let request = compile_request_with_scene_section(
-        "analyzers",
+    let request = compile_request(
+        json!([]),
+        json!([
+            {
+                "id": "gravity-1",
+                "kind": "gravity",
+                "acceleration": { "x": 0.0, "y": -9.81 }
+            }
+        ]),
         json!([{ "id": "probe-1", "kind": "probe", "entityId": "poly-1" }]),
     );
 
@@ -135,7 +141,13 @@ fn runtime_compile_validation_rejects_ball_entities_without_radius() {
                 }
             ],
             "constraints": [],
-            "forceSources": [],
+            "forceSources": [
+                {
+                    "id": "gravity-1",
+                    "kind": "gravity",
+                    "acceleration": { "x": 0.0, "y": -9.81 }
+                }
+            ],
             "analyzers": [],
             "annotations": []
         },

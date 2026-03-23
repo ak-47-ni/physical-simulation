@@ -4,6 +4,7 @@ use sim_core::analyzer::TrajectorySample;
 use sim_core::bridge::{
     BridgeError, BridgeStatusSnapshot, DirtyEditScope, RuntimeCompileRequest, SimulationBridge,
 };
+use sim_core::scene::SceneCompileError;
 
 const FIXED_STEP_SECONDS: f64 = 1.0 / 60.0;
 
@@ -135,7 +136,48 @@ fn format_bridge_error(error: BridgeError) -> String {
                 record.id, record.kind
             )
         }
-        BridgeError::SceneCompile(source) => format!("scene compile error: {source:?}"),
+        BridgeError::SceneCompile(source) => format_scene_compile_error(source),
+    }
+}
+
+fn format_scene_compile_error(error: SceneCompileError) -> String {
+    match error {
+        SceneCompileError::DuplicateEntityId { id } => format!("duplicate entity id: {id}"),
+        SceneCompileError::InvalidSpringRestLength {
+            constraint_id,
+            value,
+        } => format!(
+            "invalid spring rest length: {constraint_id} must be positive (received {value})"
+        ),
+        SceneCompileError::InvalidSpringStiffness {
+            constraint_id,
+            value,
+        } => format!(
+            "invalid spring stiffness: {constraint_id} must be positive (received {value})"
+        ),
+        SceneCompileError::InvalidShapeParameters { entity_id, kind } => {
+            format!("invalid shape parameters: {entity_id} ({kind})")
+        }
+        SceneCompileError::InvalidTrackAxis { constraint_id } => {
+            format!("invalid track axis: {constraint_id} must use a non-zero axis")
+        }
+        SceneCompileError::MissingGravity => {
+            "missing gravity force source in runtime compile request".to_string()
+        }
+        SceneCompileError::NonConvexPolygon { entity_id } => {
+            format!("non-convex polygon is not supported: {entity_id}")
+        }
+        SceneCompileError::UnknownConstraintEntity {
+            constraint_id,
+            entity_id,
+        } => format!("unknown constraint entity: {constraint_id} references {entity_id}"),
+        SceneCompileError::UnknownAnalyzerEntity {
+            analyzer_id,
+            entity_id,
+        } => format!("unknown analyzer entity: {analyzer_id} references {entity_id}"),
+        SceneCompileError::UnsupportedShape { entity_id, kind } => {
+            format!("unsupported shape: {entity_id} ({kind})")
+        }
     }
 }
 
@@ -183,11 +225,12 @@ mod tests {
     use std::time::Duration;
 
     use sim_core::bridge::BridgeStatus;
+    use sim_core::scene::SceneCompileError;
     use tauri::Manager;
     use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
     use tauri::webview::InvokeRequest;
 
-    use super::{BridgeStatusSnapshot, build_desktop_app, run_desktop_app};
+    use super::{BridgeError, BridgeStatusSnapshot, build_desktop_app, format_bridge_error, run_desktop_app};
 
     #[test]
     fn build_desktop_app_registers_runtime_status_command() {
@@ -230,6 +273,26 @@ mod tests {
         });
 
         run_desktop_app(builder, mock_context(noop_assets())).expect("app runs");
+    }
+
+    #[test]
+    fn format_bridge_error_reports_constraint_validation_without_debug_dump() {
+        let message = format_bridge_error(BridgeError::SceneCompile(
+            SceneCompileError::InvalidTrackAxis {
+                constraint_id: "track-1".to_string(),
+            },
+        ));
+
+        assert_eq!(message, "invalid track axis: track-1 must use a non-zero axis");
+    }
+
+    #[test]
+    fn format_bridge_error_keeps_unknown_analyzer_messages_stable() {
+        let message = format_bridge_error(BridgeError::UnknownAnalyzer {
+            id: "traj-missing".to_string(),
+        });
+
+        assert_eq!(message, "unknown analyzer: traj-missing");
     }
 
     fn invoke_request(command: &str) -> InvokeRequest {

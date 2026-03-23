@@ -1,6 +1,16 @@
 use serde_json::json;
 use sim_core::bridge::{RuntimeCompileRequest, SimulationBridge};
 
+fn gravity_force_source() -> serde_json::Value {
+    json!([
+        {
+            "id": "gravity-1",
+            "kind": "gravity",
+            "acceleration": { "x": 0.0, "y": -9.81 }
+        }
+    ])
+}
+
 #[test]
 fn serialization_contract_accepts_frontend_compile_request_shape() {
     let request: RuntimeCompileRequest = serde_json::from_value(json!({
@@ -19,7 +29,7 @@ fn serialization_contract_accepts_frontend_compile_request_shape() {
                 }
             ],
             "constraints": [],
-            "forceSources": [],
+            "forceSources": gravity_force_source(),
             "analyzers": [],
             "annotations": []
         },
@@ -55,7 +65,7 @@ fn serialization_contract_runtime_frame_payload_uses_frontend_keys() {
                 }
             ],
             "constraints": [],
-            "forceSources": [],
+            "forceSources": gravity_force_source(),
             "analyzers": [],
             "annotations": []
         },
@@ -92,7 +102,7 @@ fn serialization_contract_accepts_enriched_trajectory_analyzer_payloads() {
                 }
             ],
             "constraints": [],
-            "forceSources": [],
+            "forceSources": gravity_force_source(),
             "analyzers": [
                 {
                     "id": "traj-1",
@@ -142,7 +152,7 @@ fn serialization_contract_accepts_editor_ball_payloads_with_physics_fields() {
                 }
             ],
             "constraints": [],
-            "forceSources": [],
+            "forceSources": gravity_force_source(),
             "analyzers": [],
             "annotations": []
         },
@@ -184,7 +194,7 @@ fn serialization_contract_accepts_locked_board_payloads_as_static_runtime_entiti
                 }
             ],
             "constraints": [],
-            "forceSources": [],
+            "forceSources": gravity_force_source(),
             "analyzers": [],
             "annotations": []
         },

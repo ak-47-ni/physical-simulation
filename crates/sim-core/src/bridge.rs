@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::analyzer::{AnalyzerDefinition, TrajectorySample};
+use crate::constraint::ConstraintDefinition;
 use crate::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use crate::force::ForceSourceDefinition;
 use crate::runtime::{RuntimeFramePayload, RuntimeScene};
@@ -320,8 +321,6 @@ pub struct RuntimeCompileRequest {
 
 impl RuntimeCompileRequest {
     pub fn into_compile_scene_request(self) -> Result<CompileSceneRequest, BridgeError> {
-        reject_unsupported_records("constraints", &self.scene.constraints)?;
-        reject_unsupported_records("forceSources", &self.scene.force_sources)?;
         let analyzers = self
             .scene
             .analyzers
@@ -336,11 +335,18 @@ impl RuntimeCompileRequest {
                 .into_iter()
                 .map(SceneEntityPayload::into_entity_definition)
                 .collect::<Result<Vec<_>, _>>()?,
-            constraints: vec![],
-            force_sources: vec![ForceSourceDefinition::Gravity {
-                id: "gravity-earth".to_string(),
-                acceleration: Vector2::new(0.0, -9.81),
-            }],
+            constraints: self
+                .scene
+                .constraints
+                .into_iter()
+                .map(SceneConstraintPayload::into_constraint_definition)
+                .collect(),
+            force_sources: self
+                .scene
+                .force_sources
+                .into_iter()
+                .map(SceneForceSourcePayload::into_force_source_definition)
+                .collect(),
             analyzers,
         })
     }
@@ -366,10 +372,77 @@ impl DirtyEditScope {
 pub struct SceneDocumentPayload {
     pub schema_version: u32,
     pub entities: Vec<SceneEntityPayload>,
-    pub constraints: Vec<SceneKindRecord>,
-    pub force_sources: Vec<SceneKindRecord>,
+    pub constraints: Vec<SceneConstraintPayload>,
+    pub force_sources: Vec<SceneForceSourcePayload>,
     pub analyzers: Vec<SceneAnalyzerRecord>,
     pub annotations: Vec<AnnotationStrokePayload>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum SceneConstraintPayload {
+    Spring {
+        id: String,
+        #[serde(rename = "entityAId")]
+        entity_a_id: String,
+        #[serde(rename = "entityBId")]
+        entity_b_id: String,
+        #[serde(rename = "restLength")]
+        rest_length: f64,
+        stiffness: f64,
+    },
+    Track {
+        id: String,
+        #[serde(rename = "entityId")]
+        entity_id: String,
+        origin: Vector2,
+        axis: Vector2,
+    },
+}
+
+impl SceneConstraintPayload {
+    fn into_constraint_definition(self) -> ConstraintDefinition {
+        match self {
+            Self::Spring {
+                id,
+                entity_a_id,
+                entity_b_id,
+                rest_length,
+                stiffness,
+            } => ConstraintDefinition::Spring {
+                id,
+                entity_a: entity_a_id,
+                entity_b: entity_b_id,
+                rest_length,
+                stiffness,
+            },
+            Self::Track {
+                id,
+                entity_id,
+                origin,
+                axis,
+            } => ConstraintDefinition::Track {
+                id,
+                entity_id,
+                origin,
+                axis,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum SceneForceSourcePayload {
+    Gravity { id: String, acceleration: Vector2 },
+}
+
+impl SceneForceSourcePayload {
+    fn into_force_source_definition(self) -> ForceSourceDefinition {
+        match self {
+            Self::Gravity { id, acceleration } => ForceSourceDefinition::Gravity { id, acceleration },
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -580,20 +653,6 @@ fn rectangle_points(width: f64, height: f64) -> Vec<Vector2> {
         Vector2::new(width * 0.5, height * 0.5),
         Vector2::new(-width * 0.5, height * 0.5),
     ]
-}
-
-fn reject_unsupported_records(
-    section: &str,
-    records: &[SceneKindRecord],
-) -> Result<(), BridgeError> {
-    if let Some(record) = records.first() {
-        return Err(BridgeError::UnsupportedSceneRecord {
-            section: section.to_string(),
-            record: record.clone(),
-        });
-    }
-
-    Ok(())
 }
 
 fn required_scalar(
