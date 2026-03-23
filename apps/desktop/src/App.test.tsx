@@ -15,7 +15,7 @@ describe("App selection sync", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Board 1" }));
 
-    expect(screen.getByText("318, 272")).toBeDefined();
+    expect(screen.getByText("3.18 m, 2.72 m")).toBeDefined();
     expect(screen.getByTestId("scene-entity-board-1").getAttribute("data-selected")).toBe("true");
     expect(screen.getByTestId("scene-tree-item-board-1").getAttribute("data-selected")).toBe("true");
 
@@ -23,7 +23,7 @@ describe("App selection sync", () => {
 
     expect(screen.getByTestId("scene-entity-ball-1").getAttribute("data-selected")).toBe("true");
     expect(screen.getByTestId("scene-tree-item-ball-1").getAttribute("data-selected")).toBe("true");
-    expect(screen.getByText("132, 176")).toBeDefined();
+    expect(screen.getByText("1.32 m, 1.76 m")).toBeDefined();
   });
 
   it("updates entity positions after dragging in the workspace", () => {
@@ -37,21 +37,21 @@ describe("App selection sync", () => {
 
     expect(ball.style.left).toBe("168px");
     expect(ball.style.top).toBe("220px");
-    expect(screen.getByText("168, 220")).toBeDefined();
+    expect(screen.getByText("1.68 m, 2.2 m")).toBeDefined();
   });
 
   it("updates entity positions from the property panel", () => {
     render(<App />);
 
     fireEvent.click(screen.getByTestId("scene-entity-board-1"));
-    fireEvent.change(screen.getByLabelText("Position X"), { target: { value: "340" } });
-    fireEvent.change(screen.getByLabelText("Position Y"), { target: { value: "290" } });
+    fireEvent.change(screen.getByLabelText("Position X"), { target: { value: "3.4" } });
+    fireEvent.change(screen.getByLabelText("Position Y"), { target: { value: "2.9" } });
 
     const board = screen.getByTestId("scene-entity-board-1") as HTMLElement;
 
     expect(board.style.left).toBe("340px");
     expect(board.style.top).toBe("290px");
-    expect(screen.getByText("340, 290")).toBeDefined();
+    expect(screen.getByText("3.4 m, 2.9 m")).toBeDefined();
   });
 
   it("updates entity label and dimensions from the property panel", () => {
@@ -59,8 +59,8 @@ describe("App selection sync", () => {
 
     fireEvent.click(screen.getByTestId("scene-entity-board-1"));
     fireEvent.change(screen.getByLabelText("Entity name"), { target: { value: "Ramp" } });
-    fireEvent.change(screen.getByLabelText("Width"), { target: { value: "148" } });
-    fireEvent.change(screen.getByLabelText("Height"), { target: { value: "24" } });
+    fireEvent.change(screen.getByLabelText("Width"), { target: { value: "1.48" } });
+    fireEvent.change(screen.getByLabelText("Height"), { target: { value: "0.24" } });
 
     const board = screen.getByTestId("scene-entity-board-1") as HTMLElement;
     const sceneTreeItem = screen.getByTestId("scene-tree-item-board-1");
@@ -75,7 +75,7 @@ describe("App selection sync", () => {
     render(<App />);
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
-    fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "30" } });
+    fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "0.3" } });
 
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
 
@@ -131,7 +131,7 @@ describe("App selection sync", () => {
 
     expect(screen.getByTestId("scene-entity-ball-2")).toBeDefined();
     expect(screen.getByTestId("scene-tree-item-ball-2").getAttribute("data-selected")).toBe("true");
-    expect(screen.getByText("248, 204")).toBeDefined();
+    expect(screen.getByText("2.48 m, 2.04 m")).toBeDefined();
   });
 
   it("creates the selected library body kind when placing", () => {
@@ -142,7 +142,7 @@ describe("App selection sync", () => {
 
     expect(screen.getByTestId("scene-entity-board-2")).toBeDefined();
     expect(screen.getByTestId("scene-tree-item-board-2").getAttribute("data-selected")).toBe("true");
-    expect(screen.getByText("280, 236")).toBeDefined();
+    expect(screen.getByText("2.8 m, 2.36 m")).toBeDefined();
   });
 
   it("deletes the selected entity from the property panel", () => {
@@ -164,7 +164,7 @@ describe("App selection sync", () => {
 
     expect(screen.getByTestId("scene-entity-board-2")).toBeDefined();
     expect(screen.getByTestId("scene-tree-item-board-2").getAttribute("data-selected")).toBe("true");
-    expect(screen.getByText("342, 296")).toBeDefined();
+    expect(screen.getByText("3.42 m, 2.96 m")).toBeDefined();
   });
 
   it("preserves edited physics properties when duplicating an entity", () => {
@@ -190,7 +190,7 @@ describe("App selection sync", () => {
     fireEvent.keyDown(window, { ctrlKey: true, key: "d" });
 
     expect(screen.getByTestId("scene-entity-board-2")).toBeDefined();
-    expect(screen.getByText("342, 296")).toBeDefined();
+    expect(screen.getByText("3.42 m, 2.96 m")).toBeDefined();
 
     fireEvent.keyDown(window, { key: "Delete" });
 
@@ -214,7 +214,7 @@ describe("App selection sync", () => {
 
     expect(screen.getByTestId("scene-constraint-spring-spring-1")).toBeDefined();
     expect(screen.getByTestId("scene-constraint-spring-spring-1").getAttribute("data-rest-length")).toBe(
-      "236",
+      "2.36",
     );
   });
 
@@ -262,7 +262,7 @@ describe("App selection sync", () => {
     const transport = within(screen.getByTestId("bottom-transport-bar"));
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
-    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "60" } });
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
     fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
 
     await waitFor(() => {
@@ -306,6 +306,23 @@ describe("App selection sync", () => {
     expect(screen.getByTestId("scene-tree-item-board-1").getAttribute("data-selected")).toBe(
       "true",
     );
+
+    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+  });
+
+  it("blocks scene-physics editing while the runtime is running", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+
+    expect(screen.getByText("Scene physics is locked while runtime is playing.")).toBeDefined();
+    expect((screen.getByLabelText("Gravity") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Length unit") as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Velocity unit") as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Mass unit") as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Pixels per meter") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByText("Authoring is locked while runtime is playing.")).toBeDefined();
 
     fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
   });

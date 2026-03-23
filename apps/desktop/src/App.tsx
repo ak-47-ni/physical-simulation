@@ -36,20 +36,52 @@ import {
   type RuntimeTrajectorySample,
 } from "./state/runtimeBridge";
 import { createDesktopRuntimeBridgePort } from "./state/desktopRuntimeBridgePort";
+import { convertSceneAuthoringUnits } from "./state/editorSceneDocument";
 import { createRuntimeCompileRequestFromEditorState } from "./state/runtimeCompileRequest";
+import {
+  createSceneAuthoringSettings,
+  type SceneAuthoringSettings,
+} from "./state/sceneAuthoringSettings";
+import {
+  convertLengthValue,
+  convertMassValue,
+  getGravityUnitLabel,
+  normalizeGravityToSi,
+  normalizeVelocityToSi,
+  type LengthUnit,
+  type MassUnit,
+  type VelocityUnit,
+} from "./state/sceneUnits";
 import { useEditorHotkeys } from "./state/useEditorHotkeys";
 import { useRuntimePlaybackLoop } from "./state/useRuntimePlaybackLoop";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import { projectRuntimeSceneEntities } from "./workspace/runtimeSceneView";
 import {
-  authoringLengthToSiMeters,
-  DEFAULT_WORKSPACE_VIEWPORT,
   projectAuthoringPointToSi,
+  type UnitViewport,
 } from "./workspace/unitViewport";
 import type { EditorTool } from "./workspace/tools";
 
-const GRAVITY_ACCELERATION = 9.8;
 const PRIMARY_ANALYZER_ID = "traj-primary";
+const AUTHORING_LOCK_REASON = "Authoring is locked while runtime is playing.";
+const SCENE_PHYSICS_LOCK_REASON = "Scene physics is locked while runtime is playing.";
+const LENGTH_UNIT_OPTIONS = ["m", "cm"] as const satisfies readonly LengthUnit[];
+const VELOCITY_UNIT_OPTIONS = ["m/s", "cm/s"] as const satisfies readonly VelocityUnit[];
+const MASS_UNIT_OPTIONS = ["kg", "g"] as const satisfies readonly MassUnit[];
+const INITIAL_SCENE_SETTINGS = createSceneAuthoringSettings({
+  gravity: 9.8,
+  lengthUnit: "m",
+  velocityUnit: "m/s",
+  massUnit: "kg",
+  pixelsPerMeter: 100,
+});
+const LEGACY_SCENE_SETTINGS = createSceneAuthoringSettings({
+  gravity: 980,
+  lengthUnit: "cm",
+  velocityUnit: "cm/s",
+  massUnit: "kg",
+  pixelsPerMeter: 100,
+});
 
 type ConstraintPlacementState = {
   anchorEntityId: string | null;
@@ -81,16 +113,19 @@ function getEntityCenter(entity: EditorSceneEntity) {
 
 function createRuntimePreviewFrame(
   entities: EditorSceneEntity[],
+  settings: SceneAuthoringSettings,
+  viewport: UnitViewport,
   input: RuntimeBridgePortSnapshot & { nextFrameNumber: number },
 ) {
   const elapsedTimeSeconds = input.bridge.currentTimeSeconds;
+  const gravityAccelerationSi = normalizeGravityToSi(settings.gravity, settings.lengthUnit);
 
   return {
     frameNumber: input.nextFrameNumber,
     entities: entities.map((entity) => {
-      const centerSi = projectAuthoringPointToSi(getEntityCenter(entity), DEFAULT_WORKSPACE_VIEWPORT);
-      const velocityXSi = authoringLengthToSiMeters(entity.velocityX, DEFAULT_WORKSPACE_VIEWPORT);
-      const velocityYSi = authoringLengthToSiMeters(entity.velocityY, DEFAULT_WORKSPACE_VIEWPORT);
+      const centerSi = projectAuthoringPointToSi(getEntityCenter(entity), viewport);
+      const velocityXSi = normalizeVelocityToSi(entity.velocityX, settings.velocityUnit);
+      const velocityYSi = normalizeVelocityToSi(entity.velocityY, settings.velocityUnit);
       const timeAdjustedPosition = entity.locked
         ? centerSi
         : {
@@ -98,7 +133,7 @@ function createRuntimePreviewFrame(
             y:
               centerSi.y +
               velocityYSi * elapsedTimeSeconds +
-              0.5 * GRAVITY_ACCELERATION * elapsedTimeSeconds * elapsedTimeSeconds,
+              0.5 * gravityAccelerationSi * elapsedTimeSeconds * elapsedTimeSeconds,
           };
 
       return {
@@ -109,9 +144,9 @@ function createRuntimePreviewFrame(
           ? { x: 0, y: 0 }
           : {
               x: velocityXSi,
-              y: velocityYSi + GRAVITY_ACCELERATION * elapsedTimeSeconds,
+              y: velocityYSi + gravityAccelerationSi * elapsedTimeSeconds,
             },
-        acceleration: entity.locked ? { x: 0, y: 0 } : { x: 0, y: GRAVITY_ACCELERATION },
+        acceleration: entity.locked ? { x: 0, y: 0 } : { x: 0, y: gravityAccelerationSi },
       };
     }),
   };
@@ -144,10 +179,115 @@ function createRuntimePreviewTrajectorySamples(input: {
   };
 }
 
+function isLengthUnit(value: string): value is LengthUnit {
+  return LENGTH_UNIT_OPTIONS.includes(value as LengthUnit);
+}
+
+function isVelocityUnit(value: string): value is VelocityUnit {
+  return VELOCITY_UNIT_OPTIONS.includes(value as VelocityUnit);
+}
+
+function isMassUnit(value: string): value is MassUnit {
+  return MASS_UNIT_OPTIONS.includes(value as MassUnit);
+}
+
+function createInitialAuthoringState() {
+  const converted = convertSceneAuthoringUnits({
+    constraints: [],
+    entities: createInitialSceneEntities(),
+    settings: LEGACY_SCENE_SETTINGS,
+    units: {
+      lengthUnit: INITIAL_SCENE_SETTINGS.lengthUnit,
+      velocityUnit: INITIAL_SCENE_SETTINGS.velocityUnit,
+      massUnit: INITIAL_SCENE_SETTINGS.massUnit,
+    },
+  });
+
+  return {
+    constraints: converted.constraints,
+    entities: converted.entities,
+    settings: createSceneAuthoringSettings({
+      ...converted.settings,
+      pixelsPerMeter: INITIAL_SCENE_SETTINGS.pixelsPerMeter,
+    }),
+  };
+}
+
+function createWorkspaceViewport(settings: SceneAuthoringSettings): UnitViewport {
+  return {
+    lengthUnit: settings.lengthUnit,
+    pixelsPerMeter: settings.pixelsPerMeter,
+  };
+}
+
+function createScenePhysicsPanelState(
+  settings: SceneAuthoringSettings,
+  authoringLocked: boolean,
+) {
+  return {
+    gravity: settings.gravity,
+    gravityUnitLabel: getGravityUnitLabel(settings.lengthUnit),
+    lengthUnit: settings.lengthUnit,
+    lengthUnitOptions: [...LENGTH_UNIT_OPTIONS],
+    lockReason: authoringLocked ? SCENE_PHYSICS_LOCK_REASON : null,
+    massUnit: settings.massUnit,
+    massUnitOptions: [...MASS_UNIT_OPTIONS],
+    pixelsPerMeter: settings.pixelsPerMeter,
+    velocityUnit: settings.velocityUnit,
+    velocityUnitOptions: [...VELOCITY_UNIT_OPTIONS],
+  };
+}
+
+function roundAuthoringValue(value: number): number {
+  return Number(value.toFixed(6));
+}
+
+function convertLegacyCreatedEntityToSceneUnits(
+  entity: EditorSceneEntity,
+  settings: SceneAuthoringSettings,
+  position: { x: number; y: number },
+): EditorSceneEntity {
+  const mass = convertMassValue(entity.mass, LEGACY_SCENE_SETTINGS.massUnit, settings.massUnit);
+
+  if (entity.kind === "ball") {
+    return {
+      ...entity,
+      x: position.x,
+      y: position.y,
+      mass,
+      radius: convertLengthValue(entity.radius, LEGACY_SCENE_SETTINGS.lengthUnit, settings.lengthUnit),
+    };
+  }
+
+  return {
+    ...entity,
+    x: position.x,
+    y: position.y,
+    mass,
+    width: convertLengthValue(entity.width, LEGACY_SCENE_SETTINGS.lengthUnit, settings.lengthUnit),
+    height: convertLengthValue(entity.height, LEGACY_SCENE_SETTINGS.lengthUnit, settings.lengthUnit),
+  };
+}
+
+function applySceneDuplicateOffset(
+  entity: EditorSceneEntity,
+  settings: SceneAuthoringSettings,
+): EditorSceneEntity {
+  const offset = convertLengthValue(24, LEGACY_SCENE_SETTINGS.lengthUnit, settings.lengthUnit);
+
+  return {
+    ...entity,
+    x: roundAuthoringValue(entity.x - 24 + offset),
+    y: roundAuthoringValue(entity.y - 24 + offset),
+  };
+}
+
 export function App() {
+  const initialAuthoringState = createInitialAuthoringState();
   const [editorState, setEditorState] = useState(createInitialEditorState);
-  const [constraints, setConstraints] = useState<EditorConstraint[]>([]);
-  const [entities, setEntities] = useState<EditorSceneEntity[]>(createInitialSceneEntities);
+  const [constraints, setConstraints] = useState<EditorConstraint[]>(initialAuthoringState.constraints);
+  const [entities, setEntities] = useState<EditorSceneEntity[]>(initialAuthoringState.entities);
+  const [sceneSettings, setSceneSettings] = useState<SceneAuthoringSettings>(initialAuthoringState.settings);
   const [selectedLibraryItem, setSelectedLibraryItem] = useState<LibraryItemKind>("ball");
   const [constraintPlacement, setConstraintPlacement] = useState<ConstraintPlacementState | null>(null);
   const [annotationState, setAnnotationState] = useState(createInitialAnnotationLayerState);
@@ -159,10 +299,18 @@ export function App() {
     }),
   );
   const entityCatalogRef = useRef(entities);
+  const sceneSettingsRef = useRef(sceneSettings);
+  const workspaceViewport = createWorkspaceViewport(sceneSettings);
   const [runtimePort] = useState(() =>
     createDesktopRuntimeBridgePort({
       fallbackPort: createMockRuntimeBridgePort({
-        createFrame: (input) => createRuntimePreviewFrame(entityCatalogRef.current, input),
+        createFrame: (input) =>
+          createRuntimePreviewFrame(
+            entityCatalogRef.current,
+            sceneSettingsRef.current,
+            createWorkspaceViewport(sceneSettingsRef.current),
+            input,
+          ),
         createTrajectorySamples: ({ bridge, currentSamplesByAnalyzer }) =>
           createRuntimePreviewTrajectorySamples({
             bridge,
@@ -176,6 +324,10 @@ export function App() {
   useEffect(() => {
     entityCatalogRef.current = entities;
   }, [entities]);
+
+  useEffect(() => {
+    sceneSettingsRef.current = sceneSettings;
+  }, [sceneSettings]);
 
   useEffect(() => runtimePort.subscribe(setRuntimeSnapshot), [runtimePort]);
 
@@ -191,9 +343,10 @@ export function App() {
         annotations: annotationState.strokes,
         constraints,
         entities,
+        settings: sceneSettings,
       }),
     );
-  }, [annotationState.strokes, constraints, entities, runtimePort]);
+  }, [annotationState.strokes, constraints, entities, runtimePort, sceneSettings]);
 
   function handleToolChange(tool: EditorTool) {
     setEditorState((current) => ({
@@ -273,7 +426,11 @@ export function App() {
     }
 
     setEntities((current) => {
-      const nextEntity = createPlacedBodyEntity(current, selectedLibraryItem, position);
+      const nextEntity = convertLegacyCreatedEntityToSceneUnits(
+        createPlacedBodyEntity(current, selectedLibraryItem, position),
+        sceneSettings,
+        position,
+      );
       handleSelectEntity(nextEntity.id);
       return [...current, nextEntity];
     });
@@ -327,16 +484,20 @@ export function App() {
   const displayEntities = projectRuntimeSceneEntities({
     editorEntities: entities,
     runtimeFrame: runtimeSnapshot.bridge.currentFrame,
-    viewport: DEFAULT_WORKSPACE_VIEWPORT,
+    viewport: workspaceViewport,
   });
   const authoringLocked = runtimeSnapshot.bridge.status === "running";
+  const scenePhysicsState = createScenePhysicsPanelState(sceneSettings, authoringLocked);
 
   function handleDuplicateSelectedEntity() {
     if (!selectedEntity) {
       return;
     }
 
-    const nextEntity = createDuplicatedEntity(entities, selectedEntity);
+    const nextEntity = applySceneDuplicateOffset(
+      createDuplicatedEntity(entities, selectedEntity),
+      sceneSettings,
+    );
 
     setEntities((current) => [...current, nextEntity]);
     handleSelectEntity(nextEntity.id);
@@ -405,6 +566,60 @@ export function App() {
         gridVisible: nextGridVisible,
       }));
     }
+  }
+
+  function handleScenePhysicsChange(update: {
+    gravity?: number;
+    lengthUnit?: string;
+    massUnit?: string;
+    pixelsPerMeter?: number;
+    velocityUnit?: string;
+  }) {
+    if (authoringLocked) {
+      return;
+    }
+
+    const nextLengthUnit = update.lengthUnit;
+    const nextVelocityUnit = update.velocityUnit;
+    const nextMassUnit = update.massUnit;
+    const shouldConvertUnits =
+      (nextLengthUnit !== undefined && isLengthUnit(nextLengthUnit) && nextLengthUnit !== sceneSettings.lengthUnit) ||
+      (nextVelocityUnit !== undefined &&
+        isVelocityUnit(nextVelocityUnit) &&
+        nextVelocityUnit !== sceneSettings.velocityUnit) ||
+      (nextMassUnit !== undefined && isMassUnit(nextMassUnit) && nextMassUnit !== sceneSettings.massUnit);
+
+    if (shouldConvertUnits) {
+      const converted = convertSceneAuthoringUnits({
+        constraints,
+        entities,
+        settings: sceneSettings,
+        units: {
+          lengthUnit: isLengthUnit(nextLengthUnit ?? "") ? nextLengthUnit : undefined,
+          velocityUnit: isVelocityUnit(nextVelocityUnit ?? "") ? nextVelocityUnit : undefined,
+          massUnit: isMassUnit(nextMassUnit ?? "") ? nextMassUnit : undefined,
+        },
+      });
+
+      setConstraints(converted.constraints);
+      setEntities(converted.entities);
+      setSceneSettings(
+        createSceneAuthoringSettings({
+          ...converted.settings,
+          gravity: update.gravity ?? converted.settings.gravity,
+          pixelsPerMeter: update.pixelsPerMeter ?? converted.settings.pixelsPerMeter,
+        }),
+      );
+      return;
+    }
+
+    setSceneSettings((current) =>
+      createSceneAuthoringSettings({
+        ...current,
+        gravity: update.gravity ?? current.gravity,
+        pixelsPerMeter: update.pixelsPerMeter ?? current.pixelsPerMeter,
+      }),
+    );
   }
 
   function handleUpdateSelectedConstraint(update: ConstraintUpdate) {
@@ -587,10 +802,13 @@ export function App() {
       rightPane={
         <div style={{ display: "grid", gap: "16px" }}>
           <PropertyPanel
+            authoringLocked={authoringLocked}
+            authoringLockReason={AUTHORING_LOCK_REASON}
             display={displaySettings}
             onDeleteSelectedConstraint={handleDeleteSelectedConstraint}
             onDeleteSelectedEntity={handleDeleteSelectedEntity}
             onDuplicateSelectedEntity={handleDuplicateSelectedEntity}
+            onScenePhysicsChange={handleScenePhysicsChange}
             onUpdateDisplaySetting={handleUpdateDisplaySetting}
             onUpdateSelectedConstraint={handleUpdateSelectedConstraint}
             onUpdateSelectedEntityLabel={handleUpdateSelectedEntityLabel}
@@ -598,6 +816,7 @@ export function App() {
             onUpdateSelectedEntityPhysics={handleUpdateSelectedEntityPhysics}
             onUpdateSelectedEntityRadius={handleUpdateSelectedEntityRadius}
             onUpdateSelectedEntitySize={handleUpdateSelectedEntitySize}
+            scenePhysics={scenePhysicsState}
             selectedConstraint={selectedConstraint}
             selectedEntity={selectedEntity}
           />
@@ -629,7 +848,7 @@ export function App() {
           onSelectEntity={handleSelectEntity}
           onToolChange={handleToolChange}
           state={editorState}
-          viewport={DEFAULT_WORKSPACE_VIEWPORT}
+          viewport={workspaceViewport}
         />
         <AnnotationLayer state={annotationState} onStateChange={setAnnotationState} />
       </div>

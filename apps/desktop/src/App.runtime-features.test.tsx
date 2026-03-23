@@ -8,6 +8,17 @@ afterEach(() => {
 });
 
 describe("App runtime features", () => {
+  it("mounts scene physics controls with SI defaults and classroom world scale", () => {
+    render(<App />);
+
+    expect((screen.getByLabelText("Gravity") as HTMLInputElement).value).toBe("9.8");
+    expect(screen.getByText("m/s²")).toBeDefined();
+    expect((screen.getByLabelText("Length unit") as HTMLSelectElement).value).toBe("m");
+    expect((screen.getByLabelText("Velocity unit") as HTMLSelectElement).value).toBe("m/s");
+    expect((screen.getByLabelText("Mass unit") as HTMLSelectElement).value).toBe("kg");
+    expect((screen.getByLabelText("Pixels per meter") as HTMLInputElement).value).toBe("100");
+  });
+
   it("mounts the transport bar, analysis panel, and annotation layer into the desktop shell", () => {
     render(<App />);
 
@@ -87,7 +98,7 @@ describe("App runtime features", () => {
     const transport = within(screen.getByTestId("bottom-transport-bar"));
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
-    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "60" } });
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
 
     expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("132px");
 
@@ -103,7 +114,7 @@ describe("App runtime features", () => {
     const transport = within(screen.getByTestId("bottom-transport-bar"));
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
-    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "60" } });
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
     fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
 
     await waitFor(() => {
@@ -122,7 +133,7 @@ describe("App runtime features", () => {
     const transport = within(screen.getByTestId("bottom-transport-bar"));
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
-    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "60" } });
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
 
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
 
@@ -148,7 +159,7 @@ describe("App runtime features", () => {
     const transport = within(screen.getByTestId("bottom-transport-bar"));
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
-    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "60" } });
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
 
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
 
@@ -174,7 +185,7 @@ describe("App runtime features", () => {
     const transport = within(screen.getByTestId("bottom-transport-bar"));
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
-    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "60" } });
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
 
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
 
@@ -189,6 +200,79 @@ describe("App runtime features", () => {
     await waitFor(() => {
       expect(ball.style.left).toBe("132px");
       expect(ball.style.top).toBe("176px");
+    });
+  });
+
+  it("recompiles from frame zero after changing gravity while paused", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+
+    await waitFor(() => {
+      expect(ball.style.top).not.toBe("176px");
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+
+    const pausedTop = ball.style.top;
+
+    expect(pausedTop).not.toBe("176px");
+
+    fireEvent.change(screen.getByLabelText("Gravity"), { target: { value: "12.5" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("0.00 s")).toBeDefined();
+      expect(screen.getByText("State: idle")).toBeDefined();
+      expect(ball.style.left).toBe("132px");
+      expect(ball.style.top).toBe("176px");
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+
+    await waitFor(() => {
+      expect(ball.style.top).not.toBe("176px");
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+  });
+
+  it("converts authored values and clears visible runtime state after changing units while paused", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
+
+    expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("1.32");
+    expect((screen.getByLabelText("Velocity X") as HTMLInputElement).value).toBe("0.6");
+
+    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+
+    await waitFor(() => {
+      expect(ball.style.left).not.toBe("132px");
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+    fireEvent.change(screen.getByLabelText("Length unit"), { target: { value: "cm" } });
+    fireEvent.change(screen.getByLabelText("Velocity unit"), { target: { value: "cm/s" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("0.00 s")).toBeDefined();
+      expect(screen.getByText("State: idle")).toBeDefined();
+      expect((screen.getByLabelText("Gravity") as HTMLInputElement).value).toBe("980");
+      expect(screen.getByText("cm/s²")).toBeDefined();
+      expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("132");
+      expect((screen.getByLabelText("Velocity X") as HTMLInputElement).value).toBe("60");
+      expect(ball.style.left).toBe("132px");
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
+
+    await waitFor(() => {
+      expect(ball.style.left).toBe("133px");
     });
   });
 });

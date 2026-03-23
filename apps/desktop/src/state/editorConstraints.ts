@@ -28,6 +28,10 @@ const DEFAULT_SPRING_STIFFNESS = 24;
 const DEFAULT_TRACK_ORIGIN: Vector2 = { x: 0, y: 0 };
 const DEFAULT_TRACK_AXIS: Vector2 = { x: 1, y: 0 };
 
+function roundConstraintLength(value: number): number {
+  return Number(value.toFixed(2));
+}
+
 const CONSTRAINT_LABELS: Record<LibraryConstraintKind, string> = {
   spring: "Spring",
   track: "Track",
@@ -83,7 +87,7 @@ export function createSpringConstraintFromEntities(
     ...spring,
     entityAId: entityA.id,
     entityBId: entityB.id,
-    restLength: Math.round(Math.hypot(entityB.x - entityA.x, entityB.y - entityA.y)),
+    restLength: roundConstraintLength(Math.hypot(entityB.x - entityA.x, entityB.y - entityA.y)),
   };
 }
 

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import { createDuplicatedEntity, createInitialSceneEntities } from "./editorStore";
-import { createDefaultEditorConstraint } from "./editorConstraints";
+import {
+  createDefaultEditorConstraint,
+  createSpringConstraintFromEntities,
+} from "./editorConstraints";
 
 describe("editorConstraints", () => {
   it("creates default spring constraints with deterministic ids and labels", () => {
@@ -56,5 +59,14 @@ describe("editorConstraints", () => {
       entityAId: "ball-1",
       entityBId: "board-1",
     });
+  });
+
+  it("preserves decimal rest length precision for authoring units", () => {
+    const spring = createSpringConstraintFromEntities([], [
+      { id: "ball-1", x: 1.56, y: 2 },
+      { id: "board-1", x: 3.78, y: 2.81 },
+    ]);
+
+    expect(spring.restLength).toBe(2.36);
   });
 });
