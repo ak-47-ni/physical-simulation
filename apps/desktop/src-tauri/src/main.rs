@@ -4,7 +4,6 @@ use sim_core::analyzer::TrajectorySample;
 use sim_core::bridge::{
     BridgeError, BridgeStatusSnapshot, DirtyEditScope, RuntimeCompileRequest, SimulationBridge,
 };
-use sim_core::runtime::RuntimeFramePayload;
 
 const FIXED_STEP_SECONDS: f64 = 1.0 / 60.0;
 
@@ -20,42 +19,42 @@ impl Default for RuntimeBridgeState {
 fn compile_scene(
     state: tauri::State<'_, RuntimeBridgeState>,
     request: RuntimeCompileRequest,
-) -> Result<RuntimeFramePayload, String> {
-    with_bridge(state, |bridge| bridge.compile_runtime_request(request))
+) -> Result<BridgeStatusSnapshot, String> {
+    with_bridge(state, |bridge| bridge.compile_runtime_request_snapshot(request))
 }
 
 #[tauri::command]
 fn start_runtime(
     state: tauri::State<'_, RuntimeBridgeState>,
-) -> Result<RuntimeFramePayload, String> {
-    with_bridge(state, SimulationBridge::start_or_resume)
+) -> Result<BridgeStatusSnapshot, String> {
+    with_bridge(state, SimulationBridge::start_or_resume_snapshot)
 }
 
 #[tauri::command]
 fn pause_runtime(
     state: tauri::State<'_, RuntimeBridgeState>,
-) -> Result<RuntimeFramePayload, String> {
-    with_bridge(state, SimulationBridge::pause)
+) -> Result<BridgeStatusSnapshot, String> {
+    with_bridge(state, SimulationBridge::pause_snapshot)
 }
 
 #[tauri::command]
 fn step_runtime(
     state: tauri::State<'_, RuntimeBridgeState>,
-) -> Result<RuntimeFramePayload, String> {
-    with_bridge(state, SimulationBridge::step)
+) -> Result<BridgeStatusSnapshot, String> {
+    with_bridge(state, SimulationBridge::step_snapshot)
 }
 
 #[tauri::command]
 fn reset_runtime(
     state: tauri::State<'_, RuntimeBridgeState>,
-) -> Result<RuntimeFramePayload, String> {
-    with_bridge(state, SimulationBridge::reset)
+) -> Result<BridgeStatusSnapshot, String> {
+    with_bridge(state, SimulationBridge::reset_snapshot)
 }
 
 #[tauri::command]
 fn current_frame(
     state: tauri::State<'_, RuntimeBridgeState>,
-) -> Result<RuntimeFramePayload, String> {
+) -> Result<sim_core::runtime::RuntimeFramePayload, String> {
     with_bridge(state, |bridge| bridge.current_frame())
 }
 

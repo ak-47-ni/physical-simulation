@@ -105,16 +105,42 @@ impl SimulationBridge {
         self.compile_scene(request.into_compile_scene_request()?)
     }
 
+    pub fn compile_scene_snapshot(
+        &mut self,
+        request: CompileSceneRequest,
+    ) -> Result<BridgeStatusSnapshot, BridgeError> {
+        self.compile_scene(request)?;
+        Ok(self.status_snapshot())
+    }
+
+    pub fn compile_runtime_request_snapshot(
+        &mut self,
+        request: RuntimeCompileRequest,
+    ) -> Result<BridgeStatusSnapshot, BridgeError> {
+        self.compile_runtime_request(request)?;
+        Ok(self.status_snapshot())
+    }
+
     pub fn start_or_resume(&mut self) -> Result<RuntimeFramePayload, BridgeError> {
         self.guard_runtime_ready()?;
         self.status = BridgeStatus::Running;
         self.current_frame()
     }
 
+    pub fn start_or_resume_snapshot(&mut self) -> Result<BridgeStatusSnapshot, BridgeError> {
+        self.start_or_resume()?;
+        Ok(self.status_snapshot())
+    }
+
     pub fn pause(&mut self) -> Result<RuntimeFramePayload, BridgeError> {
         self.ensure_runtime_initialized()?;
         self.status = BridgeStatus::Paused;
         self.current_frame()
+    }
+
+    pub fn pause_snapshot(&mut self) -> Result<BridgeStatusSnapshot, BridgeError> {
+        self.pause()?;
+        Ok(self.status_snapshot())
     }
 
     pub fn step(&mut self) -> Result<RuntimeFramePayload, BridgeError> {
@@ -126,6 +152,11 @@ impl SimulationBridge {
             .ok_or(BridgeError::RuntimeNotInitialized)?;
 
         Ok(runtime.step())
+    }
+
+    pub fn step_snapshot(&mut self) -> Result<BridgeStatusSnapshot, BridgeError> {
+        self.step()?;
+        Ok(self.status_snapshot())
     }
 
     pub fn reset(&mut self) -> Result<RuntimeFramePayload, BridgeError> {
@@ -142,6 +173,11 @@ impl SimulationBridge {
         self.status = BridgeStatus::Idle;
 
         Ok(frame)
+    }
+
+    pub fn reset_snapshot(&mut self) -> Result<BridgeStatusSnapshot, BridgeError> {
+        self.reset()?;
+        Ok(self.status_snapshot())
     }
 
     pub fn current_frame(&self) -> Result<RuntimeFramePayload, BridgeError> {

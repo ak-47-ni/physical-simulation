@@ -1,4 +1,4 @@
-use sim_core::bridge::{BridgeError, SimulationBridge};
+use sim_core::bridge::{BridgeError, BridgeStatus, SimulationBridge};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::scene::CompileSceneRequest;
@@ -91,4 +91,47 @@ fn bridge_contract_dirty_scene_blocks_resume_until_rebuild() {
         .expect("recompile should clear dirty state");
 
     assert!(bridge.start_or_resume().is_ok());
+}
+
+#[test]
+fn bridge_contract_snapshot_controls_report_runtime_state_transitions() {
+    let mut bridge = SimulationBridge::new(0.1);
+
+    let compiled = bridge
+        .compile_scene_snapshot(runtime_scene_request())
+        .expect("scene should compile into an idle snapshot");
+    assert_eq!(compiled.status, BridgeStatus::Idle);
+    assert_eq!(
+        compiled.current_frame.as_ref().map(|frame| frame.frame_number),
+        Some(0)
+    );
+
+    let running = bridge
+        .start_or_resume_snapshot()
+        .expect("start should return a running snapshot");
+    assert_eq!(running.status, BridgeStatus::Running);
+    assert!(running.can_resume);
+
+    let stepped = bridge.step_snapshot().expect("step should return a stepped snapshot");
+    assert_eq!(stepped.status, BridgeStatus::Running);
+    assert_eq!(
+        stepped.current_frame.as_ref().map(|frame| frame.frame_number),
+        Some(1)
+    );
+    assert!(stepped.current_time_seconds > 0.0);
+
+    let paused = bridge.pause_snapshot().expect("pause should return a paused snapshot");
+    assert_eq!(paused.status, BridgeStatus::Paused);
+    assert_eq!(
+        paused.current_frame.as_ref().map(|frame| frame.frame_number),
+        Some(1)
+    );
+
+    let reset = bridge.reset_snapshot().expect("reset should return a reset snapshot");
+    assert_eq!(reset.status, BridgeStatus::Idle);
+    assert_eq!(reset.current_time_seconds, 0.0);
+    assert_eq!(
+        reset.current_frame.as_ref().map(|frame| frame.frame_number),
+        Some(0)
+    );
 }
