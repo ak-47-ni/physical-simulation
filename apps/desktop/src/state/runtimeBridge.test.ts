@@ -16,6 +16,7 @@ import {
   pauseRuntimeBridge,
   resetRuntimeBridge,
   resumeRuntimeBridge,
+  setRuntimeBridgeErrorMessage,
   setRuntimeBridgeTimeScale,
   stepRuntimeBridge,
   type RuntimeBridgePortSnapshot,
@@ -105,6 +106,29 @@ describe("runtimeBridge", () => {
     });
   });
 
+  it("stores runtime command errors and clears them after a successful status snapshot", () => {
+    const failed = setRuntimeBridgeErrorMessage(
+      createInitialRuntimeBridgeState(),
+      "compile failed: unresolved spring endpoint",
+    );
+
+    expect(failed.lastErrorMessage).toBe("compile failed: unresolved spring endpoint");
+
+    const recovered = applyRuntimeBridgeStatusSnapshot(failed, {
+      status: "idle",
+      currentFrame: null,
+      currentTimeSeconds: 0,
+      timeScale: 1,
+      dirtyScopes: [],
+      rebuildRequired: false,
+      canResume: true,
+      blockReason: null,
+    });
+
+    expect(recovered.lastErrorMessage).toBeNull();
+    expect(recovered.lastBlockedAction).toBeNull();
+  });
+
   it("blocks resume after structural or physical edits until rebuild completes", () => {
     const initial = createInitialRuntimeBridgeState();
     const running = resumeRuntimeBridge(initial);
@@ -119,12 +143,18 @@ describe("runtimeBridge", () => {
 
     expect(blockedResume.status).toBe("paused");
     expect(blockedResume.canResume).toBe(false);
+    expect(blockedResume.lastBlockedAction).toEqual({
+      action: "start",
+      message: "Rebuild required before starting runtime.",
+    });
+    expect(blockedResume.lastErrorMessage).toBeNull();
 
     const rebuilt = markRuntimeBridgeRebuilt(dirty);
     const resumed = resumeRuntimeBridge(rebuilt);
 
     expect(rebuilt.canResume).toBe(true);
     expect(rebuilt.blockReason).toBe(null);
+    expect(rebuilt.lastBlockedAction).toBeNull();
     expect(resumed.status).toBe("running");
   });
 

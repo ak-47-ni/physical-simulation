@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { App } from "./App";
@@ -58,5 +58,25 @@ describe("App runtime features", () => {
     fireEvent.click(screen.getByRole("button", { name: /hide annotations/i }));
 
     expect(screen.getByTestId("annotation-layer").getAttribute("data-visible")).toBe("false");
+  });
+
+  it("shows runtime analysis guidance before samples and updates the summary after stepping", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Tracked entity: ball-1")).toBeDefined();
+      expect(screen.getByText("Runtime sample count: 0")).toBeDefined();
+      expect(
+        screen.getByText("No runtime samples yet. Start or step the runtime to collect data."),
+      ).toBeDefined();
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Tracked entity: ball-1")).toBeDefined();
+      expect(screen.getByText("Runtime sample count: 1")).toBeDefined();
+    });
   });
 });

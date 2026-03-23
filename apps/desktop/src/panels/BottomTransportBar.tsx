@@ -2,8 +2,10 @@ import type { CSSProperties } from "react";
 
 import type {
   RuntimeBridgeBlockReason,
+  RuntimeBridgeBlockedAction,
   RuntimeBridgeStatus,
 } from "../state/runtimeBridge";
+import { RuntimeStatusBanner } from "./RuntimeStatusBanner";
 
 export const DEFAULT_TIME_SCALE_PRESETS = [0.25, 0.5, 1, 2, 4] as const;
 
@@ -13,6 +15,8 @@ export type BottomTransportRuntimeView = {
   timeScale: number;
   canResume: boolean;
   blockReason: RuntimeBridgeBlockReason;
+  lastErrorMessage: string | null;
+  lastBlockedAction: RuntimeBridgeBlockedAction | null;
 };
 
 type BottomTransportBarProps = {
@@ -51,12 +55,29 @@ const buttonStyle: CSSProperties = {
 export function BottomTransportBar(props: BottomTransportBarProps) {
   const { runtime, onPause, onReset, onStart, onStep, onTimeScaleChange } = props;
   const timeScalePresets = props.timeScalePresets ?? DEFAULT_TIME_SCALE_PRESETS;
+  const blockedMessage =
+    runtime.lastBlockedAction?.message ??
+    (runtime.blockReason === "rebuild-required"
+      ? "Rebuild required before starting runtime."
+      : undefined);
+  const stepTitle =
+    runtime.status === "running"
+      ? "Pause the runtime before stepping."
+      : blockedMessage;
 
   return (
     <div data-testid="bottom-transport-bar" style={cardStyle}>
+      <RuntimeStatusBanner runtime={runtime} />
+
       <div style={rowStyle}>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          <button type="button" style={buttonStyle} disabled={!runtime.canResume} onClick={onStart}>
+          <button
+            type="button"
+            style={buttonStyle}
+            disabled={!runtime.canResume}
+            title={blockedMessage}
+            onClick={onStart}
+          >
             Start
           </button>
           <button type="button" style={buttonStyle} onClick={onPause}>
@@ -66,6 +87,7 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
             type="button"
             style={buttonStyle}
             disabled={runtime.status === "running" || runtime.blockReason !== null}
+            title={stepTitle}
             onClick={onStep}
           >
             Step
