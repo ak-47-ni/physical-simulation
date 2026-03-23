@@ -18,6 +18,7 @@ import {
   resumeRuntimeBridge,
   setRuntimeBridgeTimeScale,
   stepRuntimeBridge,
+  type RuntimeBridgePortSnapshot,
 } from "./runtimeBridge";
 
 describe("runtimeBridge", () => {
@@ -151,7 +152,7 @@ describe("runtimeBridge", () => {
   it("provides a mock runtime bridge port with subscribable command snapshots", async () => {
     const scene = createEmptySceneDocument();
     const request = createCompileRequestFromScene(scene, ["analysis"]);
-    const snapshots = [];
+    const snapshots: RuntimeBridgePortSnapshot[] = [];
     const port = createMockRuntimeBridgePort({
       createFrame: ({ nextFrameNumber }) =>
         createRuntimeFramePayload({

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import type {
   RuntimeBridgePort,
+  RuntimeBridgePortSnapshot,
   RuntimeTrajectorySample,
 } from "../state/runtimeBridge";
 
@@ -24,6 +25,19 @@ const IDLE_STATE: RuntimeTrajectorySamplesState = {
   error: null,
 };
 
+function shouldWaitForRuntimeSamples(
+  error: unknown,
+  snapshot: RuntimeBridgePortSnapshot,
+): boolean {
+  const message = error instanceof Error ? error.message : "";
+
+  if (!/unknown analyzer|runtime not initialized/i.test(message)) {
+    return false;
+  }
+
+  return (snapshot.bridge.currentFrame?.frameNumber ?? 0) === 0;
+}
+
 export function useRuntimeTrajectorySamples(
   options: UseRuntimeTrajectorySamplesOptions = {},
 ): RuntimeTrajectorySamplesState {
@@ -35,6 +49,7 @@ export function useRuntimeTrajectorySamples(
       return;
     }
 
+    const { analyzerId, runtimePort } = options;
     let disposed = false;
     let requestId = 0;
 
@@ -49,9 +64,7 @@ export function useRuntimeTrajectorySamples(
       }));
 
       try {
-        const trajectorySamples = await options.runtimePort.readTrajectorySamples(
-          options.analyzerId,
-        );
+        const trajectorySamples = await runtimePort.readTrajectorySamples(analyzerId);
 
         if (disposed || nextRequestId !== requestId) {
           return;
@@ -67,6 +80,15 @@ export function useRuntimeTrajectorySamples(
           return;
         }
 
+        if (shouldWaitForRuntimeSamples(error, runtimePort.getSnapshot())) {
+          setState({
+            trajectorySamples: [],
+            status: "loading",
+            error: null,
+          });
+          return;
+        }
+
         setState((currentState) => ({
           trajectorySamples: currentState.trajectorySamples,
           status: "error",
@@ -75,7 +97,7 @@ export function useRuntimeTrajectorySamples(
       }
     }
 
-    const unsubscribe = options.runtimePort.subscribe(() => {
+    const unsubscribe = runtimePort.subscribe(() => {
       void loadTrajectorySamples();
     });
 

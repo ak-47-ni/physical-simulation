@@ -310,10 +310,12 @@ export function App() {
       }),
     );
 
-    if (display.gridVisible !== undefined) {
+    const nextGridVisible = display.gridVisible;
+
+    if (nextGridVisible !== undefined) {
       setEditorState((current) => ({
         ...current,
-        gridVisible: display.gridVisible,
+        gridVisible: nextGridVisible,
       }));
     }
   }

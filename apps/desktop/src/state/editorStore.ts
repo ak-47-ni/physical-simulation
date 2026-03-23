@@ -142,25 +142,41 @@ export function createPlacedBodyEntity(
   const nextIndex = getNextEntityIndex(entities, kind);
   const baseEntity = {
     id: `${kind}-${nextIndex}`,
-    kind,
     label: `${BODY_LABELS[kind]} ${nextIndex}`,
     x: position.x,
     y: position.y,
     ...BODY_PHYSICS_DEFAULTS[kind],
-  } as const;
-
-  if (kind === "ball") {
-    return {
-      ...baseEntity,
-      radius: BODY_DEFAULTS.ball.radius,
-    };
-  }
-
-  return {
-    ...baseEntity,
-    width: BODY_DEFAULTS[kind].width,
-    height: BODY_DEFAULTS[kind].height,
   };
+
+  switch (kind) {
+    case "ball":
+      return {
+        ...baseEntity,
+        kind: "ball",
+        radius: BODY_DEFAULTS.ball.radius,
+      };
+    case "block":
+      return {
+        ...baseEntity,
+        kind: "block",
+        width: BODY_DEFAULTS.block.width,
+        height: BODY_DEFAULTS.block.height,
+      };
+    case "board":
+      return {
+        ...baseEntity,
+        kind: "board",
+        width: BODY_DEFAULTS.board.width,
+        height: BODY_DEFAULTS.board.height,
+      };
+    case "polygon":
+      return {
+        ...baseEntity,
+        kind: "polygon",
+        width: BODY_DEFAULTS.polygon.width,
+        height: BODY_DEFAULTS.polygon.height,
+      };
+  }
 }
 
 export function createDuplicatedEntity(

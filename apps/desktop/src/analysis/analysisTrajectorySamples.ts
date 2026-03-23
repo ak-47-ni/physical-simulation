@@ -3,6 +3,8 @@ import type { Vector2 } from "../../../../packages/scene-schema/src";
 import type { AnalyzerMetric, AnalyzerSample } from "./analysisStateMachine";
 import type { RuntimeTrajectorySample } from "../state/runtimeBridge";
 
+export type { RuntimeTrajectorySample };
+
 type SupportedRuntimeMetric = Exclude<AnalyzerMetric, "energy">;
 
 const UNIT_BY_METRIC: Record<SupportedRuntimeMetric, string> = {

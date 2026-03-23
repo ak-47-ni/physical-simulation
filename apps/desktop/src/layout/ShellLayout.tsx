@@ -159,11 +159,13 @@ export function ShellLayout(props: ShellLayoutProps) {
       return undefined;
     }
 
-    function handleMouseMove(event: globalThis.MouseEvent) {
-      const currentClient = activeResize.axis === "x" ? event.clientX : event.clientY;
-      const delta = (currentClient - activeResize.startClient) * activeResize.direction;
+    const resizeSession = activeResize;
 
-      resizePane(activeResize.pane, activeResize.startSize + delta);
+    function handleMouseMove(event: globalThis.MouseEvent) {
+      const currentClient = resizeSession.axis === "x" ? event.clientX : event.clientY;
+      const delta = (currentClient - resizeSession.startClient) * resizeSession.direction;
+
+      resizePane(resizeSession.pane, resizeSession.startSize + delta);
     }
 
     function handleMouseUp() {

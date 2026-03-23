@@ -26,12 +26,13 @@ type TauriInternals = {
 export function createDesktopRuntimeBridgePort(
   options: DesktopRuntimeBridgePortOptions,
 ): RuntimeBridgePort {
-  const invoke = options.invoke ?? resolveTauriInvoke();
+  const runtimeInvoke = options.invoke ?? resolveTauriInvoke();
 
-  if (!invoke) {
+  if (!runtimeInvoke) {
     return options.fallbackPort;
   }
 
+  const invoke: RuntimeBridgeInvoke = runtimeInvoke;
   let snapshot = createInitialRuntimeBridgePortSnapshot();
   const listeners = new Set<(snapshot: RuntimeBridgePortSnapshot) => void>();
 

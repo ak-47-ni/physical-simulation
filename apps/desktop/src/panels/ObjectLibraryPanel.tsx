@@ -7,6 +7,11 @@ type ObjectLibraryPanelProps = {
   selectedItemId: LibraryBodyKind;
 };
 
+type BodyLibraryItem = {
+  id: LibraryBodyKind;
+  label: string;
+};
+
 const headingStyle: CSSProperties = {
   margin: 0,
   fontSize: "12px",
@@ -36,16 +41,14 @@ const buttonChipStyle: CSSProperties = {
   cursor: "pointer",
 };
 
-const groups = [
-  {
-    title: "Bodies",
-    items: [
-      { id: "ball", label: "Ball" },
-      { id: "block", label: "Block" },
-      { id: "board", label: "Board" },
-      { id: "polygon", label: "Polygon" },
-    ] satisfies Array<{ id: LibraryBodyKind; label: string }>,
-  },
+const bodyItems: BodyLibraryItem[] = [
+  { id: "ball", label: "Ball" },
+  { id: "block", label: "Block" },
+  { id: "board", label: "Board" },
+  { id: "polygon", label: "Polygon" },
+];
+
+const chipGroups: Array<{ title: string; items: string[] }> = [
   {
     title: "Constraints",
     items: ["Spring", "Rod", "Track", "Anchor"],
@@ -61,31 +64,35 @@ export function ObjectLibraryPanel(props: ObjectLibraryPanelProps) {
 
   return (
     <div style={{ display: "grid", gap: "18px" }}>
-      {groups.map((group) => (
+      <section key="Bodies" style={groupStyle}>
+        <h2 style={headingStyle}>Bodies</h2>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+          {bodyItems.map((item) => (
+            <button
+              key={item.id}
+              data-selected={String(selectedItemId === item.id)}
+              data-testid={`library-item-${item.id}`}
+              style={{
+                ...buttonChipStyle,
+                background: selectedItemId === item.id ? "#dbe8ff" : chipStyle.background,
+              }}
+              type="button"
+              onClick={() => onSelectItem(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </section>
+      {chipGroups.map((group) => (
         <section key={group.title} style={groupStyle}>
           <h2 style={headingStyle}>{group.title}</h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-            {group.title === "Bodies"
-              ? group.items.map((item) => (
-                  <button
-                    key={item.id}
-                    data-selected={String(selectedItemId === item.id)}
-                    data-testid={`library-item-${item.id}`}
-                    style={{
-                      ...buttonChipStyle,
-                      background: selectedItemId === item.id ? "#dbe8ff" : chipStyle.background,
-                    }}
-                    type="button"
-                    onClick={() => onSelectItem(item.id)}
-                  >
-                    {item.label}
-                  </button>
-                ))
-              : group.items.map((item) => (
-                  <span key={item} style={chipStyle}>
-                    {item}
-                  </span>
-                ))}
+            {group.items.map((item) => (
+              <span key={item} style={chipStyle}>
+                {item}
+              </span>
+            ))}
           </div>
         </section>
       ))}

@@ -1,11 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { createEmptySceneDocument } from "../../../../packages/scene-schema/src";
+import {
+  createEmptySceneDocument,
+  createRuntimeFramePayload,
+} from "../../../../packages/scene-schema/src";
 import {
   createMockRuntimeBridgePort,
   createRuntimeCompileRequest,
+  type RuntimeBridgePortSnapshot,
+  type RuntimeBridgeStatusSnapshot,
 } from "./runtimeBridge";
-import { createDesktopRuntimeBridgePort } from "./desktopRuntimeBridgePort";
+import {
+  createDesktopRuntimeBridgePort,
+  type RuntimeBridgeInvoke,
+} from "./desktopRuntimeBridgePort";
 
 describe("desktopRuntimeBridgePort", () => {
   it("returns the provided fallback port when no tauri invoke transport is available", () => {
@@ -21,9 +29,9 @@ describe("desktopRuntimeBridgePort", () => {
 
   it("routes commands through tauri invoke and publishes runtime snapshots", async () => {
     const request = createRuntimeCompileRequest(createEmptySceneDocument(), ["analysis"]);
-    let statusSnapshot = {
+    let statusSnapshot: RuntimeBridgeStatusSnapshot = {
       status: "idle" as const,
-      currentFrame: {
+      currentFrame: createRuntimeFramePayload({
         frameNumber: 0,
         entities: [
           {
@@ -32,7 +40,7 @@ describe("desktopRuntimeBridgePort", () => {
             rotation: 0,
           },
         ],
-      },
+      }),
       currentTimeSeconds: 0,
       timeScale: 1,
       dirtyScopes: [],
@@ -40,10 +48,16 @@ describe("desktopRuntimeBridgePort", () => {
       canResume: true,
       blockReason: null,
     };
-    const invoke = vi.fn(async (command: string, payload?: Record<string, unknown>) => {
+    const commands: string[] = [];
+    const invoke: RuntimeBridgeInvoke = async <T>(
+      command: string,
+      payload?: Record<string, unknown>,
+    ) => {
+      commands.push(command);
+
       if (command === "compile_scene") {
         expect(payload).toEqual({ request });
-        return statusSnapshot;
+        return statusSnapshot as T;
       }
 
       if (command === "set_runtime_time_scale") {
@@ -53,13 +67,13 @@ describe("desktopRuntimeBridgePort", () => {
           timeScale: 2,
         };
 
-        return statusSnapshot;
+        return statusSnapshot as T;
       }
 
       if (command === "step_runtime") {
         statusSnapshot = {
           ...statusSnapshot,
-          currentFrame: {
+          currentFrame: createRuntimeFramePayload({
             frameNumber: 1,
             entities: [
               {
@@ -69,11 +83,11 @@ describe("desktopRuntimeBridgePort", () => {
                 velocity: { x: 4, y: -4 },
               },
             ],
-          },
+          }),
           currentTimeSeconds: 1 / 30,
         };
 
-        return statusSnapshot;
+        return statusSnapshot as T;
       }
 
       if (command === "read_trajectory_samples") {
@@ -86,12 +100,12 @@ describe("desktopRuntimeBridgePort", () => {
             velocity: { x: 4, y: -4 },
             acceleration: { x: 0, y: -9.81 },
           },
-        ];
+        ] as T;
       }
 
       throw new Error(`unexpected command: ${command}`);
-    });
-    const snapshots = [];
+    };
+    const snapshots: RuntimeBridgePortSnapshot[] = [];
     const fallbackPort = createMockRuntimeBridgePort();
     const port = createDesktopRuntimeBridgePort({ fallbackPort, invoke });
 
@@ -129,7 +143,7 @@ describe("desktopRuntimeBridgePort", () => {
         acceleration: { x: 0, y: -9.81 },
       },
     ]);
-    expect(invoke.mock.calls.map(([command]) => command)).not.toContain("runtime_status");
+    expect(commands).not.toContain("runtime_status");
     expect(snapshots).toHaveLength(3);
   });
 });

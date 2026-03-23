@@ -160,13 +160,15 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       return undefined;
     }
 
-    function handleMouseMove(event: globalThis.MouseEvent) {
-      const deltaX = event.clientX - dragSession.startClientX;
-      const deltaY = event.clientY - dragSession.startClientY;
+    const currentSession = dragSession;
 
-      onMoveEntity(dragSession.entityId, {
-        x: Math.round(dragSession.originX + deltaX),
-        y: Math.round(dragSession.originY + deltaY),
+    function handleMouseMove(event: globalThis.MouseEvent) {
+      const deltaX = event.clientX - currentSession.startClientX;
+      const deltaY = event.clientY - currentSession.startClientY;
+
+      onMoveEntity(currentSession.entityId, {
+        x: Math.round(currentSession.originX + deltaX),
+        y: Math.round(currentSession.originY + deltaY),
       });
     }
 
