@@ -1,11 +1,15 @@
 import type { CSSProperties } from "react";
 
+import type { EditorConstraint } from "../state/editorConstraints";
 import type { EditorSceneEntity } from "../state/editorStore";
 
 type SceneTreePanelProps = {
+  constraints?: EditorConstraint[];
   entities: EditorSceneEntity[];
+  onSelectConstraint?: (constraintId: string) => void;
+  onSelectEntity: (entityId: string) => void;
+  selectedConstraintId?: string | null;
   selectedEntityId: string | null;
-  onSelect: (entityId: string) => void;
 };
 
 const itemButtonStyle: CSSProperties = {
@@ -20,7 +24,14 @@ const itemButtonStyle: CSSProperties = {
 };
 
 export function SceneTreePanel(props: SceneTreePanelProps) {
-  const { entities, onSelect, selectedEntityId } = props;
+  const {
+    constraints = [],
+    entities,
+    onSelectConstraint = () => undefined,
+    onSelectEntity,
+    selectedConstraintId = null,
+    selectedEntityId,
+  } = props;
 
   return (
     <div style={{ display: "grid", gap: "10px" }}>
@@ -35,6 +46,9 @@ export function SceneTreePanel(props: SceneTreePanelProps) {
       >
         Scene Tree
       </h2>
+      <h3 style={{ ...itemButtonStyle, border: "none", background: "transparent", padding: 0 }}>
+        Entities
+      </h3>
       {entities.map((entity) => (
         <button
           key={entity.id}
@@ -45,11 +59,33 @@ export function SceneTreePanel(props: SceneTreePanelProps) {
             background: selectedEntityId === entity.id ? "#eaf1ff" : "#ffffff",
           }}
           type="button"
-          onClick={() => onSelect(entity.id)}
+          onClick={() => onSelectEntity(entity.id)}
         >
           {entity.label}
         </button>
       ))}
+      {constraints.length > 0 ? (
+        <>
+          <h3 style={{ ...itemButtonStyle, border: "none", background: "transparent", padding: 0 }}>
+            Constraints
+          </h3>
+          {constraints.map((constraint) => (
+            <button
+              key={constraint.id}
+              data-selected={String(selectedConstraintId === constraint.id)}
+              data-testid={`scene-tree-constraint-${constraint.id}`}
+              style={{
+                ...itemButtonStyle,
+                background: selectedConstraintId === constraint.id ? "#eaf1ff" : "#ffffff",
+              }}
+              type="button"
+              onClick={() => onSelectConstraint(constraint.id)}
+            >
+              {constraint.label}
+            </button>
+          ))}
+        </>
+      ) : null}
     </div>
   );
 }

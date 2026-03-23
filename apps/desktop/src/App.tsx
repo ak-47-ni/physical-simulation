@@ -51,6 +51,13 @@ type ConstraintPlacementState = {
   mode: "pick-entity" | "pick-point";
 };
 
+type ConstraintUpdate = {
+  axis?: { x: number; y: number };
+  origin?: { x: number; y: number };
+  restLength?: number;
+  stiffness?: number;
+};
+
 function getEntityCenter(entity: EditorSceneEntity) {
   if (entity.kind === "ball") {
     return {
@@ -206,6 +213,14 @@ export function App() {
     }));
   }
 
+  function handleSelectConstraint(constraintId: string) {
+    setEditorState((current) => ({
+      ...current,
+      selectedConstraintId: constraintId,
+      selectedEntityId: null,
+    }));
+  }
+
   function handleMoveEntity(entityId: string, position: { x: number; y: number }) {
     setEntities((current) =>
       current.map((entity) =>
@@ -292,6 +307,8 @@ export function App() {
   }
 
   const selectedEntity = entities.find((entity) => entity.id === editorState.selectedEntityId) ?? null;
+  const selectedConstraint =
+    constraints.find((constraint) => constraint.id === editorState.selectedConstraintId) ?? null;
 
   function handleDuplicateSelectedEntity() {
     if (!selectedEntity) {
@@ -367,6 +384,48 @@ export function App() {
         gridVisible: nextGridVisible,
       }));
     }
+  }
+
+  function handleUpdateSelectedConstraint(update: ConstraintUpdate) {
+    if (!editorState.selectedConstraintId) {
+      return;
+    }
+
+    setConstraints((current) =>
+      current.map((constraint) => {
+        if (constraint.id !== editorState.selectedConstraintId) {
+          return constraint;
+        }
+
+        if (constraint.kind === "spring") {
+          return {
+            ...constraint,
+            restLength: update.restLength ?? constraint.restLength,
+            stiffness: update.stiffness ?? constraint.stiffness,
+          };
+        }
+
+        return {
+          ...constraint,
+          axis: update.axis ?? constraint.axis,
+          origin: update.origin ?? constraint.origin,
+        };
+      }),
+    );
+  }
+
+  function handleDeleteSelectedConstraint() {
+    if (!editorState.selectedConstraintId) {
+      return;
+    }
+
+    setConstraints((current) =>
+      current.filter((constraint) => constraint.id !== editorState.selectedConstraintId),
+    );
+    setEditorState((current) => ({
+      ...current,
+      selectedConstraintId: null,
+    }));
   }
 
   function getEntityCenterForConstraint(entityId: string) {
@@ -506,19 +565,25 @@ export function App() {
         <div style={{ display: "grid", gap: "16px" }}>
           <PropertyPanel
             display={displaySettings}
+            onDeleteSelectedConstraint={handleDeleteSelectedConstraint}
             onDeleteSelectedEntity={handleDeleteSelectedEntity}
             onDuplicateSelectedEntity={handleDuplicateSelectedEntity}
             onUpdateDisplaySetting={handleUpdateDisplaySetting}
+            onUpdateSelectedConstraint={handleUpdateSelectedConstraint}
             onUpdateSelectedEntityLabel={handleUpdateSelectedEntityLabel}
             onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
             onUpdateSelectedEntityPhysics={handleUpdateSelectedEntityPhysics}
             onUpdateSelectedEntityRadius={handleUpdateSelectedEntityRadius}
             onUpdateSelectedEntitySize={handleUpdateSelectedEntitySize}
+            selectedConstraint={selectedConstraint}
             selectedEntity={selectedEntity}
           />
           <SceneTreePanel
+            constraints={constraints}
             entities={entities}
-            onSelect={handleSelectEntity}
+            onSelectConstraint={handleSelectConstraint}
+            onSelectEntity={handleSelectEntity}
+            selectedConstraintId={editorState.selectedConstraintId}
             selectedEntityId={editorState.selectedEntityId}
           />
         </div>

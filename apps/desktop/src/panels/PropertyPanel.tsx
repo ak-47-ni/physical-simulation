@@ -1,18 +1,29 @@
 import type { CSSProperties } from "react";
 
 import type { SceneDisplaySettings } from "../io/sceneFile";
+import type { EditorConstraint } from "../state/editorConstraints";
 import type { EditorEntityPhysics, EditorSceneEntity } from "../state/editorStore";
+
+type ConstraintPanelUpdate = {
+  axis?: { x: number; y: number };
+  origin?: { x: number; y: number };
+  restLength?: number;
+  stiffness?: number;
+};
 
 type PropertyPanelProps = {
   display: SceneDisplaySettings;
+  onDeleteSelectedConstraint?: () => void;
   onDeleteSelectedEntity: () => void;
   onDuplicateSelectedEntity: () => void;
   onUpdateDisplaySetting: (display: Partial<SceneDisplaySettings>) => void;
+  onUpdateSelectedConstraint?: (constraint: ConstraintPanelUpdate) => void;
   onUpdateSelectedEntityLabel: (label: string) => void;
   onUpdateSelectedEntityPosition: (position: { x: number; y: number }) => void;
   onUpdateSelectedEntityPhysics: (physics: Partial<EditorEntityPhysics>) => void;
   onUpdateSelectedEntityRadius: (radius: number) => void;
   onUpdateSelectedEntitySize: (size: { width: number; height: number }) => void;
+  selectedConstraint?: EditorConstraint | null;
   selectedEntity: EditorSceneEntity | null;
 };
 
@@ -159,14 +170,17 @@ function CheckboxInput(props: {
 export function PropertyPanel(props: PropertyPanelProps) {
   const {
     display,
+    onDeleteSelectedConstraint = () => undefined,
     onDeleteSelectedEntity,
     onDuplicateSelectedEntity,
     onUpdateDisplaySetting,
+    onUpdateSelectedConstraint = () => undefined,
     onUpdateSelectedEntityLabel,
     onUpdateSelectedEntityPosition,
     onUpdateSelectedEntityPhysics,
     onUpdateSelectedEntityRadius,
     onUpdateSelectedEntitySize,
+    selectedConstraint = null,
     selectedEntity,
   } = props;
 
@@ -174,7 +188,103 @@ export function PropertyPanel(props: PropertyPanelProps) {
     <div style={{ display: "grid", gap: "16px" }}>
       <section style={cardStyle}>
         <h2 style={sectionLabelStyle}>Selection</h2>
-        {selectedEntity ? (
+        {selectedConstraint ? (
+          <>
+            <ReadonlyField label="Constraint" value={selectedConstraint.label} />
+            {selectedConstraint.kind === "spring" ? (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "10px",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  }}
+                >
+                  <ReadonlyField
+                    label="Body A"
+                    value={selectedConstraint.entityAId ?? "Unassigned"}
+                  />
+                  <ReadonlyField
+                    label="Body B"
+                    value={selectedConstraint.entityBId ?? "Unassigned"}
+                  />
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "10px",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  }}
+                >
+                  <PositionInput
+                    label="Rest length"
+                    value={selectedConstraint.restLength}
+                    onChange={(restLength) => onUpdateSelectedConstraint({ restLength })}
+                  />
+                  <PositionInput
+                    label="Stiffness"
+                    value={selectedConstraint.stiffness}
+                    onChange={(stiffness) => onUpdateSelectedConstraint({ stiffness })}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <ReadonlyField
+                  label="Attached entity"
+                  value={selectedConstraint.entityId ?? "Unassigned"}
+                />
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "10px",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  }}
+                >
+                  <PositionInput
+                    label="Origin X"
+                    value={selectedConstraint.origin.x}
+                    onChange={(x) =>
+                      onUpdateSelectedConstraint({
+                        origin: { x, y: selectedConstraint.origin.y },
+                      })
+                    }
+                  />
+                  <PositionInput
+                    label="Origin Y"
+                    value={selectedConstraint.origin.y}
+                    onChange={(y) =>
+                      onUpdateSelectedConstraint({
+                        origin: { x: selectedConstraint.origin.x, y },
+                      })
+                    }
+                  />
+                  <PositionInput
+                    label="Axis X"
+                    value={selectedConstraint.axis.x}
+                    onChange={(x) =>
+                      onUpdateSelectedConstraint({
+                        axis: { x, y: selectedConstraint.axis.y },
+                      })
+                    }
+                  />
+                  <PositionInput
+                    label="Axis Y"
+                    value={selectedConstraint.axis.y}
+                    onChange={(y) =>
+                      onUpdateSelectedConstraint({
+                        axis: { x: selectedConstraint.axis.x, y },
+                      })
+                    }
+                  />
+                </div>
+              </>
+            )}
+            <button style={dangerButtonStyle} type="button" onClick={onDeleteSelectedConstraint}>
+              Delete constraint
+            </button>
+          </>
+        ) : selectedEntity ? (
           <>
             <TextInput
               label="Entity name"

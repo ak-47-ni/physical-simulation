@@ -177,4 +177,89 @@ describe("PropertyPanel", () => {
       { showForceVectors: true },
     ]);
   });
+
+  it("edits selected spring constraints and exposes a delete action", () => {
+    const constraintUpdates: Array<Record<string, number>> = [];
+    const deleted: string[] = [];
+
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings()}
+        onDeleteSelectedConstraint={() => {
+          deleted.push("spring-1");
+        }}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedConstraint={(constraint) => {
+          constraintUpdates.push(constraint);
+        }}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        selectedConstraint={{
+          entityAId: "ball-1",
+          entityBId: "board-1",
+          id: "spring-1",
+          kind: "spring",
+          label: "Spring 1",
+          restLength: 120,
+          stiffness: 24,
+        }}
+        selectedEntity={null}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Rest length"), { target: { value: "164" } });
+    fireEvent.change(screen.getByLabelText("Stiffness"), { target: { value: "38" } });
+    fireEvent.click(screen.getByRole("button", { name: /delete constraint/i }));
+
+    expect(constraintUpdates).toEqual([{ restLength: 164 }, { stiffness: 38 }]);
+    expect(deleted).toEqual(["spring-1"]);
+  });
+
+  it("edits selected track constraints", () => {
+    const constraintUpdates: Array<Record<string, number | { x: number; y: number }>> = [];
+
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings()}
+        onDeleteSelectedConstraint={() => undefined}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedConstraint={(constraint) => {
+          constraintUpdates.push(constraint);
+        }}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        selectedConstraint={{
+          axis: { x: 180, y: 60 },
+          entityId: "ball-1",
+          id: "track-1",
+          kind: "track",
+          label: "Track 1",
+          origin: { x: 156, y: 200 },
+        }}
+        selectedEntity={null}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Origin X"), { target: { value: "176" } });
+    fireEvent.change(screen.getByLabelText("Origin Y"), { target: { value: "214" } });
+    fireEvent.change(screen.getByLabelText("Axis X"), { target: { value: "220" } });
+    fireEvent.change(screen.getByLabelText("Axis Y"), { target: { value: "84" } });
+
+    expect(constraintUpdates).toEqual([
+      { origin: { x: 176, y: 200 } },
+      { origin: { x: 156, y: 214 } },
+      { axis: { x: 220, y: 60 } },
+      { axis: { x: 180, y: 84 } },
+    ]);
+  });
 });

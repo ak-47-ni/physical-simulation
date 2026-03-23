@@ -239,4 +239,21 @@ describe("App selection sync", () => {
     expect(screen.getByTestId("workspace-canvas").getAttribute("data-tool")).toBe("select");
     expect(screen.queryByText("Select second body for the spring")).toBeNull();
   });
+
+  it("deletes a selected constraint and clears the selection state", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Spring" }));
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+    fireEvent.click(screen.getByTestId("scene-tree-constraint-spring-1"));
+
+    expect(screen.getByLabelText("Rest length")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /delete constraint/i }));
+
+    expect(screen.queryByTestId("scene-constraint-spring-spring-1")).toBeNull();
+    expect(screen.queryByTestId("scene-tree-constraint-spring-1")).toBeNull();
+    expect(screen.getByText("No entity selected")).toBeDefined();
+  });
 });
