@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import type {
+  RuntimeBridgeBlockReason,
   RuntimeBridgePort,
   RuntimeBridgePortSnapshot,
   RuntimeTrajectorySample,
@@ -17,12 +18,20 @@ type RuntimeTrajectorySamplesState = {
   trajectorySamples: RuntimeTrajectorySample[];
   status: RuntimeTrajectorySamplesStatus;
   error: string | null;
+  analyzerEntityId: string | null;
+  lastErrorMessage: string | null;
+  lastBlockedActionMessage: string | null;
+  blockReason: RuntimeBridgeBlockReason;
 };
 
 const IDLE_STATE: RuntimeTrajectorySamplesState = {
   trajectorySamples: [],
   status: "idle",
   error: null,
+  analyzerEntityId: null,
+  lastErrorMessage: null,
+  lastBlockedActionMessage: null,
+  blockReason: null,
 };
 
 function shouldWaitForRuntimeSamples(
@@ -36,6 +45,25 @@ function shouldWaitForRuntimeSamples(
   }
 
   return (snapshot.bridge.currentFrame?.frameNumber ?? 0) === 0;
+}
+
+function readTrajectoryRuntimeContext(
+  snapshot: RuntimeBridgePortSnapshot,
+  analyzerId: string,
+): Pick<
+  RuntimeTrajectorySamplesState,
+  "analyzerEntityId" | "lastErrorMessage" | "lastBlockedActionMessage" | "blockReason"
+> {
+  const analyzer =
+    snapshot.lastCompileRequest?.scene.analyzers.find((candidate) => candidate.id === analyzerId) ??
+    null;
+
+  return {
+    analyzerEntityId: analyzer?.entityId ?? null,
+    lastErrorMessage: snapshot.bridge.lastErrorMessage,
+    lastBlockedActionMessage: snapshot.bridge.lastBlockedAction?.message ?? null,
+    blockReason: snapshot.bridge.blockReason,
+  };
 }
 
 export function useRuntimeTrajectorySamples(
@@ -56,11 +84,13 @@ export function useRuntimeTrajectorySamples(
     async function loadTrajectorySamples() {
       const nextRequestId = requestId + 1;
       requestId = nextRequestId;
+      const runtimeContext = readTrajectoryRuntimeContext(runtimePort.getSnapshot(), analyzerId);
 
       setState((currentState) => ({
         trajectorySamples: currentState.trajectorySamples,
         status: currentState.trajectorySamples.length > 0 ? currentState.status : "loading",
         error: null,
+        ...runtimeContext,
       }));
 
       try {
@@ -74,6 +104,7 @@ export function useRuntimeTrajectorySamples(
           trajectorySamples,
           status: "ready",
           error: null,
+          ...readTrajectoryRuntimeContext(runtimePort.getSnapshot(), analyzerId),
         });
       } catch (error) {
         if (disposed || nextRequestId !== requestId) {
@@ -85,6 +116,7 @@ export function useRuntimeTrajectorySamples(
             trajectorySamples: [],
             status: "loading",
             error: null,
+            ...readTrajectoryRuntimeContext(runtimePort.getSnapshot(), analyzerId),
           });
           return;
         }
@@ -93,6 +125,7 @@ export function useRuntimeTrajectorySamples(
           trajectorySamples: currentState.trajectorySamples,
           status: "error",
           error: error instanceof Error ? error.message : "failed to load runtime trajectory",
+          ...readTrajectoryRuntimeContext(runtimePort.getSnapshot(), analyzerId),
         }));
       }
     }

@@ -59,6 +59,15 @@ const inputStyle: CSSProperties = {
   fontSize: "13px",
 };
 
+const runtimeSummaryStyle: CSSProperties = {
+  display: "grid",
+  gap: "6px",
+  padding: "10px 12px",
+  borderRadius: "12px",
+  background: "#ffffff",
+  border: "1px solid rgba(108, 128, 173, 0.14)",
+};
+
 type AnalysisPanelProps = {
   state?: AnalyzerState;
   onStateChange?: (nextState: AnalyzerState) => void;
@@ -68,6 +77,52 @@ type AnalysisPanelProps = {
   runtimePort?: RuntimeBridgePort;
   analyzerId?: string;
 };
+
+function readRuntimeAnalysisFeedback(input: {
+  blockReason: ReturnType<typeof useRuntimeTrajectorySamples>["blockReason"];
+  error: string | null;
+  lastBlockedActionMessage: string | null;
+  lastErrorMessage: string | null;
+  sampleCount: number;
+  status: ReturnType<typeof useRuntimeTrajectorySamples>["status"];
+}) {
+  if (input.lastErrorMessage) {
+    return {
+      tone: "error" as const,
+      message: input.lastErrorMessage,
+    };
+  }
+
+  if (input.lastBlockedActionMessage) {
+    return {
+      tone: "warning" as const,
+      message: input.lastBlockedActionMessage,
+    };
+  }
+
+  if (input.blockReason === "rebuild-required") {
+    return {
+      tone: "warning" as const,
+      message: "Rebuild required before starting runtime.",
+    };
+  }
+
+  if (input.error) {
+    return {
+      tone: "warning" as const,
+      message: input.error,
+    };
+  }
+
+  if (input.sampleCount === 0 && input.status !== "idle") {
+    return {
+      tone: "info" as const,
+      message: "No runtime samples yet. Start or step the runtime to collect data.",
+    };
+  }
+
+  return null;
+}
 
 export function AnalysisPanel(props: AnalysisPanelProps = {}) {
   const {
@@ -92,6 +147,19 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
         },
   );
   const trajectorySamples = props.trajectorySamples ?? runtimeTrajectoryState.trajectorySamples;
+  const runtimeFeedback = readRuntimeAnalysisFeedback({
+    blockReason: runtimeTrajectoryState.blockReason,
+    error: runtimeTrajectoryState.error,
+    lastBlockedActionMessage: runtimeTrajectoryState.lastBlockedActionMessage,
+    lastErrorMessage: runtimeTrajectoryState.lastErrorMessage,
+    sampleCount: trajectorySamples.length,
+    status: runtimeTrajectoryState.status,
+  });
+  const showRuntimeSummary =
+    Boolean(props.runtimePort && props.analyzerId) ||
+    runtimeTrajectoryState.analyzerEntityId !== null ||
+    trajectorySamples.length > 0 ||
+    runtimeFeedback !== null;
   const groupedSamples = groupAnalyzerSamples(analysisState.samples);
   const metricSummaries = buildAnalyzerMetricSummaries(analysisState.samples);
   const manualChartSamples = analysisState.samples.filter(
@@ -192,6 +260,53 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
             ...display,
           }}
         />
+
+        {showRuntimeSummary ? (
+          <div
+            data-testid="analysis-runtime-summary"
+            style={{
+              ...runtimeSummaryStyle,
+              background:
+                runtimeFeedback?.tone === "error"
+                  ? "#fff1f2"
+                  : runtimeFeedback?.tone === "warning"
+                    ? "#fff7ed"
+                    : "#ffffff",
+              border:
+                runtimeFeedback?.tone === "error"
+                  ? "1px solid rgba(190, 24, 93, 0.18)"
+                  : runtimeFeedback?.tone === "warning"
+                    ? "1px solid rgba(194, 65, 12, 0.18)"
+                    : runtimeSummaryStyle.border,
+            }}
+          >
+            <strong style={{ color: "#17304f" }}>Runtime analysis</strong>
+            <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+              Tracked entity: {runtimeTrajectoryState.analyzerEntityId ?? "pending compile target"}
+            </span>
+            <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+              Runtime sample count: {trajectorySamples.length}
+            </span>
+            <span
+              style={{
+                color:
+                  runtimeFeedback?.tone === "error"
+                    ? "#9f1239"
+                    : runtimeFeedback?.tone === "warning"
+                      ? "#9a3412"
+                      : "#5d6f88",
+                fontSize: "13px",
+              }}
+            >
+              {runtimeFeedback?.message ?? "Runtime samples ready for charting."}
+            </span>
+            {runtimeFeedback?.tone === "error" || runtimeFeedback?.tone === "warning" ? (
+              <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                Teaching samples stay available while runtime feedback updates.
+              </span>
+            ) : null}
+          </div>
+        ) : null}
 
         {analysisState.overlays.chartPanelOpen ? (
           <div data-testid="analysis-chart-panel" style={cardStyle}>

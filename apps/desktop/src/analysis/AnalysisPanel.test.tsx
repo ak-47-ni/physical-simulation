@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createEmptySceneDocument } from "../../../../packages/scene-schema/src";
 import {
+  createInitialRuntimeBridgePortSnapshot,
   createCompileRequestFromScene,
   createMockRuntimeBridgePort,
+  type RuntimeBridgePort,
 } from "../state/runtimeBridge";
 import { AnalysisPanel } from "./AnalysisPanel";
 
@@ -13,6 +15,36 @@ afterEach(() => {
 });
 
 describe("AnalysisPanel", () => {
+  it("shows runtime empty-state guidance and tracked entity details before samples arrive", async () => {
+    const scene = createEmptySceneDocument();
+    scene.entities.push({
+      id: "probe-1",
+      kind: "ball",
+      x: 0,
+      y: 0,
+      radius: 12,
+    });
+    scene.analyzers.push({
+      id: "traj-1",
+      kind: "trajectory",
+      entityId: "probe-1",
+    });
+    const port = createMockRuntimeBridgePort();
+    const request = createCompileRequestFromScene(scene, ["analysis"]);
+
+    render(<AnalysisPanel runtimePort={port} analyzerId="traj-1" />);
+
+    await port.compile(request);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tracked entity: probe-1")).toBeDefined();
+      expect(screen.getByText("Runtime sample count: 0")).toBeDefined();
+      expect(
+        screen.getByText("No runtime samples yet. Start or step the runtime to collect data."),
+      ).toBeDefined();
+    });
+  });
+
   it("toggles trajectory, vector overlays, and chart visibility", () => {
     render(<AnalysisPanel />);
 
@@ -331,6 +363,19 @@ describe("AnalysisPanel", () => {
   });
 
   it("loads runtime trajectory samples from runtime port props", async () => {
+    const scene = createEmptySceneDocument();
+    scene.entities.push({
+      id: "probe-1",
+      kind: "ball",
+      x: 0,
+      y: 0,
+      radius: 12,
+    });
+    scene.analyzers.push({
+      id: "traj-1",
+      kind: "trajectory",
+      entityId: "probe-1",
+    });
     const port = createMockRuntimeBridgePort({
       createFrame: ({ nextFrameNumber }) => ({
         frameNumber: nextFrameNumber,
@@ -360,7 +405,7 @@ describe("AnalysisPanel", () => {
         ],
       }),
     });
-    const request = createCompileRequestFromScene(createEmptySceneDocument(), ["analysis"]);
+    const request = createCompileRequestFromScene(scene, ["analysis"]);
 
     render(<AnalysisPanel runtimePort={port} analyzerId="traj-1" />);
 
@@ -372,6 +417,8 @@ describe("AnalysisPanel", () => {
     await port.step();
 
     await waitFor(() => {
+      expect(screen.getByText("Tracked entity: probe-1")).toBeDefined();
+      expect(screen.getByText("Runtime sample count: 2")).toBeDefined();
       expect(screen.getByText("Trajectory samples: 2")).toBeDefined();
       expect(screen.getByText("Velocity overview")).toBeDefined();
       expect(screen.getByText("Samples in view: 2")).toBeDefined();
@@ -380,6 +427,65 @@ describe("AnalysisPanel", () => {
       expect(screen.getByText("Point 2")).toBeDefined();
       expect(screen.getByText("+0.2217 m/s")).toBeDefined();
       expect(screen.getByText("Runtime latest value: 1.80 m/s")).toBeDefined();
+    });
+  });
+
+  it("keeps accepted teaching samples visible when runtime feedback reports a compile failure", async () => {
+    const snapshot = createInitialRuntimeBridgePortSnapshot();
+    snapshot.bridge.lastErrorMessage = "compile failed: unresolved spring endpoint";
+    snapshot.lastCompileRequest = {
+      scene: {
+        schemaVersion: 1,
+        entities: [],
+        constraints: [],
+        forceSources: [],
+        analyzers: [
+          {
+            id: "traj-1",
+            kind: "trajectory",
+            entityId: "probe-1",
+          },
+        ],
+        annotations: [],
+      },
+      dirtyScopes: ["analysis"],
+      rebuildRequired: false,
+    };
+    const runtimePort: RuntimeBridgePort = {
+      getSnapshot: () => snapshot,
+      subscribe: (listener) => {
+        listener(snapshot);
+        return () => undefined;
+      },
+      compile: async () => snapshot,
+      start: async () => snapshot,
+      pause: async () => snapshot,
+      step: async () => snapshot,
+      reset: async () => snapshot,
+      setTimeScale: async () => snapshot,
+      readTrajectorySamples: async () => {
+        throw new Error("runtime not initialized");
+      },
+    };
+
+    render(<AnalysisPanel runtimePort={runtimePort} analyzerId="traj-1" />);
+
+    fireEvent.change(screen.getByLabelText(/sample label/i), {
+      target: { value: "Teacher note" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample value/i), {
+      target: { value: "9.81" },
+    });
+    fireEvent.change(screen.getByLabelText(/sample unit/i), {
+      target: { value: "m/s^2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /accept sample/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("compile failed: unresolved spring endpoint")).toBeDefined();
+      expect(screen.getByText("Teaching samples stay available while runtime feedback updates.")).toBeDefined();
+      expect(screen.getByText("Teacher note")).toBeDefined();
+      expect(screen.getByText("9.81 m/s^2")).toBeDefined();
     });
   });
 });
