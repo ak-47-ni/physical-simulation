@@ -160,6 +160,16 @@ impl SimulationBridge {
         Ok(self.status_snapshot())
     }
 
+    pub fn tick_snapshot(&mut self) -> Result<BridgeStatusSnapshot, BridgeError> {
+        self.ensure_runtime_initialized()?;
+
+        if self.status == BridgeStatus::Running {
+            self.step()?;
+        }
+
+        Ok(self.status_snapshot())
+    }
+
     pub fn reset(&mut self) -> Result<RuntimeFramePayload, BridgeError> {
         let compiled_scene = self
             .compiled_scene

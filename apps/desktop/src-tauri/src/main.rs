@@ -46,6 +46,13 @@ fn step_runtime(
 }
 
 #[tauri::command]
+fn tick_runtime(
+    state: tauri::State<'_, RuntimeBridgeState>,
+) -> Result<BridgeStatusSnapshot, String> {
+    with_bridge(state, SimulationBridge::tick_snapshot)
+}
+
+#[tauri::command]
 fn reset_runtime(
     state: tauri::State<'_, RuntimeBridgeState>,
 ) -> Result<BridgeStatusSnapshot, String> {
@@ -191,6 +198,7 @@ pub fn register_runtime_commands<R: tauri::Runtime>(
             start_runtime,
             pause_runtime,
             step_runtime,
+            tick_runtime,
             reset_runtime,
             current_frame,
             analyzer_samples,
@@ -250,6 +258,20 @@ mod tests {
         assert!(snapshot.can_resume);
         assert!(!snapshot.rebuild_required);
         assert!(snapshot.current_frame.is_none());
+    }
+
+    #[test]
+    fn build_desktop_app_registers_runtime_tick_command() {
+        let app =
+            build_desktop_app(mock_builder(), mock_context(noop_assets())).expect("app builds");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("webview builds");
+
+        let error = get_ipc_response(&webview, invoke_request("tick_runtime"))
+            .expect_err("tick runtime should be registered and return an init error");
+
+        assert_eq!(error.as_str(), Some("runtime not initialized"));
     }
 
     #[test]
