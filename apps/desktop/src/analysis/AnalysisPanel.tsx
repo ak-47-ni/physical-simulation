@@ -12,6 +12,7 @@ import {
 } from "./analysisSummary";
 import { buildAnalyzerKeyPointRows } from "./analysisKeyPoints";
 import { OverlayLayer } from "./OverlayLayer";
+import { buildRuntimeLiveSummary } from "./runtimeLiveSummary";
 import {
   ANALYZER_METRICS,
   type AnalyzerState,
@@ -147,6 +148,14 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
         },
   );
   const trajectorySamples = props.trajectorySamples ?? runtimeTrajectoryState.trajectorySamples;
+  const runtimeSnapshot = props.runtimePort?.getSnapshot().bridge ?? null;
+  const runtimeSummary = buildRuntimeLiveSummary({
+    currentFrame: runtimeSnapshot?.currentFrame ?? null,
+    currentTimeSeconds:
+      runtimeSnapshot?.currentTimeSeconds ?? trajectorySamples.at(-1)?.timeSeconds ?? 0,
+    status: runtimeSnapshot?.status ?? "idle",
+    trajectorySamples,
+  });
   const runtimeFeedback = readRuntimeAnalysisFeedback({
     blockReason: runtimeTrajectoryState.blockReason,
     error: runtimeTrajectoryState.error,
@@ -287,19 +296,33 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>
               Runtime sample count: {trajectorySamples.length}
             </span>
-            <span
-              style={{
-                color:
-                  runtimeFeedback?.tone === "error"
-                    ? "#9f1239"
-                    : runtimeFeedback?.tone === "warning"
-                      ? "#9a3412"
-                      : "#5d6f88",
-                fontSize: "13px",
-              }}
-            >
-              {runtimeFeedback?.message ?? "Runtime samples ready for charting."}
+            <span style={{ color: "#17304f", fontSize: "13px" }}>{runtimeSummary.headline}</span>
+            <span style={{ color: "#5d6f88", fontSize: "13px" }}>{runtimeSummary.frameLabel}</span>
+            <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+              {runtimeSummary.elapsedLabel}
             </span>
+            <span style={{ color: "#5d6f88", fontSize: "13px" }}>{runtimeSummary.sampleLabel}</span>
+            <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+              {runtimeSummary.speedLabel}
+            </span>
+            <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+              {runtimeSummary.accelerationLabel}
+            </span>
+            {runtimeFeedback ? (
+              <span
+                style={{
+                  color:
+                    runtimeFeedback.tone === "error"
+                      ? "#9f1239"
+                      : runtimeFeedback.tone === "warning"
+                        ? "#9a3412"
+                        : "#5d6f88",
+                  fontSize: "13px",
+                }}
+              >
+                {runtimeFeedback.message}
+              </span>
+            ) : null}
             {runtimeFeedback?.tone === "error" || runtimeFeedback?.tone === "warning" ? (
               <span style={{ color: "#5d6f88", fontSize: "13px" }}>
                 Teaching samples stay available while runtime feedback updates.

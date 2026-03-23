@@ -39,6 +39,8 @@ describe("AnalysisPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("Tracked entity: probe-1")).toBeDefined();
       expect(screen.getByText("Runtime sample count: 0")).toBeDefined();
+      expect(screen.getByText("No live data yet.")).toBeDefined();
+      expect(screen.getByText("Frame: --")).toBeDefined();
       expect(
         screen.getByText("No runtime samples yet. Start or step the runtime to collect data."),
       ).toBeDefined();
@@ -419,6 +421,9 @@ describe("AnalysisPanel", () => {
     await waitFor(() => {
       expect(screen.getByText("Tracked entity: probe-1")).toBeDefined();
       expect(screen.getByText("Runtime sample count: 2")).toBeDefined();
+      expect(screen.getByText("Latest frame 2 at 0.03 s")).toBeDefined();
+      expect(screen.getByText("Current speed: 1.80 m/s")).toBeDefined();
+      expect(screen.getByText("Current acceleration: 9.81 m/s^2")).toBeDefined();
       expect(screen.getByText("Trajectory samples: 2")).toBeDefined();
       expect(screen.getByText("Velocity overview")).toBeDefined();
       expect(screen.getByText("Samples in view: 2")).toBeDefined();

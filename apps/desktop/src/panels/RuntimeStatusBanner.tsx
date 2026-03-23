@@ -23,7 +23,7 @@ const bannerStyle: CSSProperties = {
 };
 
 function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
-  tone: "error" | "warning";
+  tone: "error" | "warning" | "info";
   message: string;
 } | null {
   if (runtime.lastErrorMessage) {
@@ -47,6 +47,20 @@ function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
     };
   }
 
+  if (runtime.status === "running") {
+    return {
+      tone: "info",
+      message: "Runtime is playing. Motion and live samples should keep updating.",
+    };
+  }
+
+  if (runtime.status === "paused") {
+    return {
+      tone: "info",
+      message: "Runtime is paused. Use Step for one frame or Start to continue.",
+    };
+  }
+
   return null;
 }
 
@@ -64,12 +78,24 @@ export function RuntimeStatusBanner(props: RuntimeStatusBannerProps) {
       aria-live="polite"
       style={{
         ...bannerStyle,
-        background: feedback.tone === "error" ? "#fff1f2" : "#fff7ed",
-        color: feedback.tone === "error" ? "#9f1239" : "#9a3412",
+        background:
+          feedback.tone === "error"
+            ? "#fff1f2"
+            : feedback.tone === "warning"
+              ? "#fff7ed"
+              : "#eff6ff",
+        color:
+          feedback.tone === "error"
+            ? "#9f1239"
+            : feedback.tone === "warning"
+              ? "#9a3412"
+              : "#1d4ed8",
         border:
           feedback.tone === "error"
             ? "1px solid rgba(190, 24, 93, 0.18)"
-            : "1px solid rgba(194, 65, 12, 0.18)",
+            : feedback.tone === "warning"
+              ? "1px solid rgba(194, 65, 12, 0.18)"
+              : "1px solid rgba(37, 99, 235, 0.18)",
       }}
     >
       {feedback.message}

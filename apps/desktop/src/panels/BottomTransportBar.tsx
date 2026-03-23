@@ -52,6 +52,26 @@ const buttonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
+function readTransportStateCopy(runtime: BottomTransportRuntimeView): string {
+  if (runtime.lastErrorMessage) {
+    return "Runtime needs attention. Review the runtime message above.";
+  }
+
+  if (runtime.lastBlockedAction || runtime.blockReason === "rebuild-required") {
+    return "Resume blocked until rebuild";
+  }
+
+  if (runtime.status === "running") {
+    return "Runtime is playing. Pause to inspect the current motion.";
+  }
+
+  if (runtime.status === "paused" && runtime.currentTimeSeconds > 0) {
+    return "Runtime is paused on the current frame.";
+  }
+
+  return `State: ${runtime.status}`;
+}
+
 export function BottomTransportBar(props: BottomTransportBarProps) {
   const { runtime, onPause, onReset, onStart, onStep, onTimeScaleChange } = props;
   const timeScalePresets = props.timeScalePresets ?? DEFAULT_TIME_SCALE_PRESETS;
@@ -64,6 +84,7 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
     runtime.status === "running"
       ? "Pause the runtime before stepping."
       : blockedMessage;
+  const transportStateCopy = readTransportStateCopy(runtime);
 
   return (
     <div data-testid="bottom-transport-bar" style={cardStyle}>
@@ -125,10 +146,11 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
           })}
         </div>
 
-        <span style={{ color: "#5a6d88", fontSize: "13px" }}>
-          {runtime.blockReason === "rebuild-required"
-            ? "Resume blocked until rebuild"
-            : `State: ${runtime.status}`}
+        <span
+          data-testid="transport-state-copy"
+          style={{ color: "#5a6d88", fontSize: "13px" }}
+        >
+          {transportStateCopy}
         </span>
       </div>
     </div>

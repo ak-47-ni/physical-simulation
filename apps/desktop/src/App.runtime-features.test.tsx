@@ -29,10 +29,12 @@ describe("App runtime features", () => {
     expect(screen.getByText("0.03 s")).toBeDefined();
 
     fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
-    expect(screen.getByText("State: running")).toBeDefined();
+    expect(
+      screen.getByText("Runtime is playing. Pause to inspect the current motion."),
+    ).toBeDefined();
 
     fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
-    expect(screen.getByText("State: paused")).toBeDefined();
+    expect(screen.getByText("Runtime is paused on the current frame.")).toBeDefined();
 
     fireEvent.click(transport.getByRole("button", { name: /^reset$/i }));
     expect(screen.getByText("0.00 s")).toBeDefined();

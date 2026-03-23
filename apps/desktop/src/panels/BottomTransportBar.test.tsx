@@ -117,4 +117,52 @@ describe("BottomTransportBar", () => {
       (screen.getByRole("button", { name: /step/i }) as HTMLButtonElement).disabled,
     ).toBe(true);
   });
+
+  it("shows clearer classroom playback copy for running and paused states", () => {
+    const { rerender } = render(
+      <BottomTransportBar
+        runtime={{
+          status: "running",
+          currentTimeSeconds: 1.25,
+          timeScale: 1,
+          canResume: true,
+          blockReason: null,
+          lastErrorMessage: null,
+          lastBlockedAction: null,
+        }}
+        onPause={() => undefined}
+        onReset={() => undefined}
+        onStart={() => undefined}
+        onStep={() => undefined}
+        onTimeScaleChange={() => undefined}
+      />,
+    );
+
+    expect(screen.getByTestId("transport-state-copy").textContent).toContain(
+      "Runtime is playing. Pause to inspect the current motion.",
+    );
+
+    rerender(
+      <BottomTransportBar
+        runtime={{
+          status: "paused",
+          currentTimeSeconds: 1.25,
+          timeScale: 1,
+          canResume: true,
+          blockReason: null,
+          lastErrorMessage: null,
+          lastBlockedAction: null,
+        }}
+        onPause={() => undefined}
+        onReset={() => undefined}
+        onStart={() => undefined}
+        onStep={() => undefined}
+        onTimeScaleChange={() => undefined}
+      />,
+    );
+
+    expect(screen.getByTestId("transport-state-copy").textContent).toContain(
+      "Runtime is paused on the current frame.",
+    );
+  });
 });

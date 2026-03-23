@@ -54,4 +54,38 @@ describe("RuntimeStatusBanner", () => {
       "Rebuild required before starting runtime.",
     );
   });
+
+  it("shows a classroom-friendly running explanation while the runtime is active", () => {
+    render(
+      <RuntimeStatusBanner
+        runtime={{
+          status: "running",
+          blockReason: null,
+          lastErrorMessage: null,
+          lastBlockedAction: null,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
+      "Runtime is playing. Motion and live samples should keep updating.",
+    );
+  });
+
+  it("shows a paused explanation after the teacher stops playback", () => {
+    render(
+      <RuntimeStatusBanner
+        runtime={{
+          status: "paused",
+          blockReason: null,
+          lastErrorMessage: null,
+          lastBlockedAction: null,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
+      "Runtime is paused. Use Step for one frame or Start to continue.",
+    );
+  });
 });
