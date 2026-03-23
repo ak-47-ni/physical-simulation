@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { createSceneAuthoringSettings } from "./sceneAuthoringSettings";
 import { createInitialSceneEntities } from "./editorStore";
-import { createRuntimeCompileRequestFromEditorState } from "./runtimeCompileRequest";
+import {
+  createRuntimeCompileRequest,
+  createRuntimeCompileRequestFromEditorState,
+} from "./runtimeCompileRequest";
 
 describe("runtimeCompileRequest", () => {
   it("maps editor entities and annotation strokes into a richer runtime compile payload", () => {
@@ -149,5 +153,136 @@ describe("runtimeCompileRequest", () => {
       },
     ]);
     expect(emptyRequest.scene.analyzers).toEqual([]);
+  });
+
+  it("normalizes authored unit-aware values back to SI in the runtime compile payload", () => {
+    const entities = createInitialSceneEntities().map((entity, index) =>
+      index === 0
+        ? {
+            ...entity,
+            x: 132,
+            y: 176,
+            radius: 24,
+            mass: 1200,
+            velocityX: 125,
+            velocityY: -50,
+          }
+        : {
+            ...entity,
+            x: 318,
+            y: 272,
+            width: 120,
+            height: 18,
+            mass: 5000,
+          },
+    );
+    const constraints = [
+      {
+        entityAId: "ball-1",
+        entityBId: "board-1",
+        id: "spring-1",
+        kind: "spring" as const,
+        label: "Spring 1",
+        restLength: 236,
+        stiffness: 24,
+      },
+      {
+        axis: { x: 180, y: 60 },
+        entityId: "ball-1",
+        id: "track-1",
+        kind: "track" as const,
+        label: "Track 1",
+        origin: { x: 156, y: 200 },
+      },
+    ];
+
+    const request = createRuntimeCompileRequestFromEditorState({
+      constraints,
+      dirtyScopes: ["physics"],
+      entities,
+      settings: createSceneAuthoringSettings({
+        gravity: 980,
+        lengthUnit: "cm",
+        velocityUnit: "cm/s",
+        massUnit: "g",
+        pixelsPerMeter: 1,
+      }),
+    });
+
+    expect(request.rebuildRequired).toBe(true);
+    expect(request.scene).toMatchObject({
+      forceSources: [
+        {
+          acceleration: { x: 0, y: 9.8 },
+          id: "gravity-primary",
+          kind: "gravity",
+        },
+      ],
+      constraints: [
+        {
+          entityAId: "ball-1",
+          entityBId: "board-1",
+          id: "spring-1",
+          kind: "spring",
+          restLength: 2.36,
+          stiffness: 24,
+        },
+        {
+          axis: { x: 1.8, y: 0.6 },
+          entityId: "ball-1",
+          id: "track-1",
+          kind: "track",
+          origin: { x: 1.56, y: 2 },
+        },
+      ],
+      entities: [
+        {
+          id: "ball-1",
+          kind: "ball",
+          x: 1.32,
+          y: 1.76,
+          radius: 0.24,
+          mass: 1.2,
+          velocityX: 1.25,
+          velocityY: -0.5,
+        },
+        {
+          id: "board-1",
+          kind: "board",
+          x: 3.18,
+          y: 2.72,
+          width: 1.2,
+          height: 0.18,
+          mass: 5,
+        },
+      ],
+    });
+    expect(request.scene).not.toHaveProperty("pixelsPerMeter");
+  });
+
+  it("keeps compile-request cloning stable when the source scene mutates later", () => {
+    const request = createRuntimeCompileRequestFromEditorState({
+      entities: createInitialSceneEntities(),
+    });
+    const clonedRequest = createRuntimeCompileRequest(request.scene, ["analysis"]);
+
+    request.scene.entities[0] = {
+      ...request.scene.entities[0],
+      x: 999,
+      y: 999,
+    };
+    request.scene.forceSources[0] = {
+      ...request.scene.forceSources[0],
+      acceleration: { x: 1, y: 1 },
+    };
+
+    expect(clonedRequest.scene.entities[0]).toMatchObject({
+      x: 132,
+      y: 176,
+    });
+    expect(clonedRequest.scene.forceSources[0]).toMatchObject({
+      acceleration: { x: 0, y: 9.8 },
+    });
+    expect(clonedRequest.scene).not.toHaveProperty("pixelsPerMeter");
   });
 });

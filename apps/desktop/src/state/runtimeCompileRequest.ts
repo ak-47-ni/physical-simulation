@@ -6,6 +6,10 @@ import {
   type Vector2,
 } from "../../../../packages/scene-schema/src";
 
+import {
+  createDefaultSceneAuthoringSettings,
+  type SceneAuthoringSettings,
+} from "./sceneAuthoringSettings";
 import type { EditorConstraint } from "./editorConstraints";
 import {
   createSceneDocumentFromEditorState,
@@ -15,6 +19,12 @@ import {
   type PersistedGravityForceSource,
   type PersistedSceneConstraint,
 } from "./editorSceneDocument";
+import {
+  normalizeGravityToSi,
+  normalizeLengthToSi,
+  normalizeMassToSi,
+  normalizeVelocityToSi,
+} from "./sceneUnits";
 import type { EditorSceneEntity } from "./editorStore";
 
 export type RuntimeSceneEntityPhysics = {
@@ -100,6 +110,7 @@ type CreateRuntimeCompileRequestFromEditorStateInput = {
   constraints?: EditorConstraint[];
   dirtyScopes?: DirtyEditScope[];
   entities: EditorSceneEntity[];
+  settings?: SceneAuthoringSettings;
 };
 
 export function createEmptyRuntimeSceneDocument(): RuntimeSceneDocument {
@@ -127,14 +138,23 @@ export function createRuntimeCompileRequest(
 export function createRuntimeCompileRequestFromEditorState(
   input: CreateRuntimeCompileRequestFromEditorStateInput,
 ): RuntimeCompileRequest {
+  const settings = input.settings ?? createDefaultSceneAuthoringSettings();
+
   return createRuntimeCompileRequest(
-    createSceneDocumentFromEditorState({
-      analyzerEntityId: input.analyzerEntityId,
-      analyzerId: input.analyzerId,
-      annotations: input.annotations,
-      constraints: input.constraints,
-      entities: input.entities,
-    }),
+    normalizeRuntimeSceneDocumentToSi(
+      createSceneDocumentFromEditorState({
+        analyzerEntityId: input.analyzerEntityId,
+        analyzerId: input.analyzerId,
+        annotations: input.annotations,
+        constraints: input.constraints,
+        entities: input.entities,
+        gravity: {
+          x: 0,
+          y: settings.gravity,
+        },
+      }),
+      settings,
+    ),
     input.dirtyScopes,
   );
 }
@@ -259,6 +279,117 @@ function cloneRuntimeAnnotationStroke(
   return {
     id: stroke.id,
     points: stroke.points.map((point) => ({ ...point })),
+  };
+}
+
+function normalizeRuntimeSceneDocumentToSi(
+  scene: RuntimeSceneDocument | LegacySceneDocument,
+  settings: SceneAuthoringSettings,
+): RuntimeSceneDocument {
+  const clonedScene = cloneRuntimeSceneDocument(scene);
+
+  return {
+    ...clonedScene,
+    entities: clonedScene.entities.map((entity) => normalizeRuntimeSceneEntityToSi(entity, settings)),
+    constraints: clonedScene.constraints.map((constraint) =>
+      normalizeRuntimeSceneConstraintToSi(constraint, settings),
+    ),
+    forceSources: clonedScene.forceSources.map((source) =>
+      normalizeRuntimeForceSourceToSi(source, settings),
+    ),
+  };
+}
+
+function normalizeRuntimeSceneEntityToSi(
+  entity: RuntimeSceneEntity,
+  settings: SceneAuthoringSettings,
+): RuntimeSceneEntity {
+  const physics = {
+    ...(entity.mass !== undefined ? { mass: normalizeMassToSi(entity.mass, settings.massUnit) } : {}),
+    ...(entity.friction !== undefined ? { friction: entity.friction } : {}),
+    ...(entity.restitution !== undefined ? { restitution: entity.restitution } : {}),
+    ...(entity.locked !== undefined ? { locked: entity.locked } : {}),
+    ...(entity.velocityX !== undefined
+      ? { velocityX: normalizeVelocityToSi(entity.velocityX, settings.velocityUnit) }
+      : {}),
+    ...(entity.velocityY !== undefined
+      ? { velocityY: normalizeVelocityToSi(entity.velocityY, settings.velocityUnit) }
+      : {}),
+  };
+
+  if (entity.kind === "user-polygon") {
+    return {
+      ...entity,
+      ...physics,
+      points: entity.points.map((point) => ({
+        x: normalizeLengthToSi(point.x, settings.lengthUnit),
+        y: normalizeLengthToSi(point.y, settings.lengthUnit),
+      })),
+    };
+  }
+
+  if (entity.kind === "ball") {
+    return {
+      ...entity,
+      ...physics,
+      x: normalizeLengthToSi(entity.x, settings.lengthUnit),
+      y: normalizeLengthToSi(entity.y, settings.lengthUnit),
+      radius: normalizeLengthToSi(entity.radius, settings.lengthUnit),
+    };
+  }
+
+  return {
+    ...entity,
+    ...physics,
+    x: normalizeLengthToSi(entity.x, settings.lengthUnit),
+    y: normalizeLengthToSi(entity.y, settings.lengthUnit),
+    width: normalizeLengthToSi(entity.width, settings.lengthUnit),
+    height: normalizeLengthToSi(entity.height, settings.lengthUnit),
+  };
+}
+
+function normalizeRuntimeSceneConstraintToSi(
+  constraint: RuntimeSceneConstraint,
+  settings: SceneAuthoringSettings,
+): RuntimeSceneConstraint {
+  if (isPersistedSpringConstraint(constraint)) {
+    return {
+      ...constraint,
+      restLength: normalizeLengthToSi(constraint.restLength, settings.lengthUnit),
+    };
+  }
+
+  if (isPersistedTrackConstraint(constraint)) {
+    return {
+      ...constraint,
+      origin: {
+        x: normalizeLengthToSi(constraint.origin.x, settings.lengthUnit),
+        y: normalizeLengthToSi(constraint.origin.y, settings.lengthUnit),
+      },
+      axis: {
+        x: normalizeLengthToSi(constraint.axis.x, settings.lengthUnit),
+        y: normalizeLengthToSi(constraint.axis.y, settings.lengthUnit),
+      },
+    };
+  }
+
+  return constraint;
+}
+
+function normalizeRuntimeForceSourceToSi(
+  source: RuntimeForceSource,
+  settings: SceneAuthoringSettings,
+): RuntimeForceSource {
+  if (!isPersistedGravityForceSource(source)) {
+    return source;
+  }
+
+  return {
+    ...source,
+    acceleration: {
+      x: normalizeGravityToSi(source.acceleration.x, settings.lengthUnit),
+      y: normalizeGravityToSi(source.acceleration.y, settings.lengthUnit),
+    },
   };
 }
 
