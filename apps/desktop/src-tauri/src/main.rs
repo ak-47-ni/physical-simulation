@@ -80,6 +80,24 @@ fn reset_runtime_snapshot_command(
     bridge.reset_snapshot()
 }
 
+fn runtime_status_command(bridge: &SimulationBridge) -> BridgeStatusSnapshot {
+    bridge.status_snapshot()
+}
+
+fn set_runtime_time_scale_command(
+    bridge: &mut SimulationBridge,
+    time_scale: f64,
+) -> Result<BridgeStatusSnapshot, BridgeError> {
+    bridge.set_time_scale(time_scale)
+}
+
+fn mark_scene_dirty_command(
+    bridge: &mut SimulationBridge,
+    scopes: &[DirtyEditScope],
+) -> BridgeStatusSnapshot {
+    bridge.mark_dirty_scopes(scopes)
+}
+
 #[tauri::command]
 fn compile_scene(
     state: tauri::State<'_, RuntimeBridgeState>,
@@ -180,14 +198,14 @@ fn set_runtime_time_scale(
     state: tauri::State<'_, RuntimeBridgeState>,
     time_scale: f64,
 ) -> Result<BridgeStatusSnapshot, String> {
-    with_bridge(state, |bridge| bridge.set_time_scale(time_scale))
+    with_bridge(state, |bridge| set_runtime_time_scale_command(bridge, time_scale))
 }
 
 #[tauri::command]
 fn runtime_status(
     state: tauri::State<'_, RuntimeBridgeState>,
 ) -> Result<BridgeStatusSnapshot, String> {
-    with_bridge(state, |bridge| Ok(bridge.status_snapshot()))
+    with_bridge(state, |bridge| Ok(runtime_status_command(bridge)))
 }
 
 #[tauri::command]
@@ -195,7 +213,7 @@ fn mark_scene_dirty(
     state: tauri::State<'_, RuntimeBridgeState>,
     scopes: Vec<DirtyEditScope>,
 ) -> Result<BridgeStatusSnapshot, String> {
-    with_bridge(state, |bridge| Ok(bridge.mark_dirty_scopes(&scopes)))
+    with_bridge(state, |bridge| Ok(mark_scene_dirty_command(bridge, &scopes)))
 }
 
 fn with_bridge<T>(
@@ -355,5 +373,31 @@ mod tests {
             .expect("reset snapshot command should succeed");
         assert_eq!(reset.status, BridgeStatus::Idle);
         assert_eq!(reset.current_frame.as_ref().map(|frame| frame.frame_number), Some(0));
+    }
+
+    #[test]
+    fn command_helpers_cover_runtime_status_time_scale_and_dirty_metadata() {
+        let mut bridge = SimulationBridge::new(FIXED_STEP_SECONDS);
+
+        let initial = runtime_status_command(&bridge);
+        assert_eq!(initial.status, BridgeStatus::Idle);
+        assert_eq!(initial.time_scale, 1.0);
+
+        compile_scene_frame_command(&mut bridge, runtime_compile_request())
+            .expect("compile frame command should succeed");
+
+        let scaled = set_runtime_time_scale_command(&mut bridge, 0.5)
+            .expect("time scale command should succeed");
+        assert_eq!(scaled.time_scale, 0.5);
+
+        let dirty = mark_scene_dirty_command(&mut bridge, &[DirtyEditScope::Physics]);
+        assert_eq!(dirty.dirty_scopes, vec![DirtyEditScope::Physics]);
+        assert!(dirty.rebuild_required);
+        assert_eq!(dirty.status, BridgeStatus::Paused);
+
+        let status = runtime_status_command(&bridge);
+        assert_eq!(status.time_scale, 0.5);
+        assert_eq!(status.dirty_scopes, vec![DirtyEditScope::Physics]);
+        assert_eq!(status.block_reason, Some(sim_core::bridge::BridgeBlockReason::RebuildRequired));
     }
 }
