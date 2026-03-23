@@ -34,7 +34,27 @@ const IDLE_STATE: RuntimeTrajectorySamplesState = {
   blockReason: null,
 };
 
-function shouldWaitForRuntimeSamples(
+function hasTrajectoryAnalyzer(
+  snapshot: RuntimeBridgePortSnapshot,
+  analyzerId: string,
+): boolean {
+  return snapshot.lastCompileRequest?.scene.analyzers.some((candidate) => candidate.id === analyzerId) ?? false;
+}
+
+function createEmptyRuntimeState(
+  snapshot: RuntimeBridgePortSnapshot,
+  analyzerId: string,
+  statusOverride?: RuntimeTrajectorySamplesStatus,
+): RuntimeTrajectorySamplesState {
+  return {
+    trajectorySamples: [],
+    status: statusOverride ?? (hasTrajectoryAnalyzer(snapshot, analyzerId) ? "loading" : "idle"),
+    error: null,
+    ...readTrajectoryRuntimeContext(snapshot, analyzerId),
+  };
+}
+
+function shouldKeepExistingSamplesOnReadError(
   error: unknown,
   snapshot: RuntimeBridgePortSnapshot,
 ): boolean {
@@ -80,11 +100,13 @@ export function useRuntimeTrajectorySamples(
     const { analyzerId, runtimePort } = options;
     let disposed = false;
     let requestId = 0;
+    let lastFrameNumber: number | null = null;
+    let lastCompileRequest = runtimePort.getSnapshot().lastCompileRequest;
 
-    async function loadTrajectorySamples() {
+    async function loadTrajectorySamples(snapshot: RuntimeBridgePortSnapshot) {
       const nextRequestId = requestId + 1;
       requestId = nextRequestId;
-      const runtimeContext = readTrajectoryRuntimeContext(runtimePort.getSnapshot(), analyzerId);
+      const runtimeContext = readTrajectoryRuntimeContext(snapshot, analyzerId);
 
       setState((currentState) => ({
         trajectorySamples: currentState.trajectorySamples,
@@ -111,12 +133,9 @@ export function useRuntimeTrajectorySamples(
           return;
         }
 
-        if (shouldWaitForRuntimeSamples(error, runtimePort.getSnapshot())) {
+        if (shouldKeepExistingSamplesOnReadError(error, runtimePort.getSnapshot())) {
           setState({
-            trajectorySamples: [],
-            status: "loading",
-            error: null,
-            ...readTrajectoryRuntimeContext(runtimePort.getSnapshot(), analyzerId),
+            ...createEmptyRuntimeState(runtimePort.getSnapshot(), analyzerId),
           });
           return;
         }
@@ -130,11 +149,39 @@ export function useRuntimeTrajectorySamples(
       }
     }
 
-    const unsubscribe = runtimePort.subscribe(() => {
-      void loadTrajectorySamples();
-    });
+    function handleSnapshot(snapshot: RuntimeBridgePortSnapshot) {
+      const nextFrameNumber = snapshot.bridge.currentFrame?.frameNumber ?? null;
 
-    void loadTrajectorySamples();
+      if (nextFrameNumber === null) {
+        const shouldReturnToIdle =
+          snapshot.bridge.status === "idle" &&
+          lastFrameNumber !== null &&
+          snapshot.lastCompileRequest === lastCompileRequest;
+        lastFrameNumber = null;
+        lastCompileRequest = snapshot.lastCompileRequest;
+        setState(
+          createEmptyRuntimeState(snapshot, analyzerId, shouldReturnToIdle ? "idle" : undefined),
+        );
+        return;
+      }
+
+      const shouldRefresh = nextFrameNumber !== lastFrameNumber;
+      lastFrameNumber = nextFrameNumber;
+      lastCompileRequest = snapshot.lastCompileRequest;
+
+      if (!shouldRefresh) {
+        setState((currentState) => ({
+          ...currentState,
+          ...readTrajectoryRuntimeContext(snapshot, analyzerId),
+        }));
+        return;
+      }
+
+      void loadTrajectorySamples(snapshot);
+    }
+
+    const unsubscribe = runtimePort.subscribe(handleSnapshot);
+    handleSnapshot(runtimePort.getSnapshot());
 
     return () => {
       disposed = true;
