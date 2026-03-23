@@ -2,7 +2,11 @@
 name = "desktop-shell"
 version = "0.1.0"
 edition = "2024"
+build = "build.rs"
 
 [dependencies]
 sim-core = { path = "../../../crates/sim-core" }
-tauri = { version = "2" }
+tauri = { version = "2", features = ["test"] }
+
+[build-dependencies]
+tauri-build = { version = "2" }

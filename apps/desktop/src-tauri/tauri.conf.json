@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Physics Sandbox",
+  "version": "0.1.0",
+  "identifier": "io.physics-sandbox.desktop",
+  "build": {
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Physics Sandbox",
+        "width": 1440,
+        "height": 900,
+        "resizable": true
+      }
+    ]
+  }
+}

@@ -159,6 +159,88 @@ pub fn register_runtime_commands<R: tauri::Runtime>(
         ])
 }
 
+pub fn build_desktop_app<R: tauri::Runtime>(
+    builder: tauri::Builder<R>,
+    context: tauri::Context<R>,
+) -> tauri::Result<tauri::App<R>> {
+    register_runtime_commands(builder).build(context)
+}
+
+pub fn run_desktop_app<R: tauri::Runtime>(
+    builder: tauri::Builder<R>,
+    context: tauri::Context<R>,
+) -> tauri::Result<()> {
+    register_runtime_commands(builder).run(context)
+}
+
 fn main() {
-    let _builder = register_runtime_commands(tauri::Builder::default());
+    run_desktop_app(tauri::Builder::default(), tauri::generate_context!())
+        .expect("failed to run tauri desktop shell");
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use sim_core::bridge::BridgeStatus;
+    use tauri::Manager;
+    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
+    use tauri::webview::InvokeRequest;
+
+    use super::{BridgeStatusSnapshot, build_desktop_app, run_desktop_app};
+
+    #[test]
+    fn build_desktop_app_registers_runtime_status_command() {
+        let app =
+            build_desktop_app(mock_builder(), mock_context(noop_assets())).expect("app builds");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("webview builds");
+
+        let response = get_ipc_response(&webview, invoke_request("runtime_status"))
+            .expect("runtime status command succeeds");
+        let snapshot = response
+            .deserialize::<BridgeStatusSnapshot>()
+            .expect("status snapshot deserializes");
+
+        assert_eq!(snapshot.status, BridgeStatus::Idle);
+        assert!(snapshot.can_resume);
+        assert!(!snapshot.rebuild_required);
+        assert!(snapshot.current_frame.is_none());
+    }
+
+    #[test]
+    fn run_desktop_app_executes_the_builder_run_path() {
+        let builder = mock_builder().setup(|app: &mut tauri::App<tauri::test::MockRuntime>| {
+            tauri::WebviewWindowBuilder::new(app, "main", Default::default())
+                .build()
+                .expect("webview builds in setup");
+
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(10));
+                handle
+                    .get_webview_window("main")
+                    .expect("main window exists")
+                    .close()
+                    .expect("main window closes");
+            });
+
+            Ok(())
+        });
+
+        run_desktop_app(builder, mock_context(noop_assets())).expect("app runs");
+    }
+
+    fn invoke_request(command: &str) -> InvokeRequest {
+        InvokeRequest {
+            cmd: command.into(),
+            callback: tauri::ipc::CallbackFn(0),
+            error: tauri::ipc::CallbackFn(1),
+            url: "http://tauri.localhost".parse().expect("valid invoke url"),
+            body: tauri::ipc::InvokeBody::default(),
+            headers: Default::default(),
+            invoke_key: INVOKE_KEY.to_string(),
+        }
+    }
 }

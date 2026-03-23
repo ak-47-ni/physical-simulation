@@ -6,3 +6,4 @@ target
 .worktrees/
 worktrees/
 .coordination/
+apps/desktop/src-tauri/gen/
