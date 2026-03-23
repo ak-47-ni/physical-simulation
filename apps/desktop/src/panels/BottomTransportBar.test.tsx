@@ -1,3 +1,5 @@
+import type { ComponentType } from "react";
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -13,6 +15,8 @@ import { BottomTransportBar } from "./BottomTransportBar";
 afterEach(() => {
   cleanup();
 });
+
+const CompactBottomTransportBar = BottomTransportBar as ComponentType<Record<string, unknown>>;
 
 function createRuntimeView(overrides: {
   status?: RuntimeBridgeStatus;
@@ -57,9 +61,10 @@ function createPlaybackSettings(overrides: {
 }
 
 describe("BottomTransportBar", () => {
-  it("renders transport controls, playback mode controls, time-scale presets, and time readout", () => {
+  it("renders the compact playback layout with a speed dropdown instead of preset pills", () => {
     render(
-      <BottomTransportBar
+      <CompactBottomTransportBar
+        layout="compact"
         runtime={createRuntimeView({
           currentTimeSeconds: 12.5,
           status: "paused",
@@ -77,20 +82,45 @@ describe("BottomTransportBar", () => {
     expect(screen.getByRole("button", { name: /step/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /reset/i })).toBeDefined();
     expect(screen.getByRole("combobox", { name: /playback mode/i })).toBeDefined();
-    expect(screen.getByRole("button", { name: "0.25x" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "0.5x" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "1x" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "2x" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "4x" })).toBeDefined();
+    expect(screen.getByRole("combobox", { name: /speed/i })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "0.25x" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "0.5x" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "1x" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "2x" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "4x" })).toBeNull();
     expect(screen.getByText("12.50 s")).toBeDefined();
-    expect(screen.getByText("Realtime cap 40.00 s")).toBeDefined();
+    expect(screen.queryByText("Realtime cap 40.00 s")).toBeNull();
   });
 
-  it("routes transport, playback settings, and time-scale actions through the provided callbacks", () => {
+  it("renders a compact control row without helper copy when playback controls are hidden", () => {
+    render(
+      <CompactBottomTransportBar
+        layout="compact"
+        runtime={createRuntimeView({
+          status: "paused",
+          currentTimeSeconds: 3,
+        })}
+        showPlaybackControls={false}
+        onPause={() => undefined}
+        onReset={() => undefined}
+        onStart={() => undefined}
+        onStep={() => undefined}
+        onTimeScaleChange={() => undefined}
+      />,
+    );
+
+    expect(screen.getByTestId("transport-compact-row")).toBeDefined();
+    expect(screen.getByRole("combobox", { name: /speed/i })).toBeDefined();
+    expect(screen.queryByTestId("transport-state-copy")).toBeNull();
+    expect(screen.queryByText(/realtime cap/i)).toBeNull();
+  });
+
+  it("routes transport, playback settings, and speed changes through the provided callbacks", () => {
     const calls: string[] = [];
 
     render(
-      <BottomTransportBar
+      <CompactBottomTransportBar
+        layout="compact"
         runtime={createRuntimeView({
           playbackMode: "precomputed",
           totalDurationSeconds: 24,
@@ -127,12 +157,14 @@ describe("BottomTransportBar", () => {
     fireEvent.click(screen.getByRole("button", { name: /pause/i }));
     fireEvent.click(screen.getByRole("button", { name: /step/i }));
     fireEvent.click(screen.getByRole("button", { name: /reset/i }));
-    fireEvent.click(screen.getByRole("button", { name: "2x" }));
     fireEvent.change(screen.getByRole("combobox", { name: /playback mode/i }), {
       target: { value: "precomputed" },
     });
     fireEvent.change(screen.getByLabelText("Precompute duration"), {
       target: { value: "32" },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: /speed/i }), {
+      target: { value: "2" },
     });
 
     expect(calls).toEqual([
@@ -140,9 +172,9 @@ describe("BottomTransportBar", () => {
       "pause",
       "step",
       "reset",
-      "scale:2",
       "mode:precomputed",
       "duration:32",
+      "scale:2",
     ]);
   });
 
