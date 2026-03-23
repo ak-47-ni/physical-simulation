@@ -2,15 +2,12 @@ import {
   requiresRuntimeRebuild,
   type DirtyEditScope,
   type RuntimeFramePayload,
-  type SceneDocument,
   type Vector2,
 } from "../../../../packages/scene-schema/src";
-
-export type RuntimeCompileRequest = {
-  scene: SceneDocument;
-  dirtyScopes: DirtyEditScope[];
-  rebuildRequired: boolean;
-};
+import {
+  createRuntimeCompileRequest,
+  type RuntimeCompileRequest,
+} from "./runtimeCompileRequest";
 
 export type RuntimeBridgeStatus = "idle" | "running" | "paused";
 export type RuntimeBridgeBlockReason = "rebuild-required" | null;
@@ -110,14 +107,10 @@ export function createInitialRuntimeBridgePortSnapshot(): RuntimeBridgePortSnaps
 }
 
 export function createCompileRequestFromScene(
-  scene: SceneDocument,
+  scene: RuntimeCompileRequest["scene"],
   dirtyScopes: DirtyEditScope[] = [],
 ): RuntimeCompileRequest {
-  return {
-    scene: cloneSceneDocument(scene),
-    dirtyScopes: [...dirtyScopes],
-    rebuildRequired: requiresRuntimeRebuild(dirtyScopes),
-  };
+  return createRuntimeCompileRequest(scene, dirtyScopes);
 }
 
 export function applyRuntimeFrame(
@@ -369,25 +362,5 @@ function cloneTrajectorySampleMap(
   );
 }
 
-function cloneSceneDocument(scene: SceneDocument): SceneDocument {
-  return {
-    schemaVersion: scene.schemaVersion,
-    entities: scene.entities.map((entity) => ({
-      ...entity,
-      points: entity.points.map((point) => ({ ...point })),
-    })),
-    constraints: scene.constraints.map((constraint) => ({
-      ...constraint,
-    })),
-    forceSources: scene.forceSources.map((source) => ({
-      ...source,
-    })),
-    analyzers: scene.analyzers.map((analyzer) => ({
-      ...analyzer,
-    })),
-    annotations: scene.annotations.map((stroke) => ({
-      ...stroke,
-      points: stroke.points.map((point) => ({ ...point })),
-    })),
-  };
-}
+export { createRuntimeCompileRequest } from "./runtimeCompileRequest";
+export type { RuntimeCompileRequest } from "./runtimeCompileRequest";
