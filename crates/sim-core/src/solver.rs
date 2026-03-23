@@ -67,6 +67,19 @@ pub fn step_bodies(
     enforce_track_bindings(bodies, constraints, &index_by_id);
 }
 
+pub fn project_track_bindings(
+    bodies: &mut [RuntimeBodyState],
+    constraints: &[CompiledConstraint],
+) {
+    let index_by_id = bodies
+        .iter()
+        .enumerate()
+        .map(|(index, body)| (body.entity_id.clone(), index))
+        .collect::<HashMap<_, _>>();
+
+    enforce_track_bindings(bodies, constraints, &index_by_id);
+}
+
 fn resolve_static_contact(
     body: &mut RuntimeBodyState,
     surface: &RuntimeBodyState,

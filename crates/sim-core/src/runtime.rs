@@ -1,7 +1,7 @@
 use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySample};
 use crate::entity::{CompiledShape, Vector2};
 use crate::scene::CompiledScene;
-use crate::solver::{step_bodies, RuntimeBodyState};
+use crate::solver::{RuntimeBodyState, project_track_bindings, step_bodies};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -37,7 +37,7 @@ pub struct RuntimeScene {
 impl RuntimeScene {
     pub fn new(compiled: CompiledScene, fixed_delta_seconds: f64) -> Self {
         let gravity = compiled.gravity.acceleration;
-        let baseline = compiled
+        let mut baseline = compiled
             .entities
             .into_iter()
             .map(|entity| RuntimeBodyState {
@@ -58,6 +58,7 @@ impl RuntimeScene {
             })
             .collect::<Vec<_>>();
         let constraints = compiled.constraints;
+        project_track_bindings(&mut baseline, &constraints);
         let analyzer_blueprints = compiled.analyzers;
         let mut analyzers = analyzer_blueprints
             .iter()
