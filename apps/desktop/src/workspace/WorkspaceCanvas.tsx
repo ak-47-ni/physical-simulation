@@ -16,6 +16,7 @@ type WorkspaceCanvasProps = {
   constraintPlacement?: ConstraintPlacementState | null;
   constraints?: EditorConstraint[];
   display: SceneDisplaySettings;
+  displayEntities?: EditorSceneEntity[];
   entities: EditorSceneEntity[];
   onCancelPlacement?: () => void;
   onCreateEntity: (position: { x: number; y: number }) => void;
@@ -185,6 +186,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     constraintPlacement,
     constraints = [],
     display,
+    displayEntities,
     entities,
     onCancelPlacement,
     onCreateEntity,
@@ -197,6 +199,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     onToolChange,
   } = props;
   const [dragSession, setDragSession] = useState<DragSession | null>(null);
+  const renderedEntities = displayEntities ?? entities;
 
   useEffect(() => {
     if (!dragSession) {
@@ -274,7 +277,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   }
 
   function getEntityById(entityId: string | null) {
-    return entityId ? entities.find((entity) => entity.id === entityId) ?? null : null;
+    return entityId ? renderedEntities.find((entity) => entity.id === entityId) ?? null : null;
   }
 
   function renderConstraint(constraint: EditorConstraint) {
@@ -383,7 +386,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
         />
 
         {display.showVelocityVectors
-          ? entities.map((entity) => {
+          ? renderedEntities.map((entity) => {
               const vector = getVelocityVector(entity);
 
               if (!vector) {
@@ -401,7 +404,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           : null}
 
         {display.showForceVectors
-          ? entities.map((entity) => {
+          ? renderedEntities.map((entity) => {
               const vector = getForceVector(entity);
 
               if (!vector) {
@@ -420,7 +423,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
 
         {constraints.map(renderConstraint)}
 
-        {entities.map((entity) => (
+        {renderedEntities.map((entity) => (
           <button
             key={entity.id}
             aria-label={`Select ${entity.label}`}
