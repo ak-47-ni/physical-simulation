@@ -9,12 +9,15 @@ import {
   type RuntimePlaybackMode,
 } from "../state/runtimeBridge";
 import { RuntimeStatusBanner } from "./RuntimeStatusBanner";
+import { TransportSpeedSelect } from "./transport/TransportSpeedSelect";
 import {
   TransportTimeline,
   type TransportTimelineProgressView,
 } from "./transport/TransportTimeline";
 
 export const DEFAULT_TIME_SCALE_PRESETS = [0.25, 0.5, 1, 2, 4] as const;
+
+export type BottomTransportBarLayout = "default" | "compact";
 
 export type BottomTransportRuntimeView = {
   status: RuntimeBridgeStatus;
@@ -37,6 +40,7 @@ export type BottomTransportPlaybackSettings = {
 };
 
 type BottomTransportBarProps = {
+  layout?: BottomTransportBarLayout;
   runtime: BottomTransportRuntimeView;
   playbackSettings?: BottomTransportPlaybackSettings;
   showPlaybackControls?: boolean;
@@ -64,6 +68,25 @@ const rowStyle: CSSProperties = {
   gap: "12px",
 };
 
+const compactRowStyle: CSSProperties = {
+  ...rowStyle,
+  alignItems: "end",
+};
+
+const fieldGroupStyle: CSSProperties = {
+  display: "flex",
+  gap: "12px",
+  flexWrap: "wrap",
+  alignItems: "end",
+};
+
+const buttonGroupStyle: CSSProperties = {
+  display: "flex",
+  gap: "8px",
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
 const buttonStyle: CSSProperties = {
   border: "1px solid rgba(17, 37, 64, 0.12)",
   borderRadius: "999px",
@@ -72,6 +95,12 @@ const buttonStyle: CSSProperties = {
   padding: "10px 14px",
   fontSize: "13px",
   cursor: "pointer",
+};
+
+const compactButtonStyle: CSSProperties = {
+  ...buttonStyle,
+  padding: "7px 12px",
+  fontSize: "12px",
 };
 
 const fieldStyle: CSSProperties = {
@@ -145,7 +174,6 @@ function createTimelineProgress(runtime: BottomTransportRuntimeView): TransportT
 
 export function BottomTransportBar(props: BottomTransportBarProps) {
   const {
-    runtime,
     onPause,
     onPlaybackModeChange,
     onPrecomputeDurationChange,
@@ -154,7 +182,10 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
     onStart,
     onStep,
     onTimeScaleChange,
+    runtime,
   } = props;
+  const layout = props.layout ?? "default";
+  const isCompactLayout = layout === "compact";
   const showPlaybackControls = props.showPlaybackControls ?? true;
   const playbackSettings = props.playbackSettings ?? createFallbackPlaybackSettings(runtime);
   const timeScalePresets = props.timeScalePresets ?? DEFAULT_TIME_SCALE_PRESETS;
@@ -169,141 +200,185 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
       : blockedMessage;
   const transportStateCopy = readTransportStateCopy(runtime);
   const timelineProgress = createTimelineProgress(runtime);
+  const currentTimeReadout = (
+    <strong
+      style={{
+        color: "#17304f",
+        fontSize: isCompactLayout ? "13px" : "14px",
+        fontVariantNumeric: "tabular-nums",
+      }}
+    >
+      {runtime.currentTimeSeconds.toFixed(2)} s
+    </strong>
+  );
+
+  const transportButtons = (
+    <div style={buttonGroupStyle}>
+      <button
+        type="button"
+        style={isCompactLayout ? compactButtonStyle : buttonStyle}
+        disabled={!runtime.canResume}
+        title={blockedMessage}
+        onClick={onStart}
+      >
+        Start
+      </button>
+      <button
+        type="button"
+        style={isCompactLayout ? compactButtonStyle : buttonStyle}
+        onClick={onPause}
+      >
+        Pause
+      </button>
+      <button
+        type="button"
+        style={isCompactLayout ? compactButtonStyle : buttonStyle}
+        disabled={
+          runtime.status === "running" ||
+          runtime.status === "preparing" ||
+          runtime.blockReason !== null
+        }
+        title={stepTitle}
+        onClick={onStep}
+      >
+        Step
+      </button>
+      <button
+        type="button"
+        style={isCompactLayout ? compactButtonStyle : buttonStyle}
+        onClick={onReset}
+      >
+        Reset
+      </button>
+    </div>
+  );
+
+  const playbackFields = showPlaybackControls ? (
+    <div style={fieldGroupStyle}>
+      <label style={fieldStyle}>
+        <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>Playback mode</span>
+        <select
+          aria-label="Playback mode"
+          style={{
+            ...inputStyle,
+            minWidth: isCompactLayout ? "120px" : "160px",
+            padding: isCompactLayout ? "7px 9px" : inputStyle.padding,
+            fontSize: isCompactLayout ? "12px" : inputStyle.fontSize,
+          }}
+          value={playbackSettings.mode}
+          onChange={(event) => {
+            onPlaybackModeChange?.(event.currentTarget.value as RuntimePlaybackMode);
+          }}
+        >
+          <option value="realtime">Realtime</option>
+          <option value="precomputed">Precomputed</option>
+        </select>
+      </label>
+
+      {playbackSettings.mode === "precomputed" ? (
+        <label style={fieldStyle}>
+          <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
+            Precompute duration
+          </span>
+          <input
+            aria-label="Precompute duration"
+            min={1 / 60}
+            step={1}
+            style={{
+              ...inputStyle,
+              width: isCompactLayout ? "110px" : "132px",
+              padding: isCompactLayout ? "7px 9px" : inputStyle.padding,
+              fontSize: isCompactLayout ? "12px" : inputStyle.fontSize,
+            }}
+            type="number"
+            value={playbackSettings.precomputeDurationSeconds}
+            onChange={(event) => {
+              const nextValue = Number(event.currentTarget.value);
+
+              if (Number.isFinite(nextValue)) {
+                onPrecomputeDurationChange?.(nextValue);
+              }
+            }}
+          />
+        </label>
+      ) : isCompactLayout ? null : (
+        <span style={{ color: "#17304f", fontSize: "13px", fontWeight: 600 }}>
+          Realtime cap {playbackSettings.realtimeDurationCapSeconds.toFixed(2)} s
+        </span>
+      )}
+    </div>
+  ) : null;
+
+  const speedField = (
+    <TransportSpeedSelect
+      compact={isCompactLayout}
+      presets={timeScalePresets}
+      timeScale={runtime.timeScale}
+      onChange={onTimeScaleChange}
+    />
+  );
+
+  if (isCompactLayout) {
+    return (
+      <div data-testid="bottom-transport-bar" style={cardStyle}>
+        <RuntimeStatusBanner runtime={runtime} />
+
+        {showPlaybackControls ? (
+          <>
+            <div data-testid="transport-compact-row" style={compactRowStyle}>
+              {playbackFields}
+              <div style={{ ...fieldGroupStyle, marginLeft: "auto" }}>
+                {transportButtons}
+                {speedField}
+                {currentTimeReadout}
+              </div>
+            </div>
+
+            <TransportTimeline layout="compact" progress={timelineProgress} onSeek={onSeek} />
+          </>
+        ) : (
+          <div data-testid="transport-compact-row" style={compactRowStyle}>
+            <div style={fieldGroupStyle}>
+              {transportButtons}
+              {speedField}
+            </div>
+            {currentTimeReadout}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div data-testid="bottom-transport-bar" style={cardStyle}>
       <RuntimeStatusBanner runtime={runtime} />
 
       <div style={rowStyle}>
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            style={buttonStyle}
-            disabled={!runtime.canResume}
-            title={blockedMessage}
-            onClick={onStart}
-          >
-            Start
-          </button>
-          <button type="button" style={buttonStyle} onClick={onPause}>
-            Pause
-          </button>
-          <button
-            type="button"
-            style={buttonStyle}
-            disabled={
-              runtime.status === "running" ||
-              runtime.status === "preparing" ||
-              runtime.blockReason !== null
-            }
-            title={stepTitle}
-            onClick={onStep}
-          >
-            Step
-          </button>
-          <button type="button" style={buttonStyle} onClick={onReset}>
-            Reset
-          </button>
-        </div>
-
-        <strong style={{ color: "#17304f", fontSize: "14px" }}>
-          {runtime.currentTimeSeconds.toFixed(2)} s
-        </strong>
+        {transportButtons}
+        {currentTimeReadout}
       </div>
 
       {showPlaybackControls ? (
         <>
+          <div style={rowStyle}>{playbackFields}</div>
+
+          <TransportTimeline progress={timelineProgress} onSeek={onSeek} />
+
           <div style={rowStyle}>
-            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "end" }}>
-              <label style={fieldStyle}>
-                <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
-                  Playback mode
-                </span>
-                <select
-                  aria-label="Playback mode"
-                  style={{ ...inputStyle, minWidth: "160px" }}
-                  value={playbackSettings.mode}
-                  onChange={(event) => {
-                    onPlaybackModeChange?.(event.currentTarget.value as RuntimePlaybackMode);
-                  }}
-                >
-                  <option value="realtime">Realtime</option>
-                  <option value="precomputed">Precomputed</option>
-                </select>
-              </label>
-
-              {playbackSettings.mode === "precomputed" ? (
-                <label style={fieldStyle}>
-                  <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
-                    Precompute duration
-                  </span>
-                  <input
-                    aria-label="Precompute duration"
-                    min={1 / 60}
-                    step={1}
-                    style={{ ...inputStyle, width: "132px" }}
-                    type="number"
-                    value={playbackSettings.precomputeDurationSeconds}
-                    onChange={(event) => {
-                      const nextValue = Number(event.currentTarget.value);
-
-                      if (Number.isFinite(nextValue)) {
-                        onPrecomputeDurationChange?.(nextValue);
-                      }
-                    }}
-                  />
-                </label>
-              ) : (
-                <span style={{ color: "#17304f", fontSize: "13px", fontWeight: 600 }}>
-                  Realtime cap {playbackSettings.realtimeDurationCapSeconds.toFixed(2)} s
-                </span>
-              )}
-            </div>
-
-            <span
-              data-testid="transport-state-copy"
-              style={{ color: "#5a6d88", fontSize: "13px" }}
-            >
+            {speedField}
+            <span data-testid="transport-state-copy" style={{ color: "#5a6d88", fontSize: "13px" }}>
               {transportStateCopy}
             </span>
           </div>
-
-          <TransportTimeline progress={timelineProgress} onSeek={onSeek} />
         </>
-      ) : null}
-
-      <div style={rowStyle}>
-        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-          {timeScalePresets.map((preset) => {
-            const active = preset === runtime.timeScale;
-
-            return (
-              <button
-                key={preset}
-                type="button"
-                aria-pressed={active}
-                style={{
-                  ...buttonStyle,
-                  background: active ? "#112540" : "#ffffff",
-                  color: active ? "#f7f9fc" : "#112540",
-                }}
-                onClick={() => onTimeScaleChange(preset)}
-              >
-                {preset}x
-              </button>
-            );
-          })}
-        </div>
-
-        {showPlaybackControls ? null : (
-          <span
-            data-testid="transport-state-copy"
-            style={{ color: "#5a6d88", fontSize: "13px" }}
-          >
+      ) : (
+        <div style={rowStyle}>
+          {speedField}
+          <span data-testid="transport-state-copy" style={{ color: "#5a6d88", fontSize: "13px" }}>
             {transportStateCopy}
           </span>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

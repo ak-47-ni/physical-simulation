@@ -146,6 +146,7 @@ export function useDualPlaybackController(
   const precomputeBuildTokenRef = useRef(0);
   const precomputedPlaybackFrameHandleRef = useRef<number | null>(null);
   const precomputedPlaybackLastTimestampRef = useRef<number | null>(null);
+  const precomputedPlaybackLoopTokenRef = useRef(0);
 
   useRuntimePlaybackLoop({
     runtimePort,
@@ -183,23 +184,31 @@ export function useDualPlaybackController(
       precomputedPlayback.status !== "running" ||
       precomputedPlayback.frames.length === 0
     ) {
-      precomputedPlaybackLastTimestampRef.current = null;
-
-      if (precomputedPlaybackFrameHandleRef.current !== null) {
-        cancelPlaybackFrame(precomputedPlaybackFrameHandleRef.current);
-        precomputedPlaybackFrameHandleRef.current = null;
-      }
+      invalidatePrecomputedPlaybackLoop();
 
       return;
     }
 
+    const loopToken = precomputedPlaybackLoopTokenRef.current + 1;
+    precomputedPlaybackLoopTokenRef.current = loopToken;
+
     function stepPlayback(timestamp: number) {
+      if (precomputedPlaybackLoopTokenRef.current !== loopToken) {
+        return;
+      }
+
       const lastTimestamp = precomputedPlaybackLastTimestampRef.current ?? timestamp;
       precomputedPlaybackLastTimestampRef.current = timestamp;
       const elapsedSeconds = Math.max(0, (timestamp - lastTimestamp) / 1000);
+      let shouldScheduleNextFrame = true;
 
       setPrecomputedPlayback((current) => {
-        if (current.status !== "running" || current.frames.length === 0) {
+        if (
+          precomputedPlaybackLoopTokenRef.current !== loopToken ||
+          current.status !== "running" ||
+          current.frames.length === 0
+        ) {
+          shouldScheduleNextFrame = false;
           return current;
         }
 
@@ -212,6 +221,7 @@ export function useDualPlaybackController(
         const nextFrameIndex = findPrecomputedFrameIndex(current.frames, nextTimeSeconds);
 
         if (nextFrameIndex >= current.frames.length - 1) {
+          shouldScheduleNextFrame = false;
           return {
             ...current,
             currentFrameIndex: current.frames.length - 1,
@@ -229,17 +239,22 @@ export function useDualPlaybackController(
         };
       });
 
+      if (
+        !shouldScheduleNextFrame ||
+        precomputedPlaybackLoopTokenRef.current !== loopToken
+      ) {
+        precomputedPlaybackFrameHandleRef.current = null;
+        return;
+      }
+
       precomputedPlaybackFrameHandleRef.current = schedulePlaybackFrame(stepPlayback);
     }
 
     precomputedPlaybackFrameHandleRef.current = schedulePlaybackFrame(stepPlayback);
 
     return () => {
-      precomputedPlaybackLastTimestampRef.current = null;
-
-      if (precomputedPlaybackFrameHandleRef.current !== null) {
-        cancelPlaybackFrame(precomputedPlaybackFrameHandleRef.current);
-        precomputedPlaybackFrameHandleRef.current = null;
+      if (precomputedPlaybackLoopTokenRef.current === loopToken) {
+        invalidatePrecomputedPlaybackLoop();
       }
     };
   }, [
@@ -259,14 +274,19 @@ export function useDualPlaybackController(
     });
   }
 
-  function resetPrecomputedPlayback(clearCache: boolean) {
-    precomputeBuildTokenRef.current += 1;
+  function invalidatePrecomputedPlaybackLoop() {
+    precomputedPlaybackLoopTokenRef.current += 1;
     precomputedPlaybackLastTimestampRef.current = null;
 
     if (precomputedPlaybackFrameHandleRef.current !== null) {
       cancelPlaybackFrame(precomputedPlaybackFrameHandleRef.current);
       precomputedPlaybackFrameHandleRef.current = null;
     }
+  }
+
+  function resetPrecomputedPlayback(clearCache: boolean) {
+    precomputeBuildTokenRef.current += 1;
+    invalidatePrecomputedPlaybackLoop();
 
     setPrecomputedPlayback((current) => ({
       currentFrameIndex: 0,
@@ -278,6 +298,12 @@ export function useDualPlaybackController(
   }
 
   function seekPrecomputedPlayback(timeSeconds: number) {
+    if (playbackMode !== "precomputed") {
+      return;
+    }
+
+    invalidatePrecomputedPlaybackLoop();
+
     setPrecomputedPlayback((current) => {
       if (current.frames.length === 0 || current.status === "preparing") {
         return current;
@@ -297,7 +323,7 @@ export function useDualPlaybackController(
     const totalSteps = Math.max(1, Math.round(targetDurationSeconds / PRECOMPUTE_STEP_SECONDS));
 
     precomputeBuildTokenRef.current = buildToken;
-    precomputedPlaybackLastTimestampRef.current = null;
+    invalidatePrecomputedPlaybackLoop();
     setPrecomputedPlayback({
       currentFrameIndex: 0,
       errorMessage: null,
@@ -411,6 +437,8 @@ export function useDualPlaybackController(
       void runtimePort.pause();
       return;
     }
+
+    invalidatePrecomputedPlaybackLoop();
 
     setPrecomputedPlayback((current) => ({
       ...current,
