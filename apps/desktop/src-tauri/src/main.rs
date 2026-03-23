@@ -94,11 +94,8 @@ fn runtime_status(
 fn mark_scene_dirty(
     state: tauri::State<'_, RuntimeBridgeState>,
     scopes: Vec<DirtyEditScope>,
-) -> Result<(), String> {
-    with_bridge(state, |bridge| {
-        bridge.mark_dirty_scopes(&scopes);
-        Ok(())
-    })
+) -> Result<BridgeStatusSnapshot, String> {
+    with_bridge(state, |bridge| Ok(bridge.mark_dirty_scopes(&scopes)))
 }
 
 fn with_bridge<T>(

@@ -39,9 +39,12 @@ fn bridge_scopes_analysis_and_annotation_edits_do_not_block_resume() {
         .compile_scene(runtime_scene_request())
         .expect("scene should compile");
 
-    bridge.mark_dirty_scopes(&[DirtyEditScope::Analysis, DirtyEditScope::Annotation]);
-
-    let snapshot = bridge.status_snapshot();
+    let snapshot = bridge.mark_dirty_scopes(&[DirtyEditScope::Analysis, DirtyEditScope::Annotation]);
+    assert_eq!(
+        snapshot.dirty_scopes,
+        vec![DirtyEditScope::Analysis, DirtyEditScope::Annotation]
+    );
+    assert!(!snapshot.rebuild_required);
     assert!(snapshot.can_resume);
     assert_eq!(snapshot.block_reason, None);
     assert!(bridge.start_or_resume().is_ok());
@@ -54,8 +57,9 @@ fn bridge_scopes_physics_and_structure_edits_require_rebuild_before_resume() {
         .compile_scene(runtime_scene_request())
         .expect("scene should compile");
 
-    bridge.mark_dirty_scopes(&[DirtyEditScope::Physics]);
-    let physics_snapshot = bridge.status_snapshot();
+    let physics_snapshot = bridge.mark_dirty_scopes(&[DirtyEditScope::Physics]);
+    assert_eq!(physics_snapshot.dirty_scopes, vec![DirtyEditScope::Physics]);
+    assert!(physics_snapshot.rebuild_required);
     assert!(!physics_snapshot.can_resume);
     assert_eq!(
         physics_snapshot.block_reason,
@@ -65,8 +69,9 @@ fn bridge_scopes_physics_and_structure_edits_require_rebuild_before_resume() {
     bridge
         .compile_scene(runtime_scene_request())
         .expect("recompile should clear dirty physics state");
-    bridge.mark_dirty_scopes(&[DirtyEditScope::Structure]);
-    let structure_snapshot = bridge.status_snapshot();
+    let structure_snapshot = bridge.mark_dirty_scopes(&[DirtyEditScope::Structure]);
+    assert_eq!(structure_snapshot.dirty_scopes, vec![DirtyEditScope::Structure]);
+    assert!(structure_snapshot.rebuild_required);
     assert!(!structure_snapshot.can_resume);
     assert_eq!(
         structure_snapshot.block_reason,

@@ -194,11 +194,11 @@ impl SimulationBridge {
         Ok(self.status_snapshot())
     }
 
-    pub fn mark_dirty(&mut self) {
-        self.mark_dirty_scopes(&[DirtyEditScope::Structure]);
+    pub fn mark_dirty(&mut self) -> BridgeStatusSnapshot {
+        self.mark_dirty_scopes(&[DirtyEditScope::Structure])
     }
 
-    pub fn mark_dirty_scopes(&mut self, scopes: &[DirtyEditScope]) {
+    pub fn mark_dirty_scopes(&mut self, scopes: &[DirtyEditScope]) -> BridgeStatusSnapshot {
         for scope in scopes {
             if !self.dirty_scopes.contains(scope) {
                 self.dirty_scopes.push(*scope);
@@ -210,6 +210,8 @@ impl SimulationBridge {
         } else {
             BridgeStatus::Idle
         };
+
+        self.status_snapshot()
     }
 
     pub fn is_dirty(&self) -> bool {
