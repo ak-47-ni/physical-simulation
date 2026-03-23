@@ -39,6 +39,7 @@ export type BottomTransportPlaybackSettings = {
 type BottomTransportBarProps = {
   runtime: BottomTransportRuntimeView;
   playbackSettings?: BottomTransportPlaybackSettings;
+  showPlaybackControls?: boolean;
   onStart: () => void;
   onPause: () => void;
   onStep: () => void;
@@ -154,6 +155,7 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
     onStep,
     onTimeScaleChange,
   } = props;
+  const showPlaybackControls = props.showPlaybackControls ?? true;
   const playbackSettings = props.playbackSettings ?? createFallbackPlaybackSettings(runtime);
   const timeScalePresets = props.timeScalePresets ?? DEFAULT_TIME_SCALE_PRESETS;
   const blockedMessage =
@@ -209,62 +211,66 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
         </strong>
       </div>
 
-      <div style={rowStyle}>
-        <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "end" }}>
-          <label style={fieldStyle}>
-            <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
-              Playback mode
-            </span>
-            <select
-              aria-label="Playback mode"
-              style={{ ...inputStyle, minWidth: "160px" }}
-              value={playbackSettings.mode}
-              onChange={(event) => {
-                onPlaybackModeChange?.(event.currentTarget.value as RuntimePlaybackMode);
-              }}
+      {showPlaybackControls ? (
+        <>
+          <div style={rowStyle}>
+            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "end" }}>
+              <label style={fieldStyle}>
+                <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
+                  Playback mode
+                </span>
+                <select
+                  aria-label="Playback mode"
+                  style={{ ...inputStyle, minWidth: "160px" }}
+                  value={playbackSettings.mode}
+                  onChange={(event) => {
+                    onPlaybackModeChange?.(event.currentTarget.value as RuntimePlaybackMode);
+                  }}
+                >
+                  <option value="realtime">Realtime</option>
+                  <option value="precomputed">Precomputed</option>
+                </select>
+              </label>
+
+              {playbackSettings.mode === "precomputed" ? (
+                <label style={fieldStyle}>
+                  <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
+                    Precompute duration
+                  </span>
+                  <input
+                    aria-label="Precompute duration"
+                    min={1 / 60}
+                    step={1}
+                    style={{ ...inputStyle, width: "132px" }}
+                    type="number"
+                    value={playbackSettings.precomputeDurationSeconds}
+                    onChange={(event) => {
+                      const nextValue = Number(event.currentTarget.value);
+
+                      if (Number.isFinite(nextValue)) {
+                        onPrecomputeDurationChange?.(nextValue);
+                      }
+                    }}
+                  />
+                </label>
+              ) : (
+                <span style={{ color: "#17304f", fontSize: "13px", fontWeight: 600 }}>
+                  Realtime cap {playbackSettings.realtimeDurationCapSeconds.toFixed(2)} s
+                </span>
+              )}
+            </div>
+
+            <span
+              data-testid="transport-state-copy"
+              style={{ color: "#5a6d88", fontSize: "13px" }}
             >
-              <option value="realtime">Realtime</option>
-              <option value="precomputed">Precomputed</option>
-            </select>
-          </label>
-
-          {playbackSettings.mode === "precomputed" ? (
-            <label style={fieldStyle}>
-              <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
-                Precompute duration
-              </span>
-              <input
-                aria-label="Precompute duration"
-                min={1 / 60}
-                step={1}
-                style={{ ...inputStyle, width: "132px" }}
-                type="number"
-                value={playbackSettings.precomputeDurationSeconds}
-                onChange={(event) => {
-                  const nextValue = Number(event.currentTarget.value);
-
-                  if (Number.isFinite(nextValue)) {
-                    onPrecomputeDurationChange?.(nextValue);
-                  }
-                }}
-              />
-            </label>
-          ) : (
-            <span style={{ color: "#17304f", fontSize: "13px", fontWeight: 600 }}>
-              Realtime cap {playbackSettings.realtimeDurationCapSeconds.toFixed(2)} s
+              {transportStateCopy}
             </span>
-          )}
-        </div>
+          </div>
 
-        <span
-          data-testid="transport-state-copy"
-          style={{ color: "#5a6d88", fontSize: "13px" }}
-        >
-          {transportStateCopy}
-        </span>
-      </div>
-
-      <TransportTimeline progress={timelineProgress} onSeek={onSeek} />
+          <TransportTimeline progress={timelineProgress} onSeek={onSeek} />
+        </>
+      ) : null}
 
       <div style={rowStyle}>
         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -288,6 +294,15 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
             );
           })}
         </div>
+
+        {showPlaybackControls ? null : (
+          <span
+            data-testid="transport-state-copy"
+            style={{ color: "#5a6d88", fontSize: "13px" }}
+          >
+            {transportStateCopy}
+          </span>
+        )}
       </div>
     </div>
   );

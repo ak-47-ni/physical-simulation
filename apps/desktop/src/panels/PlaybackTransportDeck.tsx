@@ -167,6 +167,7 @@ export function PlaybackTransportDeck(props: PlaybackTransportDeckProps) {
 
       <BottomTransportBar
         runtime={runtime}
+        showPlaybackControls={false}
         onPause={onPause}
         onReset={onReset}
         onStart={onStart}
