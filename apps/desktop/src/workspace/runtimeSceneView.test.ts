@@ -45,6 +45,42 @@ function createBoardEntity(): EditorSceneEntity {
   };
 }
 
+function createBlockEntity(): EditorSceneEntity {
+  return {
+    id: "block-1",
+    kind: "block",
+    label: "Block 1",
+    x: 2.2,
+    y: 2.4,
+    width: 0.84,
+    height: 0.52,
+    mass: 2.8,
+    friction: 0.36,
+    restitution: 0.24,
+    locked: false,
+    velocityX: 0,
+    velocityY: 0,
+  };
+}
+
+function createPolygonEntity(): EditorSceneEntity {
+  return {
+    id: "polygon-1",
+    kind: "polygon",
+    label: "Polygon 1",
+    x: 4.2,
+    y: 1.8,
+    width: 0.76,
+    height: 0.76,
+    mass: 2.2,
+    friction: 0.28,
+    restitution: 0.22,
+    locked: false,
+    velocityX: 0,
+    velocityY: 0,
+  };
+}
+
 function createRuntimeFrame(overrides: Partial<RuntimeFrameView> = {}): RuntimeFrameView {
   return {
     frameNumber: 12,
@@ -107,6 +143,50 @@ describe("projectRuntimeSceneEntities", () => {
         y: 262,
         width: 120,
         height: 18,
+      }),
+    ]);
+  });
+
+  it("keeps block and polygon dimensions rigid while runtime centers move", () => {
+    const projected = projectRuntimeSceneEntities({
+      editorEntities: [createBlockEntity(), createPolygonEntity()],
+      runtimeFrame: createRuntimeFrame({
+        entities: [
+          {
+            id: "block-1",
+            transform: {
+              x: 2.92,
+              y: 2.66,
+              rotation: 0,
+            },
+          },
+          {
+            id: "polygon-1",
+            transform: {
+              x: 4.58,
+              y: 2.18,
+              rotation: 0,
+            },
+          },
+        ],
+      }),
+      viewport: meterViewport,
+    });
+
+    expect(projected).toEqual([
+      expect.objectContaining({
+        id: "block-1",
+        x: 250,
+        y: 240,
+        width: 84,
+        height: 52,
+      }),
+      expect.objectContaining({
+        id: "polygon-1",
+        x: 420,
+        y: 180,
+        width: 76,
+        height: 76,
       }),
     ]);
   });
