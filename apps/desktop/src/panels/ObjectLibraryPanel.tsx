@@ -1,10 +1,16 @@
-import type { CSSProperties } from "react";
+import type {
+  CSSProperties,
+  MouseEvent as ReactMouseEvent,
+  PointerEvent as ReactPointerEvent,
+} from "react";
 
 import type { LibraryConstraintKind } from "../state/editorConstraints";
 import type { LibraryBodyKind, LibraryItemKind } from "../state/editorStore";
+import type { LibraryDragSession } from "../workspace/libraryDragSession";
 
 type ObjectLibraryPanelProps = {
   onSelectItem: (itemId: LibraryItemKind) => void;
+  onStartBodyDrag?: (session: LibraryDragSession) => void;
   selectedItemId: LibraryItemKind;
 };
 
@@ -47,6 +53,11 @@ const buttonChipStyle: CSSProperties = {
   cursor: "pointer",
 };
 
+const bodyChipStyle: CSSProperties = {
+  ...buttonChipStyle,
+  cursor: "grab",
+};
+
 const bodyItems: BodyLibraryItem[] = [
   { id: "ball", label: "Ball" },
   { id: "block", label: "Block" },
@@ -67,7 +78,38 @@ const chipGroups: Array<{ title: string; items: string[] }> = [
 ];
 
 export function ObjectLibraryPanel(props: ObjectLibraryPanelProps) {
-  const { onSelectItem, selectedItemId } = props;
+  const { onSelectItem, onStartBodyDrag, selectedItemId } = props;
+
+  function handleBodyPointerDown(
+    bodyKind: LibraryBodyKind,
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) {
+    if (event.button !== 0 && event.buttons !== 1) {
+      return;
+    }
+
+    onStartBodyDrag?.({
+      bodyKind,
+      pointerClientPx: {
+        x: event.clientX,
+        y: event.clientY,
+      },
+    });
+  }
+
+  function handleBodyMouseDown(bodyKind: LibraryBodyKind, event: ReactMouseEvent<HTMLButtonElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    onStartBodyDrag?.({
+      bodyKind,
+      pointerClientPx: {
+        x: event.clientX,
+        y: event.clientY,
+      },
+    });
+  }
 
   return (
     <div style={{ display: "grid", gap: "18px" }}>
@@ -77,14 +119,14 @@ export function ObjectLibraryPanel(props: ObjectLibraryPanelProps) {
           {bodyItems.map((item) => (
             <button
               key={item.id}
-              data-selected={String(selectedItemId === item.id)}
+              data-selected="false"
               data-testid={`library-item-${item.id}`}
               style={{
-                ...buttonChipStyle,
-                background: selectedItemId === item.id ? "#dbe8ff" : chipStyle.background,
+                ...bodyChipStyle,
               }}
               type="button"
-              onClick={() => onSelectItem(item.id)}
+              onMouseDown={(event) => handleBodyMouseDown(item.id, event)}
+              onPointerDown={(event) => handleBodyPointerDown(item.id, event)}
             >
               {item.label}
             </button>

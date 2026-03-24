@@ -1,3 +1,5 @@
+import type { ComponentType } from "react";
+
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -7,33 +9,66 @@ afterEach(() => {
   cleanup();
 });
 
+const DragAwareObjectLibraryPanel = ObjectLibraryPanel as ComponentType<Record<string, unknown>>;
+
 describe("ObjectLibraryPanel", () => {
-  it("selects a library item and exposes selected state", () => {
+  it("starts a body drag with the body kind and pointer coordinates", () => {
     const selections: string[] = [];
+    const drags: Array<{
+      bodyKind: string;
+      pointerClientPx: { x: number; y: number };
+    }> = [];
 
     render(
-      <ObjectLibraryPanel
-        onSelectItem={(itemId) => {
+      <DragAwareObjectLibraryPanel
+        onSelectItem={(itemId: string) => {
           selections.push(itemId);
         }}
+        onStartBodyDrag={(session: { bodyKind: string; pointerClientPx: { x: number; y: number } }) => {
+          drags.push(session);
+        }}
+        selectedItemId="spring"
+      />,
+    );
+
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Board" }), {
+      button: 0,
+      clientX: 280,
+      clientY: 236,
+    });
+
+    expect(drags).toEqual([
+      {
+        bodyKind: "board",
+        pointerClientPx: { x: 280, y: 236 },
+      },
+    ]);
+    expect(selections).toEqual([]);
+  });
+
+  it("does not keep persistent selected styling on body drag sources", () => {
+    render(
+      <DragAwareObjectLibraryPanel
+        onSelectItem={() => undefined}
+        onStartBodyDrag={() => undefined}
         selectedItemId="ball"
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Board" }));
-
-    expect(selections).toEqual(["board"]);
-    expect(screen.getByTestId("library-item-ball").getAttribute("data-selected")).toBe("true");
+    expect(screen.getByTestId("library-item-ball").getAttribute("data-selected")).toBe("false");
+    expect(screen.getByTestId("library-item-block").getAttribute("data-selected")).toBe("false");
     expect(screen.getByTestId("library-item-board").getAttribute("data-selected")).toBe("false");
+    expect(screen.getByTestId("library-item-polygon").getAttribute("data-selected")).toBe("false");
   });
 
-  it("exposes selectable spring and track constraint tools", () => {
+  it("keeps spring and track on the existing selection callback path", () => {
     const selections: string[] = [];
     const { rerender } = render(
-      <ObjectLibraryPanel
-        onSelectItem={(itemId) => {
+      <DragAwareObjectLibraryPanel
+        onSelectItem={(itemId: string) => {
           selections.push(itemId);
         }}
+        onStartBodyDrag={() => undefined}
         selectedItemId="ball"
       />,
     );
@@ -41,15 +76,26 @@ describe("ObjectLibraryPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Spring" }));
 
     rerender(
-      <ObjectLibraryPanel
-        onSelectItem={(itemId) => {
+      <DragAwareObjectLibraryPanel
+        onSelectItem={(itemId: string) => {
           selections.push(itemId);
         }}
-        selectedItemId={"spring" as never}
+        onStartBodyDrag={() => undefined}
+        selectedItemId="spring"
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Track" }));
+
+    rerender(
+      <DragAwareObjectLibraryPanel
+        onSelectItem={(itemId: string) => {
+          selections.push(itemId);
+        }}
+        onStartBodyDrag={() => undefined}
+        selectedItemId={"spring" as never}
+      />,
+    );
 
     expect(selections).toEqual(["spring", "track"]);
     expect(screen.getByTestId("library-item-spring").getAttribute("data-selected")).toBe("true");
