@@ -1,6 +1,8 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { LibraryDragSession } from "./workspace/libraryDragSession";
+
 const mockLibraryState = vi.hoisted(() => ({
   latestProps: null as null | Record<string, unknown>,
 }));
@@ -17,12 +19,14 @@ vi.mock("./panels/ObjectLibraryPanel", () => ({
       <div data-testid="mock-library-panel">
         <button
           type="button"
-          onClick={() =>
-            (props.onStartBodyDrag as undefined | ((session: unknown) => void))?.({
+          onClick={() => {
+            const session: LibraryDragSession = {
               bodyKind: "ball",
-              clientPosition: { x: 24, y: 36 },
-            })
-          }
+              pointerClientPx: { x: 24, y: 36 },
+            };
+
+            (props.onStartBodyDrag as undefined | ((session: unknown) => void))?.(session);
+          }}
         >
           Start ball drag
         </button>

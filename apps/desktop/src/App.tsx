@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactElement } from "react";
 
 import { AnalysisPanel } from "./analysis/AnalysisPanel";
 import {
@@ -57,6 +57,7 @@ import {
   useDualPlaybackController,
 } from "./state/useDualPlaybackController";
 import { useEditorHotkeys } from "./state/useEditorHotkeys";
+import type { LibraryDragSession } from "./workspace/libraryDragSession";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import { projectRuntimeSceneEntities } from "./workspace/runtimeSceneView";
 import {
@@ -100,11 +101,6 @@ type ConstraintUpdate = {
   stiffness?: number;
 };
 
-type LibraryDragSession = {
-  bodyKind: LibraryBodyKind;
-  clientPosition: { x: number; y: number };
-};
-
 type LibraryDragHoverState = {
   authoringPosition: { x: number; y: number } | null;
   isOverStage: boolean;
@@ -121,11 +117,11 @@ type DirectManipulationWorkspaceCanvasProps = ComponentProps<typeof WorkspaceCan
 
 const DirectManipulationObjectLibraryPanel = ObjectLibraryPanel as unknown as (
   props: DirectManipulationLibraryPanelProps,
-) => JSX.Element;
+) => ReactElement;
 
 const DirectManipulationWorkspaceCanvas = WorkspaceCanvas as unknown as (
   props: DirectManipulationWorkspaceCanvasProps,
-) => JSX.Element;
+) => ReactElement;
 
 function getEntityCenter(entity: EditorSceneEntity) {
   if (entity.kind === "ball") {
@@ -581,11 +577,13 @@ export function App() {
       return undefined;
     }
 
+    const currentSession = libraryDragSession;
+
     function handlePointerUp() {
       const dropPosition = libraryDragHover?.isOverStage ? libraryDragHover.authoringPosition : null;
 
       if (dropPosition && !authoringLocked) {
-        handleCreateEntityFromKind(libraryDragSession.bodyKind, dropPosition);
+        handleCreateEntityFromKind(currentSession.bodyKind, dropPosition);
       }
 
       setLibraryDragHover(null);
