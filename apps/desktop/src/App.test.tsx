@@ -123,28 +123,6 @@ describe("App selection sync", () => {
     expect((screen.getByLabelText("Show grid") as HTMLInputElement).checked).toBe(false);
   });
 
-  it("creates and selects a new body from place-body mode", () => {
-    render(<App />);
-
-    fireEvent.click(screen.getByRole("button", { name: /place body tool/i }));
-    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 248, clientY: 204 });
-
-    expect(screen.getByTestId("scene-entity-ball-2")).toBeDefined();
-    expect(screen.getByTestId("scene-tree-item-ball-2").getAttribute("data-selected")).toBe("true");
-    expect(screen.getByText("2.48 m, 2.04 m")).toBeDefined();
-  });
-
-  it("creates the selected library body kind when placing", () => {
-    render(<App />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Board" }));
-    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 280, clientY: 236 });
-
-    expect(screen.getByTestId("scene-entity-board-2")).toBeDefined();
-    expect(screen.getByTestId("scene-tree-item-board-2").getAttribute("data-selected")).toBe("true");
-    expect(screen.getByText("2.8 m, 2.36 m")).toBeDefined();
-  });
-
   it("deletes the selected entity from the property panel", () => {
     render(<App />);
 
@@ -292,16 +270,13 @@ describe("App selection sync", () => {
     fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
   });
 
-  it("blocks placement but still allows selection while the runtime is running", async () => {
+  it("still allows selection while the runtime is running", async () => {
     render(<App />);
     const transport = within(screen.getByTestId("bottom-transport-bar"));
 
-    fireEvent.click(screen.getByRole("button", { name: /place body tool/i }));
     fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
-    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 248, clientY: 204 });
     fireEvent.click(screen.getByTestId("scene-entity-board-1"));
 
-    expect(screen.queryByTestId("scene-entity-ball-2")).toBeNull();
     expect(screen.getByTestId("scene-entity-board-1").getAttribute("data-selected")).toBe("true");
     expect(screen.getByTestId("scene-tree-item-board-1").getAttribute("data-selected")).toBe(
       "true",

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentProps, type ReactElement } from "react";
 
 import { AnalysisPanel } from "./analysis/AnalysisPanel";
 import {
@@ -27,6 +27,7 @@ import {
   createInitialSceneEntities,
   type EditorEntityPhysics,
   type EditorSceneEntity,
+  type LibraryBodyKind,
   type LibraryItemKind,
   isLibraryBodyKind,
 } from "./state/editorStore";
@@ -56,6 +57,7 @@ import {
   useDualPlaybackController,
 } from "./state/useDualPlaybackController";
 import { useEditorHotkeys } from "./state/useEditorHotkeys";
+import type { LibraryDragSession } from "./workspace/libraryDragSession";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import { projectRuntimeSceneEntities } from "./workspace/runtimeSceneView";
 import {
@@ -98,6 +100,28 @@ type ConstraintUpdate = {
   restLength?: number;
   stiffness?: number;
 };
+
+type LibraryDragHoverState = {
+  authoringPosition: { x: number; y: number } | null;
+  isOverStage: boolean;
+};
+
+type DirectManipulationLibraryPanelProps = ComponentProps<typeof ObjectLibraryPanel> & {
+  onStartBodyDrag?: (session: LibraryDragSession) => void;
+};
+
+type DirectManipulationWorkspaceCanvasProps = ComponentProps<typeof WorkspaceCanvas> & {
+  libraryDragSession?: LibraryDragSession | null;
+  onLibraryDragHoverChange?: (hover: LibraryDragHoverState | null) => void;
+};
+
+const DirectManipulationObjectLibraryPanel = ObjectLibraryPanel as unknown as (
+  props: DirectManipulationLibraryPanelProps,
+) => ReactElement;
+
+const DirectManipulationWorkspaceCanvas = WorkspaceCanvas as unknown as (
+  props: DirectManipulationWorkspaceCanvasProps,
+) => ReactElement;
 
 function getEntityCenter(entity: EditorSceneEntity) {
   if (entity.kind === "ball") {
@@ -292,6 +316,8 @@ export function App() {
   const [sceneSettings, setSceneSettings] = useState<SceneAuthoringSettings>(initialAuthoringState.settings);
   const [selectedLibraryItem, setSelectedLibraryItem] = useState<LibraryItemKind>("ball");
   const [constraintPlacement, setConstraintPlacement] = useState<ConstraintPlacementState | null>(null);
+  const [libraryDragHover, setLibraryDragHover] = useState<LibraryDragHoverState | null>(null);
+  const [libraryDragSession, setLibraryDragSession] = useState<LibraryDragSession | null>(null);
   const [annotationState, setAnnotationState] = useState(createInitialAnnotationLayerState);
   const [displaySettings, setDisplaySettings] = useState(() =>
     createSceneDisplaySettings({
@@ -447,14 +473,13 @@ export function App() {
     handleMoveEntity(editorState.selectedEntityId, position);
   }
 
-  function handleCreateEntity(position: { x: number; y: number }) {
-    if (!isLibraryBodyKind(selectedLibraryItem)) {
-      return;
-    }
-
+  function handleCreateEntityFromKind(
+    kind: LibraryBodyKind,
+    position: { x: number; y: number },
+  ) {
     setEntities((current) => {
       const nextEntity = convertLegacyCreatedEntityToSceneUnits(
-        createPlacedBodyEntity(current, selectedLibraryItem, position),
+        createPlacedBodyEntity(current, kind, position),
         sceneSettings,
         position,
       );
@@ -463,12 +488,22 @@ export function App() {
     });
   }
 
+  function handleCreateEntity(position: { x: number; y: number }) {
+    if (!isLibraryBodyKind(selectedLibraryItem)) {
+      return;
+    }
+
+    handleCreateEntityFromKind(selectedLibraryItem, position);
+  }
+
   function handleSelectLibraryItem(itemId: LibraryItemKind) {
     setSelectedLibraryItem(itemId);
+    setLibraryDragHover(null);
+    setLibraryDragSession(null);
 
     if (isLibraryBodyKind(itemId)) {
       setConstraintPlacement(null);
-      handleToolChange("place-body");
+      handleToolChange("select");
       return;
     }
 
@@ -488,6 +523,27 @@ export function App() {
             mode: "pick-entity",
           },
     );
+  }
+
+  function handleStartBodyDrag(session: LibraryDragSession) {
+    if (authoringLocked) {
+      return;
+    }
+
+    setSelectedLibraryItem(session.bodyKind);
+    setConstraintPlacement(null);
+    setLibraryDragHover(null);
+    setLibraryDragSession(session);
+    handleToolChange("select");
+  }
+
+  function handleLibraryDragHoverChange(hover: LibraryDragHoverState | null) {
+    if (!libraryDragSession) {
+      setLibraryDragHover(null);
+      return;
+    }
+
+    setLibraryDragHover(hover);
   }
 
   function handleDeleteSelectedEntity() {
@@ -516,6 +572,31 @@ export function App() {
   const authoringLocked = playbackLocked;
   const scenePhysicsState = createScenePhysicsPanelState(sceneSettings, authoringLocked);
 
+  useEffect(() => {
+    if (!libraryDragSession) {
+      return undefined;
+    }
+
+    const currentSession = libraryDragSession;
+
+    function handlePointerUp() {
+      const dropPosition = libraryDragHover?.isOverStage ? libraryDragHover.authoringPosition : null;
+
+      if (dropPosition && !authoringLocked) {
+        handleCreateEntityFromKind(currentSession.bodyKind, dropPosition);
+      }
+
+      setLibraryDragHover(null);
+      setLibraryDragSession(null);
+    }
+
+    window.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [authoringLocked, libraryDragHover, libraryDragSession]);
+
   function handleDuplicateSelectedEntity() {
     if (!selectedEntity) {
       return;
@@ -531,6 +612,7 @@ export function App() {
   }
 
   useEditorHotkeys({
+    onCancelInteraction: handleCancelInteraction,
     onDeleteSelectedEntity: handleDeleteSelectedEntity,
     onDuplicateSelectedEntity: handleDuplicateSelectedEntity,
     selectedEntityId: editorState.selectedEntityId,
@@ -715,6 +797,18 @@ export function App() {
     finishConstraintPlacement();
   }
 
+  function handleCancelInteraction() {
+    if (libraryDragSession) {
+      setLibraryDragHover(null);
+      setLibraryDragSession(null);
+      return;
+    }
+
+    if (constraintPlacement) {
+      handleCancelConstraintPlacement();
+    }
+  }
+
   function handleConstraintEntityPick(entityId: string) {
     if (!constraintPlacement) {
       return;
@@ -810,7 +904,8 @@ export function App() {
         />
       }
       leftPane={
-        <ObjectLibraryPanel
+        <DirectManipulationObjectLibraryPanel
+          onStartBodyDrag={handleStartBodyDrag}
           onSelectItem={handleSelectLibraryItem}
           selectedItemId={selectedLibraryItem}
         />
@@ -868,7 +963,7 @@ export function App() {
           timelineMaxSeconds={timelineMaxSeconds}
         />
 
-        <WorkspaceCanvas
+        <DirectManipulationWorkspaceCanvas
           authoringLocked={authoringLocked}
           constraintPlacement={constraintPlacement}
           constraints={constraints}
@@ -878,12 +973,14 @@ export function App() {
           onCancelPlacement={handleCancelConstraintPlacement}
           onCreateEntity={handleCreateEntity}
           onGridVisibleChange={handleGridVisibleChange}
+          onLibraryDragHoverChange={handleLibraryDragHoverChange}
           onMoveEntity={handleMoveEntity}
           onPlaceConstraintEntity={handleConstraintEntityPick}
           onPlaceConstraintPoint={handleConstraintPointPick}
           onSelectEntity={handleSelectEntity}
           onToolChange={handleToolChange}
           state={editorState}
+          libraryDragSession={libraryDragSession}
           viewport={workspaceViewport}
         />
         <AnnotationLayer state={annotationState} onStateChange={setAnnotationState} />

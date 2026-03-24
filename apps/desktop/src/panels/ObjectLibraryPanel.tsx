@@ -90,8 +90,10 @@ export function ObjectLibraryPanel(props: ObjectLibraryPanelProps) {
 
     onStartBodyDrag?.({
       bodyKind,
-      pointerClientX: event.clientX,
-      pointerClientY: event.clientY,
+      pointerClientPx: {
+        x: event.clientX,
+        y: event.clientY,
+      },
     });
   }
 
@@ -102,8 +104,10 @@ export function ObjectLibraryPanel(props: ObjectLibraryPanelProps) {
 
     onStartBodyDrag?.({
       bodyKind,
-      pointerClientX: event.clientX,
-      pointerClientY: event.clientY,
+      pointerClientPx: {
+        x: event.clientX,
+        y: event.clientY,
+      },
     });
   }
 
