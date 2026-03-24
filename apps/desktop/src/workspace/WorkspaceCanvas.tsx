@@ -117,7 +117,7 @@ function getEntityVisualStyle(
     ...baseStyle,
     width: `${entity.width}px`,
     height: `${entity.height}px`,
-    borderRadius: entity.kind === "polygon" ? "20px" : "12px",
+    borderRadius: "0px",
   };
 }
 
@@ -211,12 +211,13 @@ function getForceVector(entity: EditorSceneEntity): { dx: number; dy: number } |
 
 function createBodyDragPreviewStyle(
   preview: { screenPosition: { x: number; y: number } },
+  bodyKind: LibraryDragSession["bodyKind"],
 ): CSSProperties {
   return {
     position: "absolute",
     left: `${preview.screenPosition.x}px`,
     top: `${preview.screenPosition.y}px`,
-    borderRadius: "999px",
+    borderRadius: bodyKind === "ball" ? "999px" : "0px",
     border: "1px dashed rgba(36, 87, 166, 0.55)",
     background: "rgba(36, 87, 166, 0.12)",
     color: "#17304f",
@@ -241,7 +242,6 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     onLibraryDragHoverChange,
     onPlaceConstraintEntity,
     onPlaceConstraintPoint,
-    onGridVisibleChange,
     onMoveEntity,
     onSelectEntity,
     onViewportOffsetChange,
@@ -369,7 +369,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   }
 
   function handleStageMouseDown(event: MouseEvent<HTMLDivElement>) {
-    if (event.button !== 2 || event.target !== event.currentTarget) {
+    if (event.button !== 2) {
       return;
     }
 
@@ -516,13 +516,6 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
               </button>
             </>
           ) : null}
-          <button
-            style={actionButtonStyle}
-            type="button"
-            onClick={() => onGridVisibleChange(!display.gridVisible)}
-          >
-            {display.gridVisible ? "Hide grid" : "Show grid"}
-          </button>
         </div>
       </div>
 
@@ -596,7 +589,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           <div
             data-body-kind={libraryDragSession.bodyKind}
             data-testid="workspace-stage-body-preview"
-            style={createBodyDragPreviewStyle(libraryDragPreview)}
+            style={createBodyDragPreviewStyle(libraryDragPreview, libraryDragSession.bodyKind)}
           >
             {libraryDragSession.bodyKind}
           </div>

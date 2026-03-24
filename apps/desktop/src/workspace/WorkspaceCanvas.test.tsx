@@ -69,20 +69,15 @@ describe("WorkspaceCanvas", () => {
     expect(screen.getByTestId("scene-entity-board-1")).toBeDefined();
   });
 
-  it("hides the legacy tool buttons and still toggles grid visibility", () => {
-    const gridChanges: boolean[] = [];
-    const state = createInitialEditorState();
-
-    const { rerender } = render(
+  it("hides legacy tool buttons and omits the workspace grid quick toggle", () => {
+    render(
       <WorkspaceCanvas
         display={createDisplaySettings()}
         entities={[]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
-        state={state}
-        onGridVisibleChange={(visible) => {
-          gridChanges.push(visible);
-        }}
+        state={createInitialEditorState()}
+        onGridVisibleChange={() => undefined}
         onSelectEntity={() => undefined}
         onToolChange={() => undefined}
       />,
@@ -91,28 +86,8 @@ describe("WorkspaceCanvas", () => {
     expect(screen.queryByRole("button", { name: /select tool/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /pan tool/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /place body tool/i })).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: /hide grid/i }));
-
-    rerender(
-      <WorkspaceCanvas
-        display={createDisplaySettings({
-          gridVisible: false,
-        })}
-        entities={[]}
-        onCreateEntity={() => undefined}
-        onMoveEntity={() => undefined}
-        state={{ ...state, gridVisible: false }}
-        onGridVisibleChange={(visible) => {
-          gridChanges.push(visible);
-        }}
-        onSelectEntity={() => undefined}
-        onToolChange={() => undefined}
-      />,
-    );
-
-    expect(gridChanges).toEqual([false]);
-    expect(screen.getByTestId("workspace-canvas").getAttribute("data-grid-visible")).toBe("false");
+    expect(screen.queryByRole("button", { name: /hide grid/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /show grid/i })).toBeNull();
   });
 
   it("marks selected entities and notifies when a workspace entity is clicked", () => {
@@ -241,6 +216,21 @@ describe("WorkspaceCanvas", () => {
             velocityY: 0,
           },
           {
+            id: "block-1",
+            kind: "block",
+            label: "Block 1",
+            x: 212,
+            y: 236,
+            width: 84,
+            height: 52,
+            mass: 2.8,
+            friction: 0.36,
+            restitution: 0.24,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
+          {
             id: "board-1",
             kind: "board",
             label: "Board 1",
@@ -255,6 +245,21 @@ describe("WorkspaceCanvas", () => {
             velocityX: 0,
             velocityY: 0,
           },
+          {
+            id: "polygon-1",
+            kind: "polygon",
+            label: "Polygon 1",
+            x: 460,
+            y: 188,
+            width: 76,
+            height: 76,
+            mass: 2.2,
+            friction: 0.28,
+            restitution: 0.22,
+            locked: false,
+            velocityX: 0,
+            velocityY: 0,
+          },
         ]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
@@ -266,13 +271,22 @@ describe("WorkspaceCanvas", () => {
     );
 
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+    const block = screen.getByTestId("scene-entity-block-1") as HTMLElement;
     const board = screen.getByTestId("scene-entity-board-1") as HTMLElement;
+    const polygon = screen.getByTestId("scene-entity-polygon-1") as HTMLElement;
 
     expect(ball.style.width).toBe("60px");
     expect(ball.style.height).toBe("60px");
     expect(ball.style.borderRadius).toBe("999px");
+    expect(block.style.width).toBe("84px");
+    expect(block.style.height).toBe("52px");
+    expect(block.style.borderRadius).toBe("0px");
     expect(board.style.width).toBe("148px");
     expect(board.style.height).toBe("24px");
+    expect(board.style.borderRadius).toBe("0px");
+    expect(polygon.style.width).toBe("76px");
+    expect(polygon.style.height).toBe("76px");
+    expect(polygon.style.borderRadius).toBe("0px");
     expect(board.getAttribute("data-locked")).toBe("true");
     expect(screen.getByTestId("scene-entity-lock-board-1")).toBeDefined();
   });
@@ -397,17 +411,18 @@ describe("WorkspaceCanvas", () => {
     expect(created).toEqual([]);
   });
 
-  it("right-drag pans the stage and suppresses the native context menu", () => {
-    render(<WorkspaceCanvasPanHarness entities={[]} />);
+  it("right-drag pans from an entity and suppresses the native context menu", () => {
+    render(<WorkspaceCanvasPanHarness />);
 
     const stage = screen.getByTestId("workspace-stage");
+    const entity = screen.getByTestId("scene-entity-ball-1");
     const contextMenuEvent = new MouseEvent("contextmenu", {
       bubbles: true,
       button: 2,
       cancelable: true,
     });
 
-    fireEvent.mouseDown(stage, {
+    fireEvent.mouseDown(entity, {
       button: 2,
       buttons: 2,
       clientX: 240,
@@ -423,7 +438,7 @@ describe("WorkspaceCanvas", () => {
       clientX: 300,
       clientY: 248,
     });
-    stage.dispatchEvent(contextMenuEvent);
+    entity.dispatchEvent(contextMenuEvent);
 
     expect(screen.getByTestId("viewport-offset-readout").textContent).toBe("60,48");
     expect(contextMenuEvent.defaultPrevented).toBe(true);
