@@ -76,4 +76,49 @@ describe("useEditorHotkeys", () => {
     expect(onDeleteSelectedEntity).not.toHaveBeenCalled();
     expect(onDuplicateSelectedEntity).not.toHaveBeenCalled();
   });
+
+  it("cancels the active interaction on escape even without a selected entity", () => {
+    const onCancelInteraction = vi.fn();
+
+    renderHook(() =>
+      useEditorHotkeys({
+        onCancelInteraction,
+        onDeleteSelectedEntity: vi.fn(),
+        onDuplicateSelectedEntity: vi.fn(),
+        selectedEntityId: null,
+      }),
+    );
+
+    const event = new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "Escape",
+    });
+
+    window.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(onCancelInteraction).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cancel interactions while typing in a form field", () => {
+    const onCancelInteraction = vi.fn();
+    const input = document.createElement("input");
+
+    document.body.append(input);
+    input.focus();
+
+    renderHook(() =>
+      useEditorHotkeys({
+        onCancelInteraction,
+        onDeleteSelectedEntity: vi.fn(),
+        onDuplicateSelectedEntity: vi.fn(),
+        selectedEntityId: "board-1",
+      }),
+    );
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onCancelInteraction).not.toHaveBeenCalled();
+  });
 });

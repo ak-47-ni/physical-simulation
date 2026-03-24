@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 type UseEditorHotkeysOptions = {
+  onCancelInteraction?: () => void;
   onDeleteSelectedEntity: () => void;
   onDuplicateSelectedEntity: () => void;
   selectedEntityId: string | null;
@@ -30,13 +31,28 @@ function resolveHotkeyTarget(target: EventTarget | null): HTMLElement | null {
 }
 
 export function useEditorHotkeys(options: UseEditorHotkeysOptions) {
-  const { onDeleteSelectedEntity, onDuplicateSelectedEntity, selectedEntityId } = options;
+  const {
+    onCancelInteraction,
+    onDeleteSelectedEntity,
+    onDuplicateSelectedEntity,
+    selectedEntityId,
+  } = options;
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       const activeTarget = resolveHotkeyTarget(event.target);
 
-      if (!selectedEntityId || isTypingTarget(activeTarget)) {
+      if (isTypingTarget(activeTarget)) {
+        return;
+      }
+
+      if (event.key === "Escape" && onCancelInteraction) {
+        event.preventDefault();
+        onCancelInteraction();
+        return;
+      }
+
+      if (!selectedEntityId) {
         return;
       }
 
@@ -57,5 +73,5 @@ export function useEditorHotkeys(options: UseEditorHotkeysOptions) {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [onDeleteSelectedEntity, onDuplicateSelectedEntity, selectedEntityId]);
+  }, [onCancelInteraction, onDeleteSelectedEntity, onDuplicateSelectedEntity, selectedEntityId]);
 }
