@@ -2,8 +2,8 @@ import { useEffect, useState, type CSSProperties, type MouseEvent } from "react"
 
 import type { SceneDisplaySettings } from "../io/sceneFile";
 import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
-import type { EditorSceneEntity, EditorState } from "../state/editorStore";
 import type { LibraryDragSession } from "./libraryDragSession";
+import type { WorkspaceSceneEntity } from "./runtimeSceneView";
 import type { EditorTool } from "./tools";
 import {
   DEFAULT_WORKSPACE_VIEWPORT,
@@ -25,8 +25,8 @@ type WorkspaceCanvasProps = {
   constraintPlacement?: ConstraintPlacementState | null;
   constraints?: EditorConstraint[];
   display: SceneDisplaySettings;
-  displayEntities?: EditorSceneEntity[];
-  entities: EditorSceneEntity[];
+  displayEntities?: WorkspaceSceneEntity[];
+  entities: WorkspaceSceneEntity[];
   libraryDragSession?: LibraryDragSession | null;
   onCancelPlacement?: () => void;
   onCreateEntity: (position: { x: number; y: number }) => void;
@@ -35,10 +35,16 @@ type WorkspaceCanvasProps = {
   onPlaceConstraintPoint?: (position: { x: number; y: number }) => void;
   onGridVisibleChange: (visible: boolean) => void;
   onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
+  onSelectConstraint?: (constraintId: string) => void;
   onSelectEntity: (entityId: string) => void;
   onToolChange: (tool: EditorTool) => void;
   onViewportOffsetChange?: (offsetPx: { x: number; y: number }) => void;
-  state: EditorState;
+  selectedRuntimeVelocityVector?: {
+    entityId: string;
+    velocityX: number;
+    velocityY: number;
+  } | null;
+  state: import("../state/editorStore").EditorState;
   viewport?: UnitViewport;
 };
 
@@ -84,7 +90,7 @@ const authoringLockMessage =
   "Playback running. Move, placement, and constraint editing are temporarily locked.";
 
 function getEntityVisualStyle(
-  entity: EditorSceneEntity,
+  entity: WorkspaceSceneEntity,
   isSelected: boolean,
 ): CSSProperties {
   const baseStyle: CSSProperties = {
@@ -121,7 +127,7 @@ function getEntityVisualStyle(
   };
 }
 
-function getEntityCenter(entity: EditorSceneEntity): { x: number; y: number } {
+function getEntityCenter(entity: WorkspaceSceneEntity): { x: number; y: number } {
   if (entity.kind === "ball") {
     return {
       x: entity.x + entity.radius,
@@ -183,7 +189,7 @@ function createConstraintStyle(
   };
 }
 
-function getVelocityVector(entity: EditorSceneEntity): { dx: number; dy: number } | null {
+function getVelocityVector(entity: WorkspaceSceneEntity): { dx: number; dy: number } | null {
   const speed = Math.hypot(entity.velocityX, entity.velocityY);
 
   if (speed === 0) {
@@ -198,7 +204,7 @@ function getVelocityVector(entity: EditorSceneEntity): { dx: number; dy: number 
   };
 }
 
-function getForceVector(entity: EditorSceneEntity): { dx: number; dy: number } | null {
+function getForceVector(entity: WorkspaceSceneEntity): { dx: number; dy: number } | null {
   if (entity.locked) {
     return null;
   }
@@ -243,8 +249,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     onPlaceConstraintEntity,
     onPlaceConstraintPoint,
     onMoveEntity,
+    onSelectConstraint,
     onSelectEntity,
     onViewportOffsetChange,
+    selectedRuntimeVelocityVector = null,
     state,
     viewport = DEFAULT_WORKSPACE_VIEWPORT,
   } = props;
@@ -326,7 +334,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     onLibraryDragHoverChange?.(null);
   }, [libraryDragSession, onLibraryDragHoverChange]);
 
-  function beginEntityDrag(entity: EditorSceneEntity, event: MouseEvent<HTMLButtonElement>) {
+  function beginEntityDrag(entity: WorkspaceSceneEntity, event: MouseEvent<HTMLButtonElement>) {
     if (event.button !== 0 || authoringLocked || state.activeTool === "place-constraint") {
       return;
     }

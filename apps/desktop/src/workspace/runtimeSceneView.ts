@@ -8,16 +8,20 @@ import {
   type UnitViewport,
 } from "./unitViewport";
 
+export type WorkspaceSceneEntity = EditorSceneEntity & {
+  rotationDegrees?: number;
+};
+
 type ProjectRuntimeSceneEntitiesInput = {
-  editorEntities: EditorSceneEntity[];
+  editorEntities: WorkspaceSceneEntity[];
   runtimeFrame: RuntimeFrameView | null;
   viewport?: UnitViewport;
 };
 
 function projectEditorEntityToScreen(
-  entity: EditorSceneEntity,
+  entity: WorkspaceSceneEntity,
   viewport: UnitViewport,
-): EditorSceneEntity {
+): WorkspaceSceneEntity {
   const projectedPosition = projectAuthoringPointToScreen(
     {
       x: entity.x,
@@ -46,7 +50,7 @@ function projectEditorEntityToScreen(
 
 export function projectRuntimeSceneEntities(
   input: ProjectRuntimeSceneEntitiesInput,
-): EditorSceneEntity[] {
+): WorkspaceSceneEntity[] {
   const { editorEntities, runtimeFrame } = input;
   const viewport = input.viewport ?? DEFAULT_WORKSPACE_VIEWPORT;
 
