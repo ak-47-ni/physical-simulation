@@ -58,12 +58,10 @@ pub fn step_bodies(
             body.position.x + body.velocity.x * delta_seconds,
             body.position.y + body.velocity.y * delta_seconds,
         );
-
-        for surface in &static_surfaces {
-            resolve_static_contact(body, surface, delta_seconds);
-        }
     }
 
+    resolve_static_contacts(bodies, &static_surfaces, delta_seconds);
+    resolve_dynamic_contacts(bodies, &static_surfaces, delta_seconds);
     enforce_track_bindings(bodies, constraints, &index_by_id);
 }
 
@@ -82,19 +80,9 @@ fn resolve_static_contact(
     surface: &RuntimeBodyState,
     delta_seconds: f64,
 ) {
-    let delta_x = body.position.x - surface.position.x;
-    let delta_y = body.position.y - surface.position.y;
-    let overlap_x = body.half_extents.x + surface.half_extents.x - delta_x.abs();
-    let overlap_y = body.half_extents.y + surface.half_extents.y - delta_y.abs();
-
-    if overlap_x <= 0.0 || overlap_y <= 0.0 {
+    let Some((normal_x, normal_y, penetration)) = contact_normal_and_penetration(body, surface)
+    else {
         return;
-    }
-
-    let (normal_x, normal_y, penetration) = if overlap_y <= overlap_x {
-        (0.0, if delta_y >= 0.0 { 1.0 } else { -1.0 }, overlap_y)
-    } else {
-        (if delta_x >= 0.0 { 1.0 } else { -1.0 }, 0.0, overlap_x)
     };
 
     body.position = Vector2::new(
@@ -129,6 +117,148 @@ fn resolve_static_contact(
         body.velocity.x + tangent_x * tangential_delta,
         body.velocity.y + tangent_y * tangential_delta,
     );
+}
+
+fn resolve_static_contacts(
+    bodies: &mut [RuntimeBodyState],
+    static_surfaces: &[RuntimeBodyState],
+    delta_seconds: f64,
+) {
+    for body in bodies.iter_mut() {
+        if body.is_static {
+            continue;
+        }
+
+        for surface in static_surfaces {
+            resolve_static_contact(body, surface, delta_seconds);
+        }
+    }
+}
+
+fn resolve_dynamic_contacts(
+    bodies: &mut [RuntimeBodyState],
+    static_surfaces: &[RuntimeBodyState],
+    delta_seconds: f64,
+) {
+    // A few extra passes keep simple stacked scenes converging when one dynamic
+    // body is repeatedly re-anchored by a static surface between pair solves.
+    const DYNAMIC_CONTACT_PASSES: usize = 16;
+
+    for _ in 0..DYNAMIC_CONTACT_PASSES {
+        for index_a in 0..bodies.len() {
+            for index_b in (index_a + 1)..bodies.len() {
+                let (body_a, body_b) = get_body_pair_mut(bodies, index_a, index_b);
+
+                if body_a.is_static || body_b.is_static {
+                    continue;
+                }
+
+                resolve_dynamic_contact(body_a, body_b, delta_seconds);
+            }
+        }
+
+        resolve_static_contacts(bodies, static_surfaces, delta_seconds);
+    }
+}
+
+fn resolve_dynamic_contact(
+    body_a: &mut RuntimeBodyState,
+    body_b: &mut RuntimeBodyState,
+    delta_seconds: f64,
+) {
+    let Some((normal_x, normal_y, penetration)) = contact_normal_and_penetration(body_a, body_b)
+    else {
+        return;
+    };
+
+    let inverse_mass_a = inverse_mass(body_a);
+    let inverse_mass_b = inverse_mass(body_b);
+    let total_inverse_mass = inverse_mass_a + inverse_mass_b;
+
+    if total_inverse_mass <= f64::EPSILON {
+        return;
+    }
+
+    let position_share_a = inverse_mass_a / total_inverse_mass;
+    let position_share_b = inverse_mass_b / total_inverse_mass;
+
+    body_a.position = Vector2::new(
+        body_a.position.x + normal_x * penetration * position_share_a,
+        body_a.position.y + normal_y * penetration * position_share_a,
+    );
+    body_b.position = Vector2::new(
+        body_b.position.x - normal_x * penetration * position_share_b,
+        body_b.position.y - normal_y * penetration * position_share_b,
+    );
+
+    let relative_velocity = Vector2::new(
+        body_a.velocity.x - body_b.velocity.x,
+        body_a.velocity.y - body_b.velocity.y,
+    );
+    let normal_velocity = relative_velocity.x * normal_x + relative_velocity.y * normal_y;
+
+    if normal_velocity < 0.0 {
+        let restitution = body_a
+            .restitution_coefficient
+            .max(body_b.restitution_coefficient);
+        let impulse = -((1.0 + restitution) * normal_velocity) / total_inverse_mass;
+        let impulse_x = normal_x * impulse;
+        let impulse_y = normal_y * impulse;
+
+        body_a.velocity = Vector2::new(
+            body_a.velocity.x + impulse_x * inverse_mass_a,
+            body_a.velocity.y + impulse_y * inverse_mass_a,
+        );
+        body_b.velocity = Vector2::new(
+            body_b.velocity.x - impulse_x * inverse_mass_b,
+            body_b.velocity.y - impulse_y * inverse_mass_b,
+        );
+    }
+
+    let tangent_x = -normal_y;
+    let tangent_y = normal_x;
+    let tangential_velocity = relative_velocity.x * tangent_x + relative_velocity.y * tangent_y;
+    let friction = (body_a.friction_coefficient + body_b.friction_coefficient) * 0.5;
+    let friction_delta = friction * 9.81 * delta_seconds;
+    let target_tangential_velocity = reduce_magnitude(tangential_velocity, friction_delta);
+    let tangential_delta = target_tangential_velocity - tangential_velocity;
+
+    body_a.velocity = Vector2::new(
+        body_a.velocity.x + tangent_x * tangential_delta * position_share_a,
+        body_a.velocity.y + tangent_y * tangential_delta * position_share_a,
+    );
+    body_b.velocity = Vector2::new(
+        body_b.velocity.x - tangent_x * tangential_delta * position_share_b,
+        body_b.velocity.y - tangent_y * tangential_delta * position_share_b,
+    );
+}
+
+fn contact_normal_and_penetration(
+    body_a: &RuntimeBodyState,
+    body_b: &RuntimeBodyState,
+) -> Option<(f64, f64, f64)> {
+    let delta_x = body_a.position.x - body_b.position.x;
+    let delta_y = body_a.position.y - body_b.position.y;
+    let overlap_x = body_a.half_extents.x + body_b.half_extents.x - delta_x.abs();
+    let overlap_y = body_a.half_extents.y + body_b.half_extents.y - delta_y.abs();
+
+    if overlap_x <= 0.0 || overlap_y <= 0.0 {
+        return None;
+    }
+
+    if overlap_y <= overlap_x {
+        Some((0.0, if delta_y >= 0.0 { 1.0 } else { -1.0 }, overlap_y))
+    } else {
+        Some((if delta_x >= 0.0 { 1.0 } else { -1.0 }, 0.0, overlap_x))
+    }
+}
+
+fn inverse_mass(body: &RuntimeBodyState) -> f64 {
+    if body.is_static || body.mass <= f64::EPSILON {
+        0.0
+    } else {
+        1.0 / body.mass
+    }
 }
 
 fn reduce_magnitude(value: f64, amount: f64) -> f64 {
