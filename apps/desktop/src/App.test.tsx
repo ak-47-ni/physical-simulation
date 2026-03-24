@@ -103,7 +103,7 @@ describe("App selection sync", () => {
     expect(screen.getByTestId("scene-entity-lock-board-1")).toBeDefined();
   });
 
-  it("updates display toggles from the property panel and workspace toolbar", () => {
+  it("updates display toggles from the property panel and inspector controls", () => {
     render(<App />);
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
@@ -117,7 +117,7 @@ describe("App selection sync", () => {
     expect(screen.getByTestId("scene-velocity-vector-ball-1")).toBeDefined();
     expect(screen.getByTestId("scene-force-vector-ball-1")).toBeDefined();
 
-    fireEvent.click(screen.getByRole("button", { name: /hide grid/i }));
+    fireEvent.click(screen.getByLabelText("Show grid"));
 
     expect(screen.getByTestId("workspace-canvas").getAttribute("data-grid-visible")).toBe("false");
     expect((screen.getByLabelText("Show grid") as HTMLInputElement).checked).toBe(false);
