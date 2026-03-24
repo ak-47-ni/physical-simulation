@@ -16,7 +16,8 @@ describe("ObjectLibraryPanel", () => {
     const selections: string[] = [];
     const drags: Array<{
       bodyKind: string;
-      pointerClientPx: { x: number; y: number };
+      pointerClientX: number;
+      pointerClientY: number;
     }> = [];
 
     render(
@@ -24,7 +25,9 @@ describe("ObjectLibraryPanel", () => {
         onSelectItem={(itemId: string) => {
           selections.push(itemId);
         }}
-        onStartBodyDrag={(session: { bodyKind: string; pointerClientPx: { x: number; y: number } }) => {
+        onStartBodyDrag={(
+          session: { bodyKind: string; pointerClientX: number; pointerClientY: number },
+        ) => {
           drags.push(session);
         }}
         selectedItemId="spring"
@@ -40,7 +43,8 @@ describe("ObjectLibraryPanel", () => {
     expect(drags).toEqual([
       {
         bodyKind: "board",
-        pointerClientPx: { x: 280, y: 236 },
+        pointerClientX: 280,
+        pointerClientY: 236,
       },
     ]);
     expect(selections).toEqual([]);
