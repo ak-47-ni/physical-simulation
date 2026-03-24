@@ -1,11 +1,21 @@
+#[path = "tilted_contacts.rs"]
+mod tilted_contacts;
+
 use std::collections::HashMap;
 
 use crate::constraint::CompiledConstraint;
 use crate::entity::Vector2;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeBodyShape {
+    Ball,
+    Box,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeBodyState {
     pub entity_id: String,
+    pub shape: RuntimeBodyShape,
     pub position: Vector2,
     pub half_extents: Vector2,
     pub rotation_radians: f64,
@@ -80,7 +90,8 @@ fn resolve_static_contact(
     surface: &RuntimeBodyState,
     delta_seconds: f64,
 ) {
-    let Some((normal_x, normal_y, penetration)) = contact_normal_and_penetration(body, surface)
+    let Some((normal_x, normal_y, penetration)) =
+        static_contact_normal_and_penetration(body, surface)
     else {
         return;
     };
@@ -166,7 +177,8 @@ fn resolve_dynamic_contact(
     body_b: &mut RuntimeBodyState,
     delta_seconds: f64,
 ) {
-    let Some((normal_x, normal_y, penetration)) = contact_normal_and_penetration(body_a, body_b)
+    let Some((normal_x, normal_y, penetration)) =
+        axis_aligned_contact_normal_and_penetration(body_a, body_b)
     else {
         return;
     };
@@ -233,7 +245,18 @@ fn resolve_dynamic_contact(
     );
 }
 
-fn contact_normal_and_penetration(
+fn static_contact_normal_and_penetration(
+    body: &RuntimeBodyState,
+    surface: &RuntimeBodyState,
+) -> Option<(f64, f64, f64)> {
+    if tilted_contacts::supports_tilted_static_surface(surface) {
+        tilted_contacts::contact_normal_and_penetration(body, surface)
+    } else {
+        axis_aligned_contact_normal_and_penetration(body, surface)
+    }
+}
+
+fn axis_aligned_contact_normal_and_penetration(
     body_a: &RuntimeBodyState,
     body_b: &RuntimeBodyState,
 ) -> Option<(f64, f64, f64)> {
