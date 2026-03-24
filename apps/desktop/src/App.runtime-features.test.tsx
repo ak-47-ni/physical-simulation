@@ -311,6 +311,22 @@ describe("App runtime features", () => {
     fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
 
     await waitFor(() => {
+      expect(
+        (
+          within(screen.getByTestId("bottom-transport-bar")).getByRole("button", {
+            name: "Preparing…",
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
+        "Calculating cached playback frames.",
+      );
+      expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
+        true,
+      );
+    });
+
+    await waitFor(() => {
       expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
         false,
       );

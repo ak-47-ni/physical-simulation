@@ -53,7 +53,8 @@ function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
   if (runtime.status === "preparing") {
     return {
       tone: "info",
-      message: "Preparing cached playback. Frames are being built before scrubbing unlocks.",
+      message:
+        "Calculating cached playback frames. Timeline scrubbing unlocks after preparation finishes.",
     };
   }
 

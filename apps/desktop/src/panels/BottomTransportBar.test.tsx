@@ -290,8 +290,15 @@ describe("BottomTransportBar", () => {
       />,
     );
 
+    expect(screen.getByRole("button", { name: "Preparing…" }).textContent).toBe("Preparing…");
+    expect((screen.getByRole("button", { name: "Preparing…" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(screen.getByTestId("transport-state-copy").textContent).toContain(
+      "Cached playback is being calculated.",
+    );
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
-      "Preparing cached playback.",
+      "Calculating cached playback frames.",
     );
     expect(screen.getByTestId("transport-preparing-progress").textContent).toContain("40%");
   });
