@@ -1,9 +1,15 @@
+import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createSceneDisplaySettings } from "../io/sceneFile";
-import { createInitialEditorState } from "../state/editorStore";
+import {
+  createInitialEditorState,
+  type EditorSceneEntity,
+  type LibraryBodyKind,
+} from "../state/editorStore";
 import { WorkspaceCanvas } from "./WorkspaceCanvas";
+import { projectRuntimeSceneEntities } from "./runtimeSceneView";
 import type { UnitViewport } from "./unitViewport";
 
 afterEach(() => {
@@ -25,6 +31,81 @@ const meterViewport: UnitViewport = {
   lengthUnit: "m",
   pixelsPerMeter: 100,
 };
+
+type WorkspaceCanvasLibraryDragSession = {
+  bodyKind: LibraryBodyKind;
+  pointerClientX: number;
+  pointerClientY: number;
+};
+
+type WorkspaceCanvasLibraryDragHover = {
+  authoringPosition: { x: number; y: number };
+  screenPosition: { x: number; y: number };
+};
+
+const authoredBallInMeters: EditorSceneEntity = {
+  id: "ball-1",
+  kind: "ball",
+  label: "Ball 1",
+  x: 1.2,
+  y: 1.8,
+  radius: 0.24,
+  mass: 1,
+  friction: 0.12,
+  restitution: 0.82,
+  locked: false,
+  velocityX: 0,
+  velocityY: 0,
+};
+
+function WorkspaceCanvasPanHarness(props: {
+  activeLibraryDragSession?: WorkspaceCanvasLibraryDragSession | null;
+  entities?: EditorSceneEntity[];
+  onLibraryDragStageHoverChange?: (hover: WorkspaceCanvasLibraryDragHover | null) => void;
+  onMoveEntity?: (id: string, position: { x: number; y: number }) => void;
+  initialViewport?: UnitViewport & { offsetPx?: { x: number; y: number } };
+  state?: ReturnType<typeof createInitialEditorState>;
+}) {
+  const [viewport, setViewport] = useState<UnitViewport & { offsetPx?: { x: number; y: number } }>(
+    props.initialViewport ?? {
+      ...meterViewport,
+      offsetPx: { x: 0, y: 0 },
+    },
+  );
+  const entities = props.entities ?? [authoredBallInMeters];
+
+  return (
+    <>
+      <output data-testid="viewport-offset-readout">
+        {`${viewport.offsetPx?.x ?? 0},${viewport.offsetPx?.y ?? 0}`}
+      </output>
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        displayEntities={projectRuntimeSceneEntities({
+          editorEntities: entities,
+          runtimeFrame: null,
+          viewport,
+        })}
+        entities={entities}
+        onCreateEntity={() => undefined}
+        onMoveEntity={props.onMoveEntity ?? (() => undefined)}
+        state={props.state ?? createInitialEditorState()}
+        viewport={viewport}
+        activeLibraryDragSession={props.activeLibraryDragSession ?? null}
+        onLibraryDragStageHoverChange={props.onLibraryDragStageHoverChange}
+        onGridVisibleChange={() => undefined}
+        onViewportOffsetChange={(offsetPx) => {
+          setViewport((current) => ({
+            ...current,
+            offsetPx,
+          }));
+        }}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />
+    </>
+  );
+}
 
 describe("WorkspaceCanvas", () => {
   it("mounts the center canvas and renders mock scene entities by id", () => {
@@ -78,8 +159,7 @@ describe("WorkspaceCanvas", () => {
     expect(screen.getByTestId("scene-entity-board-1")).toBeDefined();
   });
 
-  it("switches tool modes and toggles grid visibility", () => {
-    const toolChanges: string[] = [];
+  it("hides the legacy tool buttons and still toggles grid visibility", () => {
     const gridChanges: boolean[] = [];
     const state = createInitialEditorState();
 
@@ -94,13 +174,14 @@ describe("WorkspaceCanvas", () => {
           gridChanges.push(visible);
         }}
         onSelectEntity={() => undefined}
-        onToolChange={(tool) => {
-          toolChanges.push(tool);
-        }}
+        onToolChange={() => undefined}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /pan tool/i }));
+    expect(screen.queryByRole("button", { name: /select tool/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /pan tool/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /place body tool/i })).toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: /hide grid/i }));
 
     rerender(
@@ -111,24 +192,16 @@ describe("WorkspaceCanvas", () => {
         entities={[]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
-        state={{
-          ...state,
-          activeTool: "pan",
-          gridVisible: false,
-        }}
+        state={{ ...state, gridVisible: false }}
         onGridVisibleChange={(visible) => {
           gridChanges.push(visible);
         }}
         onSelectEntity={() => undefined}
-        onToolChange={(tool) => {
-          toolChanges.push(tool);
-        }}
+        onToolChange={() => undefined}
       />,
     );
 
-    expect(toolChanges).toEqual(["pan"]);
     expect(gridChanges).toEqual([false]);
-    expect(screen.getByTestId("workspace-canvas").getAttribute("data-tool")).toBe("pan");
     expect(screen.getByTestId("workspace-canvas").getAttribute("data-grid-visible")).toBe("false");
   });
 
@@ -388,7 +461,7 @@ describe("WorkspaceCanvas", () => {
     expect(screen.queryByTestId("scene-force-vector-board-1")).toBeNull();
   });
 
-  it("creates a new entity when place-body mode clicks the workspace stage", () => {
+  it("does not create a new entity from legacy place-body stage clicks", () => {
     const created: Array<{ x: number; y: number }> = [];
 
     render(
@@ -411,34 +484,39 @@ describe("WorkspaceCanvas", () => {
 
     fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 248, clientY: 204 });
 
-    expect(created).toEqual([{ x: 248, y: 204 }]);
+    expect(created).toEqual([]);
   });
 
-  it("converts stage clicks back into authored world coordinates through the viewport", () => {
-    const created: Array<{ x: number; y: number }> = [];
+  it("right-drag pans the stage and suppresses the native context menu", () => {
+    render(<WorkspaceCanvasPanHarness entities={[]} />);
 
-    render(
-      <WorkspaceCanvas
-        display={createDisplaySettings()}
-        entities={[]}
-        onCreateEntity={(position) => {
-          created.push(position);
-        }}
-        onMoveEntity={() => undefined}
-        state={{
-          ...createInitialEditorState(),
-          activeTool: "place-body",
-        }}
-        viewport={meterViewport}
-        onGridVisibleChange={() => undefined}
-        onSelectEntity={() => undefined}
-        onToolChange={() => undefined}
-      />,
-    );
+    const stage = screen.getByTestId("workspace-stage");
+    const contextMenuEvent = new MouseEvent("contextmenu", {
+      bubbles: true,
+      button: 2,
+      cancelable: true,
+    });
 
-    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 248, clientY: 204 });
+    fireEvent.mouseDown(stage, {
+      button: 2,
+      buttons: 2,
+      clientX: 240,
+      clientY: 200,
+    });
+    fireEvent.mouseMove(window, {
+      buttons: 2,
+      clientX: 300,
+      clientY: 248,
+    });
+    fireEvent.mouseUp(window, {
+      button: 2,
+      clientX: 300,
+      clientY: 248,
+    });
+    stage.dispatchEvent(contextMenuEvent);
 
-    expect(created).toEqual([{ x: 2.48, y: 2.04 }]);
+    expect(screen.getByTestId("viewport-offset-readout").textContent).toBe("60,48");
+    expect(contextMenuEvent.defaultPrevented).toBe(true);
   });
 
   it("routes entity picks and stage picks through constraint placement callbacks", () => {
@@ -598,58 +676,28 @@ describe("WorkspaceCanvas", () => {
     expect(ball.style.top).toBe("288px");
   });
 
-  it("converts drag movement back into authored world coordinates through the viewport", () => {
+  it("keeps left-drag entity movement in authored coordinates after panning the viewport", () => {
     const moves: Array<{ id: string; x: number; y: number }> = [];
 
-    render(
-      <WorkspaceCanvas
-        display={createDisplaySettings()}
-        displayEntities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 120,
-            y: 180,
-            radius: 24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
-        entities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 1.2,
-            y: 1.8,
-            radius: 0.24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
-        onCreateEntity={() => undefined}
-        onMoveEntity={(id, position) => {
-          moves.push({ id, ...position });
-        }}
-        state={createInitialEditorState()}
-        viewport={meterViewport}
-        onGridVisibleChange={() => undefined}
-        onSelectEntity={() => undefined}
-        onToolChange={() => undefined}
-      />,
-    );
+    render(<WorkspaceCanvasPanHarness onMoveEntity={(id, position) => moves.push({ id, ...position })} />);
 
-    fireEvent.mouseDown(screen.getByTestId("scene-entity-ball-1"), { clientX: 120, clientY: 180 });
-    fireEvent.mouseMove(window, { clientX: 150, clientY: 222 });
+    fireEvent.mouseDown(screen.getByTestId("workspace-stage"), {
+      button: 2,
+      buttons: 2,
+      clientX: 240,
+      clientY: 200,
+    });
+    fireEvent.mouseMove(window, {
+      buttons: 2,
+      clientX: 300,
+      clientY: 248,
+    });
+    fireEvent.mouseUp(window, { button: 2, clientX: 300, clientY: 248 });
+
+    expect(screen.getByTestId("viewport-offset-readout").textContent).toBe("60,48");
+
+    fireEvent.mouseDown(screen.getByTestId("scene-entity-ball-1"), { clientX: 180, clientY: 228 });
+    fireEvent.mouseMove(window, { clientX: 210, clientY: 270 });
     fireEvent.mouseUp(window);
 
     expect(moves).toEqual([{ id: "ball-1", x: 1.5, y: 2.22 }]);
@@ -904,31 +952,40 @@ describe("WorkspaceCanvas", () => {
     expect(moves).toEqual([]);
   });
 
-  it("blocks place-body stage clicks while authoring is locked", () => {
-    const created: Array<{ x: number; y: number }> = [];
+  it("renders a stable body-drag preview and reports offset-aware hover payloads over the stage", () => {
+    const hoverChanges: Array<WorkspaceCanvasLibraryDragHover | null> = [];
 
     render(
-      <WorkspaceCanvas
-        authoringLocked
-        display={createDisplaySettings()}
-        entities={[]}
-        onCreateEntity={(position) => {
-          created.push(position);
+      <WorkspaceCanvasPanHarness
+        activeLibraryDragSession={{
+          bodyKind: "ball",
+          pointerClientX: 248,
+          pointerClientY: 204,
         }}
-        onMoveEntity={() => undefined}
-        state={{
-          ...createInitialEditorState(),
-          activeTool: "place-body",
+        initialViewport={{
+          ...meterViewport,
+          offsetPx: { x: 40, y: 20 },
         }}
-        onGridVisibleChange={() => undefined}
-        onSelectEntity={() => undefined}
-        onToolChange={() => undefined}
+        onLibraryDragStageHoverChange={(hover) => {
+          hoverChanges.push(hover);
+        }}
       />,
     );
 
-    fireEvent.click(screen.getByTestId("workspace-stage"), { clientX: 248, clientY: 204 });
+    const stage = screen.getByTestId("workspace-stage");
 
-    expect(created).toEqual([]);
+    fireEvent.mouseMove(stage, { clientX: 248, clientY: 204 });
+
+    expect(screen.getByTestId("workspace-stage-body-preview")).toBeDefined();
+    expect(hoverChanges.at(-1)).toEqual({
+      authoringPosition: { x: 2.08, y: 1.84 },
+      screenPosition: { x: 248, y: 204 },
+    });
+
+    fireEvent.mouseLeave(stage);
+
+    expect(screen.queryByTestId("workspace-stage-body-preview")).toBeNull();
+    expect(hoverChanges.at(-1)).toBeNull();
   });
 
   it("keeps selection available and blocks constraint picks while authoring is locked", () => {

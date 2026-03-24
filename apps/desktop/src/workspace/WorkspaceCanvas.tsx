@@ -2,12 +2,13 @@ import { useEffect, useState, type CSSProperties, type MouseEvent } from "react"
 
 import type { SceneDisplaySettings } from "../io/sceneFile";
 import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
-import type { EditorSceneEntity, EditorState } from "../state/editorStore";
+import type { EditorSceneEntity, EditorState, LibraryBodyKind } from "../state/editorStore";
 import type { EditorTool } from "./tools";
 import {
   DEFAULT_WORKSPACE_VIEWPORT,
   projectAuthoringPointToScreen,
   projectScreenPointToAuthoring,
+  readViewportOffsetPx,
   type UnitViewport,
 } from "./unitViewport";
 
@@ -19,6 +20,7 @@ type ConstraintPlacementState = {
 };
 
 type WorkspaceCanvasProps = {
+  activeLibraryDragSession?: WorkspaceCanvasLibraryDragSession | null;
   authoringLocked?: boolean;
   constraintPlacement?: ConstraintPlacementState | null;
   constraints?: EditorConstraint[];
@@ -27,22 +29,42 @@ type WorkspaceCanvasProps = {
   entities: EditorSceneEntity[];
   onCancelPlacement?: () => void;
   onCreateEntity: (position: { x: number; y: number }) => void;
-  state: EditorState;
+  onLibraryDragStageHoverChange?: (hover: WorkspaceCanvasLibraryDragHover | null) => void;
   onPlaceConstraintEntity?: (entityId: string) => void;
   onPlaceConstraintPoint?: (position: { x: number; y: number }) => void;
-  onToolChange: (tool: EditorTool) => void;
   onGridVisibleChange: (visible: boolean) => void;
   onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
   onSelectEntity: (entityId: string) => void;
+  onToolChange: (tool: EditorTool) => void;
+  onViewportOffsetChange?: (offsetPx: { x: number; y: number }) => void;
+  state: EditorState;
   viewport?: UnitViewport;
 };
 
-type DragSession = {
+type EntityDragSession = {
   entityId: string;
   originScreenX: number;
   originScreenY: number;
   startClientX: number;
   startClientY: number;
+};
+
+type PanSession = {
+  originOffsetX: number;
+  originOffsetY: number;
+  startClientX: number;
+  startClientY: number;
+};
+
+type WorkspaceCanvasLibraryDragSession = {
+  bodyKind: LibraryBodyKind;
+  pointerClientX: number;
+  pointerClientY: number;
+};
+
+type WorkspaceCanvasLibraryDragHover = {
+  authoringPosition: { x: number; y: number };
+  screenPosition: { x: number; y: number };
 };
 
 const toolbarStyle: CSSProperties = {
@@ -192,8 +214,28 @@ function getForceVector(entity: EditorSceneEntity): { dx: number; dy: number } |
   };
 }
 
+function createBodyDragPreviewStyle(
+  hover: WorkspaceCanvasLibraryDragHover,
+): CSSProperties {
+  return {
+    position: "absolute",
+    left: `${hover.screenPosition.x}px`,
+    top: `${hover.screenPosition.y}px`,
+    borderRadius: "999px",
+    border: "1px dashed rgba(36, 87, 166, 0.55)",
+    background: "rgba(36, 87, 166, 0.12)",
+    color: "#17304f",
+    fontSize: "11px",
+    fontWeight: 700,
+    padding: "6px 8px",
+    pointerEvents: "none",
+    transform: "translate(-50%, -50%)",
+  };
+}
+
 export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   const {
+    activeLibraryDragSession = null,
     authoringLocked = false,
     constraintPlacement,
     constraints = [],
@@ -201,17 +243,20 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     displayEntities,
     entities,
     onCancelPlacement,
-    onCreateEntity,
-    state,
+    onLibraryDragStageHoverChange,
     onPlaceConstraintEntity,
     onPlaceConstraintPoint,
     onGridVisibleChange,
     onMoveEntity,
     onSelectEntity,
-    onToolChange,
+    onViewportOffsetChange,
+    state,
     viewport = DEFAULT_WORKSPACE_VIEWPORT,
   } = props;
-  const [dragSession, setDragSession] = useState<DragSession | null>(null);
+  const [dragSession, setDragSession] = useState<EntityDragSession | null>(null);
+  const [panSession, setPanSession] = useState<PanSession | null>(null);
+  const [libraryDragStageHover, setLibraryDragStageHover] =
+    useState<WorkspaceCanvasLibraryDragHover | null>(null);
   const renderedEntities = displayEntities ?? entities;
 
   useEffect(() => {
@@ -246,10 +291,46 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [dragSession, onMoveEntity]);
+  }, [dragSession, onMoveEntity, viewport]);
+
+  useEffect(() => {
+    if (!panSession) {
+      return undefined;
+    }
+
+    const currentSession = panSession;
+
+    function handleMouseMove(event: globalThis.MouseEvent) {
+      onViewportOffsetChange?.({
+        x: Math.round(currentSession.originOffsetX + event.clientX - currentSession.startClientX),
+        y: Math.round(currentSession.originOffsetY + event.clientY - currentSession.startClientY),
+      });
+    }
+
+    function handleMouseUp() {
+      setPanSession(null);
+    }
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [onViewportOffsetChange, panSession]);
+
+  useEffect(() => {
+    if (activeLibraryDragSession) {
+      return;
+    }
+
+    setLibraryDragStageHover(null);
+    onLibraryDragStageHoverChange?.(null);
+  }, [activeLibraryDragSession, onLibraryDragStageHoverChange]);
 
   function beginEntityDrag(entity: EditorSceneEntity, event: MouseEvent<HTMLButtonElement>) {
-    if (authoringLocked || state.activeTool !== "select") {
+    if (event.button !== 0 || authoringLocked || state.activeTool === "place-constraint") {
       return;
     }
 
@@ -261,6 +342,68 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       startClientY: event.clientY,
     });
     onSelectEntity(entity.id);
+  }
+
+  function updateLibraryDragStageHover(
+    screenPosition: { x: number; y: number },
+  ) {
+    if (!activeLibraryDragSession) {
+      return;
+    }
+
+    const nextHover = {
+      authoringPosition: projectScreenPointToAuthoring(screenPosition, viewport),
+      screenPosition,
+    };
+
+    setLibraryDragStageHover(nextHover);
+    onLibraryDragStageHoverChange?.(nextHover);
+  }
+
+  function clearLibraryDragStageHover() {
+    setLibraryDragStageHover(null);
+    onLibraryDragStageHoverChange?.(null);
+  }
+
+  function handleStageMouseDown(event: MouseEvent<HTMLDivElement>) {
+    if (event.button !== 2 || event.target !== event.currentTarget) {
+      return;
+    }
+
+    const offsetPx = readViewportOffsetPx(viewport);
+
+    event.preventDefault();
+    setPanSession({
+      originOffsetX: offsetPx.x,
+      originOffsetY: offsetPx.y,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+    });
+  }
+
+  function handleStageMouseMove(event: MouseEvent<HTMLDivElement>) {
+    if (!activeLibraryDragSession) {
+      return;
+    }
+
+    const stageBounds = event.currentTarget.getBoundingClientRect();
+
+    updateLibraryDragStageHover({
+      x: Math.round(event.clientX - stageBounds.left),
+      y: Math.round(event.clientY - stageBounds.top),
+    });
+  }
+
+  function handleStageMouseLeave() {
+    if (!activeLibraryDragSession) {
+      return;
+    }
+
+    clearLibraryDragStageHover();
+  }
+
+  function handleStageContextMenu(event: MouseEvent<HTMLDivElement>) {
+    event.preventDefault();
   }
 
   function handleStageClick(event: MouseEvent<HTMLDivElement>) {
@@ -276,11 +419,6 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     const authoringPosition = projectScreenPointToAuthoring(screenPosition, viewport);
 
     if (authoringLocked) {
-      return;
-    }
-
-    if (state.activeTool === "place-body") {
-      onCreateEntity(authoringPosition);
       return;
     }
 
@@ -361,17 +499,6 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       }}
     >
       <div style={toolbarStyle}>
-        <div style={{ display: "flex", gap: "10px" }}>
-          <button style={actionButtonStyle} type="button" onClick={() => onToolChange("select")}>
-            Select tool
-          </button>
-          <button style={actionButtonStyle} type="button" onClick={() => onToolChange("pan")}>
-            Pan tool
-          </button>
-          <button style={actionButtonStyle} type="button" onClick={() => onToolChange("place-body")}>
-            Place body tool
-          </button>
-        </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           {authoringLocked ? (
             <span style={{ color: "#a04b00", fontSize: "13px", fontWeight: 600 }}>
@@ -409,6 +536,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           backgroundSize: display.gridVisible ? "24px 24px, 24px 24px, auto" : "auto",
         }}
         onClick={handleStageClick}
+        onContextMenu={handleStageContextMenu}
+        onMouseDown={handleStageMouseDown}
+        onMouseLeave={handleStageMouseLeave}
+        onMouseMove={handleStageMouseMove}
       >
         <div
           style={{
@@ -416,6 +547,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             inset: "20px",
             borderRadius: "18px",
             border: "1px dashed rgba(101, 124, 165, 0.35)",
+            pointerEvents: "none",
           }}
         />
 
@@ -456,6 +588,16 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           : null}
 
         {constraints.map(renderConstraint)}
+
+        {activeLibraryDragSession && libraryDragStageHover ? (
+          <div
+            data-body-kind={activeLibraryDragSession.bodyKind}
+            data-testid="workspace-stage-body-preview"
+            style={createBodyDragPreviewStyle(libraryDragStageHover)}
+          >
+            {activeLibraryDragSession.bodyKind}
+          </div>
+        ) : null}
 
         {renderedEntities.map((entity) => (
           <button
