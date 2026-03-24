@@ -127,7 +127,7 @@ function readTransportStateCopy(runtime: BottomTransportRuntimeView): string {
   }
 
   if (runtime.status === "preparing") {
-    return "Cached playback is building. Timeline scrubbing unlocks after preparation.";
+    return "Cached playback is being calculated. Timeline scrubbing unlocks after preparation.";
   }
 
   if (runtime.status === "running" && runtime.playbackMode === "precomputed") {
@@ -209,6 +209,10 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
       : blockedMessage;
   const transportStateCopy = readTransportStateCopy(runtime);
   const timelineProgress = createTimelineProgress(runtime);
+  const primaryActionLabel =
+    runtime.status === "preparing" && runtime.playbackMode === "precomputed"
+      ? "Preparing…"
+      : "Start";
   const currentTimeReadout = (
     <strong
       style={{
@@ -226,11 +230,11 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
       <button
         type="button"
         style={isCompactLayout ? compactButtonStyle : buttonStyle}
-        disabled={!runtime.canResume}
+        disabled={!runtime.canResume || runtime.status === "preparing"}
         title={blockedMessage}
         onClick={onStart}
       >
-        Start
+        {primaryActionLabel}
       </button>
       <button
         type="button"
