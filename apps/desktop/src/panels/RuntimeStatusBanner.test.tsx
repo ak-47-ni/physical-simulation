@@ -114,7 +114,7 @@ describe("RuntimeStatusBanner", () => {
     );
 
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
-      "Preparing cached playback. Frames are being built before scrubbing unlocks.",
+      "Calculating cached playback frames. Timeline scrubbing unlocks after preparation finishes.",
     );
   });
 });
