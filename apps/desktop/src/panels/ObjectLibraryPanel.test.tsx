@@ -31,7 +31,7 @@ describe("ObjectLibraryPanel", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Board" }), {
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Board" }), {
       button: 0,
       clientX: 280,
       clientY: 236,
