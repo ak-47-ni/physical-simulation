@@ -2,7 +2,8 @@ import { useEffect, useState, type CSSProperties, type MouseEvent } from "react"
 
 import type { SceneDisplaySettings } from "../io/sceneFile";
 import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
-import type { EditorSceneEntity, EditorState, LibraryBodyKind } from "../state/editorStore";
+import type { EditorSceneEntity, EditorState } from "../state/editorStore";
+import type { LibraryDragSession } from "./libraryDragSession";
 import type { EditorTool } from "./tools";
 import {
   DEFAULT_WORKSPACE_VIEWPORT,
@@ -20,16 +21,16 @@ type ConstraintPlacementState = {
 };
 
 type WorkspaceCanvasProps = {
-  activeLibraryDragSession?: WorkspaceCanvasLibraryDragSession | null;
   authoringLocked?: boolean;
   constraintPlacement?: ConstraintPlacementState | null;
   constraints?: EditorConstraint[];
   display: SceneDisplaySettings;
   displayEntities?: EditorSceneEntity[];
   entities: EditorSceneEntity[];
+  libraryDragSession?: LibraryDragSession | null;
   onCancelPlacement?: () => void;
   onCreateEntity: (position: { x: number; y: number }) => void;
-  onLibraryDragStageHoverChange?: (hover: WorkspaceCanvasLibraryDragHover | null) => void;
+  onLibraryDragHoverChange?: (hover: WorkspaceCanvasLibraryDragHover | null) => void;
   onPlaceConstraintEntity?: (entityId: string) => void;
   onPlaceConstraintPoint?: (position: { x: number; y: number }) => void;
   onGridVisibleChange: (visible: boolean) => void;
@@ -56,15 +57,9 @@ type PanSession = {
   startClientY: number;
 };
 
-type WorkspaceCanvasLibraryDragSession = {
-  bodyKind: LibraryBodyKind;
-  pointerClientX: number;
-  pointerClientY: number;
-};
-
 type WorkspaceCanvasLibraryDragHover = {
-  authoringPosition: { x: number; y: number };
-  screenPosition: { x: number; y: number };
+  authoringPosition: { x: number; y: number } | null;
+  isOverStage: boolean;
 };
 
 const toolbarStyle: CSSProperties = {
@@ -215,12 +210,12 @@ function getForceVector(entity: EditorSceneEntity): { dx: number; dy: number } |
 }
 
 function createBodyDragPreviewStyle(
-  hover: WorkspaceCanvasLibraryDragHover,
+  preview: { screenPosition: { x: number; y: number } },
 ): CSSProperties {
   return {
     position: "absolute",
-    left: `${hover.screenPosition.x}px`,
-    top: `${hover.screenPosition.y}px`,
+    left: `${preview.screenPosition.x}px`,
+    top: `${preview.screenPosition.y}px`,
     borderRadius: "999px",
     border: "1px dashed rgba(36, 87, 166, 0.55)",
     background: "rgba(36, 87, 166, 0.12)",
@@ -235,15 +230,15 @@ function createBodyDragPreviewStyle(
 
 export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   const {
-    activeLibraryDragSession = null,
     authoringLocked = false,
     constraintPlacement,
     constraints = [],
     display,
     displayEntities,
     entities,
+    libraryDragSession = null,
     onCancelPlacement,
-    onLibraryDragStageHoverChange,
+    onLibraryDragHoverChange,
     onPlaceConstraintEntity,
     onPlaceConstraintPoint,
     onGridVisibleChange,
@@ -255,8 +250,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   } = props;
   const [dragSession, setDragSession] = useState<EntityDragSession | null>(null);
   const [panSession, setPanSession] = useState<PanSession | null>(null);
-  const [libraryDragStageHover, setLibraryDragStageHover] =
-    useState<WorkspaceCanvasLibraryDragHover | null>(null);
+  const [libraryDragPreview, setLibraryDragPreview] = useState<{
+    authoringPosition: { x: number; y: number };
+    screenPosition: { x: number; y: number };
+  } | null>(null);
   const renderedEntities = displayEntities ?? entities;
 
   useEffect(() => {
@@ -321,13 +318,13 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   }, [onViewportOffsetChange, panSession]);
 
   useEffect(() => {
-    if (activeLibraryDragSession) {
+    if (libraryDragSession) {
       return;
     }
 
-    setLibraryDragStageHover(null);
-    onLibraryDragStageHoverChange?.(null);
-  }, [activeLibraryDragSession, onLibraryDragStageHoverChange]);
+    setLibraryDragPreview(null);
+    onLibraryDragHoverChange?.(null);
+  }, [libraryDragSession, onLibraryDragHoverChange]);
 
   function beginEntityDrag(entity: EditorSceneEntity, event: MouseEvent<HTMLButtonElement>) {
     if (event.button !== 0 || authoringLocked || state.activeTool === "place-constraint") {
@@ -347,22 +344,28 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   function updateLibraryDragStageHover(
     screenPosition: { x: number; y: number },
   ) {
-    if (!activeLibraryDragSession) {
+    if (!libraryDragSession) {
       return;
     }
 
-    const nextHover = {
-      authoringPosition: projectScreenPointToAuthoring(screenPosition, viewport),
-      screenPosition,
-    };
+    const authoringPosition = projectScreenPointToAuthoring(screenPosition, viewport);
 
-    setLibraryDragStageHover(nextHover);
-    onLibraryDragStageHoverChange?.(nextHover);
+    setLibraryDragPreview({
+      authoringPosition,
+      screenPosition,
+    });
+    onLibraryDragHoverChange?.({
+      authoringPosition,
+      isOverStage: true,
+    });
   }
 
   function clearLibraryDragStageHover() {
-    setLibraryDragStageHover(null);
-    onLibraryDragStageHoverChange?.(null);
+    setLibraryDragPreview(null);
+    onLibraryDragHoverChange?.({
+      authoringPosition: null,
+      isOverStage: false,
+    });
   }
 
   function handleStageMouseDown(event: MouseEvent<HTMLDivElement>) {
@@ -382,7 +385,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   }
 
   function handleStageMouseMove(event: MouseEvent<HTMLDivElement>) {
-    if (!activeLibraryDragSession) {
+    if (!libraryDragSession) {
       return;
     }
 
@@ -395,7 +398,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   }
 
   function handleStageMouseLeave() {
-    if (!activeLibraryDragSession) {
+    if (!libraryDragSession) {
       return;
     }
 
@@ -589,13 +592,13 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
 
         {constraints.map(renderConstraint)}
 
-        {activeLibraryDragSession && libraryDragStageHover ? (
+        {libraryDragSession && libraryDragPreview ? (
           <div
-            data-body-kind={activeLibraryDragSession.bodyKind}
+            data-body-kind={libraryDragSession.bodyKind}
             data-testid="workspace-stage-body-preview"
-            style={createBodyDragPreviewStyle(libraryDragStageHover)}
+            style={createBodyDragPreviewStyle(libraryDragPreview)}
           >
-            {activeLibraryDragSession.bodyKind}
+            {libraryDragSession.bodyKind}
           </div>
         ) : null}
 

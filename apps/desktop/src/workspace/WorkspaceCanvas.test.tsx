@@ -1,111 +1,21 @@
-import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createSceneDisplaySettings } from "../io/sceneFile";
 import {
   createInitialEditorState,
   type EditorSceneEntity,
-  type LibraryBodyKind,
 } from "../state/editorStore";
 import { WorkspaceCanvas } from "./WorkspaceCanvas";
-import { projectRuntimeSceneEntities } from "./runtimeSceneView";
-import type { UnitViewport } from "./unitViewport";
+import {
+  createDisplaySettings,
+  meterViewport,
+  WorkspaceCanvasLibraryDragHover,
+  WorkspaceCanvasPanHarness,
+} from "./WorkspaceCanvas.testSupport";
 
 afterEach(() => {
   cleanup();
 });
-
-function createDisplaySettings(overrides: Parameters<typeof createSceneDisplaySettings>[0] = {}) {
-  return createSceneDisplaySettings({
-    gridVisible: true,
-    showLabels: true,
-    showTrajectories: false,
-    showForceVectors: false,
-    showVelocityVectors: false,
-    ...overrides,
-  });
-}
-
-const meterViewport: UnitViewport = {
-  lengthUnit: "m",
-  pixelsPerMeter: 100,
-};
-
-type WorkspaceCanvasLibraryDragSession = {
-  bodyKind: LibraryBodyKind;
-  pointerClientX: number;
-  pointerClientY: number;
-};
-
-type WorkspaceCanvasLibraryDragHover = {
-  authoringPosition: { x: number; y: number };
-  screenPosition: { x: number; y: number };
-};
-
-const authoredBallInMeters: EditorSceneEntity = {
-  id: "ball-1",
-  kind: "ball",
-  label: "Ball 1",
-  x: 1.2,
-  y: 1.8,
-  radius: 0.24,
-  mass: 1,
-  friction: 0.12,
-  restitution: 0.82,
-  locked: false,
-  velocityX: 0,
-  velocityY: 0,
-};
-
-function WorkspaceCanvasPanHarness(props: {
-  activeLibraryDragSession?: WorkspaceCanvasLibraryDragSession | null;
-  entities?: EditorSceneEntity[];
-  onLibraryDragStageHoverChange?: (hover: WorkspaceCanvasLibraryDragHover | null) => void;
-  onMoveEntity?: (id: string, position: { x: number; y: number }) => void;
-  initialViewport?: UnitViewport & { offsetPx?: { x: number; y: number } };
-  state?: ReturnType<typeof createInitialEditorState>;
-}) {
-  const [viewport, setViewport] = useState<UnitViewport & { offsetPx?: { x: number; y: number } }>(
-    props.initialViewport ?? {
-      ...meterViewport,
-      offsetPx: { x: 0, y: 0 },
-    },
-  );
-  const entities = props.entities ?? [authoredBallInMeters];
-
-  return (
-    <>
-      <output data-testid="viewport-offset-readout">
-        {`${viewport.offsetPx?.x ?? 0},${viewport.offsetPx?.y ?? 0}`}
-      </output>
-      <WorkspaceCanvas
-        display={createDisplaySettings()}
-        displayEntities={projectRuntimeSceneEntities({
-          editorEntities: entities,
-          runtimeFrame: null,
-          viewport,
-        })}
-        entities={entities}
-        onCreateEntity={() => undefined}
-        onMoveEntity={props.onMoveEntity ?? (() => undefined)}
-        state={props.state ?? createInitialEditorState()}
-        viewport={viewport}
-        activeLibraryDragSession={props.activeLibraryDragSession ?? null}
-        onLibraryDragStageHoverChange={props.onLibraryDragStageHoverChange}
-        onGridVisibleChange={() => undefined}
-        onViewportOffsetChange={(offsetPx) => {
-          setViewport((current) => ({
-            ...current,
-            offsetPx,
-          }));
-        }}
-        onSelectEntity={() => undefined}
-        onToolChange={() => undefined}
-      />
-    </>
-  );
-}
 
 describe("WorkspaceCanvas", () => {
   it("mounts the center canvas and renders mock scene entities by id", () => {
@@ -957,16 +867,15 @@ describe("WorkspaceCanvas", () => {
 
     render(
       <WorkspaceCanvasPanHarness
-        activeLibraryDragSession={{
+        libraryDragSession={{
           bodyKind: "ball",
-          pointerClientX: 248,
-          pointerClientY: 204,
+          pointerClientPx: { x: 248, y: 204 },
         }}
         initialViewport={{
           ...meterViewport,
           offsetPx: { x: 40, y: 20 },
         }}
-        onLibraryDragStageHoverChange={(hover) => {
+        onLibraryDragHoverChange={(hover) => {
           hoverChanges.push(hover);
         }}
       />,
@@ -979,13 +888,16 @@ describe("WorkspaceCanvas", () => {
     expect(screen.getByTestId("workspace-stage-body-preview")).toBeDefined();
     expect(hoverChanges.at(-1)).toEqual({
       authoringPosition: { x: 2.08, y: 1.84 },
-      screenPosition: { x: 248, y: 204 },
+      isOverStage: true,
     });
 
     fireEvent.mouseLeave(stage);
 
     expect(screen.queryByTestId("workspace-stage-body-preview")).toBeNull();
-    expect(hoverChanges.at(-1)).toBeNull();
+    expect(hoverChanges.at(-1)).toEqual({
+      authoringPosition: null,
+      isOverStage: false,
+    });
   });
 
   it("keeps selection available and blocks constraint picks while authoring is locked", () => {
