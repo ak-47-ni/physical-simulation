@@ -23,7 +23,7 @@ function createBallEntity(): EditorSceneEntity {
     radius: 0.24,
     mass: 1.2,
     friction: 0.14,
-    restitution: 0.82,
+    restitution: 1,
     locked: true,
     velocityX: 8,
     velocityY: -4,
@@ -41,7 +41,7 @@ function createBoardEntity(): EditorSceneEntity {
     height: 0.18,
     mass: 5,
     friction: 0.42,
-    restitution: 0.18,
+    restitution: 1,
     locked: false,
     velocityX: 0,
     velocityY: 0,
@@ -66,7 +66,7 @@ function createBlockEntity(): EditorSceneEntity {
     height: 0.52,
     mass: 2.8,
     friction: 0.36,
-    restitution: 0.24,
+    restitution: 1,
     locked: false,
     velocityX: 0,
     velocityY: 0,
@@ -84,7 +84,7 @@ function createPolygonEntity(): EditorSceneEntity {
     height: 0.76,
     mass: 2.2,
     friction: 0.28,
-    restitution: 0.22,
+    restitution: 1,
     locked: false,
     velocityX: 0,
     velocityY: 0,
@@ -252,6 +252,32 @@ describe("projectRuntimeSceneEntities", () => {
       expect.objectContaining({
         id: "board-1",
         rotationDegrees: 30,
+      }),
+    );
+  });
+
+  it("falls back to authored board rotation when runtime rotation is zero", () => {
+    const projected = projectRuntimeSceneEntities({
+      editorEntities: [createRotatedBoardEntity(18)],
+      runtimeFrame: createRuntimeFrame({
+        entities: [
+          {
+            id: "board-1",
+            transform: {
+              x: 4.6,
+              y: 2.71,
+              rotation: 0,
+            },
+          },
+        ],
+      }),
+      viewport: meterViewport,
+    });
+
+    expect(projected[0]).toEqual(
+      expect.objectContaining({
+        id: "board-1",
+        rotationDegrees: 18,
       }),
     );
   });

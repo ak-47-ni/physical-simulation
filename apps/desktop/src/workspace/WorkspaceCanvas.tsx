@@ -9,6 +9,7 @@ import {
   createConstraintLineGeometry,
   createSpringOverlayGeometry,
 } from "./constraintOverlayGeometry";
+import { mapCartesianVelocityToScreenVector } from "./velocityVectorScreen";
 import {
   DEFAULT_WORKSPACE_VIEWPORT,
   projectAuthoringPointToScreen,
@@ -220,18 +221,10 @@ function getVelocityVectorFromComponents(
   velocityX: number,
   velocityY: number,
 ): { dx: number; dy: number } | null {
-  const speed = Math.hypot(velocityX, velocityY);
-
-  if (speed === 0) {
-    return null;
-  }
-
-  const length = Math.max(18, Math.min(84, speed * 3));
-
-  return {
-    dx: (velocityX / speed) * length,
-    dy: (velocityY / speed) * length,
-  };
+  return mapCartesianVelocityToScreenVector({
+    velocityX,
+    velocityY,
+  });
 }
 
 function getVelocityVector(entity: WorkspaceSceneEntity): { dx: number; dy: number } | null {
