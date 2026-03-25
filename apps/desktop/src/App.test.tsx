@@ -77,9 +77,9 @@ describe("App selection sync", () => {
 
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
 
-    expect(ball.style.left).toBe("132px");
+    expect(ball.style.left).toBe("318px");
     expect(ball.style.top).toBe("176px");
-    expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("1.32");
+    expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("3.18");
     expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe("1.76");
   });
 
@@ -197,12 +197,18 @@ describe("App selection sync", () => {
     render(<App />);
 
     fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+    fireEvent.change(screen.getByLabelText("Position X"), { target: { value: "5" } });
+    fireEvent.change(screen.getByLabelText("Position Y"), { target: { value: "1" } });
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Position X"), { target: { value: "5.24" } });
+    fireEvent.change(screen.getByLabelText("Position Y"), { target: { value: "1.24" } });
+    fireEvent.click(screen.getByTestId("scene-entity-board-1"));
     fireEvent.click(screen.getByRole("button", { name: /duplicate entity/i }));
 
     expect(screen.queryByTestId("scene-entity-board-2")).toBeNull();
     expect(screen.queryByTestId("scene-tree-item-board-2")).toBeNull();
     expect(screen.getByTestId("scene-entity-board-1").getAttribute("data-selected")).toBe("true");
-    expect(screen.getByText("3.18 m, 2.72 m")).toBeDefined();
+    expect(screen.getByText("5 m, 1 m")).toBeDefined();
   });
 
   it("preserves edited physics properties when duplicating an entity", () => {

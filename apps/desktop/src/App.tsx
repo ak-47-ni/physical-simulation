@@ -32,6 +32,13 @@ import {
   isLibraryBodyKind,
 } from "./state/editorStore";
 import {
+  applySceneDuplicateOffset,
+  canPlaceAuthoringCandidate,
+  convertLegacyCreatedEntityToSceneUnits,
+  findRepositionedAuthoringEntity,
+  replaceEntityInCollection,
+} from "./state/authoringPlacementGuards";
+import {
   createMockRuntimeBridgePort,
 } from "./state/runtimeBridge";
 import { createDesktopRuntimeBridgePort } from "./state/desktopRuntimeBridgePort";
@@ -47,8 +54,6 @@ import {
   type SceneAuthoringSettings,
 } from "./state/sceneAuthoringSettings";
 import {
-  convertLengthValue,
-  convertMassValue,
   getGravityUnitLabel,
   type LengthUnit,
   type MassUnit,
@@ -111,6 +116,7 @@ type DirectManipulationLibraryPanelProps = ComponentProps<typeof ObjectLibraryPa
 };
 
 type DirectManipulationWorkspaceCanvasProps = ComponentProps<typeof WorkspaceCanvas> & {
+  libraryDragBlocked?: boolean;
   libraryDragSession?: LibraryDragSession | null;
   onLibraryDragHoverChange?: (hover: LibraryDragHoverState | null) => void;
   onSelectConstraint?: (constraintId: string) => void;
@@ -199,50 +205,6 @@ function createScenePhysicsPanelState(
     pixelsPerMeter: settings.pixelsPerMeter,
     velocityUnit: settings.velocityUnit,
     velocityUnitOptions: [...VELOCITY_UNIT_OPTIONS],
-  };
-}
-
-function roundAuthoringValue(value: number): number {
-  return Number(value.toFixed(6));
-}
-
-function convertLegacyCreatedEntityToSceneUnits(
-  entity: EditorSceneEntity,
-  settings: SceneAuthoringSettings,
-  position: { x: number; y: number },
-): EditorSceneEntity {
-  const mass = convertMassValue(entity.mass, LEGACY_SCENE_SETTINGS.massUnit, settings.massUnit);
-
-  if (entity.kind === "ball") {
-    return {
-      ...entity,
-      x: position.x,
-      y: position.y,
-      mass,
-      radius: convertLengthValue(entity.radius, LEGACY_SCENE_SETTINGS.lengthUnit, settings.lengthUnit),
-    };
-  }
-
-  return {
-    ...entity,
-    x: position.x,
-    y: position.y,
-    mass,
-    width: convertLengthValue(entity.width, LEGACY_SCENE_SETTINGS.lengthUnit, settings.lengthUnit),
-    height: convertLengthValue(entity.height, LEGACY_SCENE_SETTINGS.lengthUnit, settings.lengthUnit),
-  };
-}
-
-function applySceneDuplicateOffset(
-  entity: EditorSceneEntity,
-  settings: SceneAuthoringSettings,
-): EditorSceneEntity {
-  const offset = convertLengthValue(24, LEGACY_SCENE_SETTINGS.lengthUnit, settings.lengthUnit);
-
-  return {
-    ...entity,
-    x: roundAuthoringValue(entity.x - 24 + offset),
-    y: roundAuthoringValue(entity.y - 24 + offset),
   };
 }
 
@@ -382,11 +344,17 @@ export function App() {
   }
 
   function handleMoveEntity(entityId: string, position: { x: number; y: number }) {
-    setEntities((current) =>
-      current.map((entity) =>
-        entity.id === entityId ? { ...entity, x: position.x, y: position.y } : entity,
-      ),
-    );
+    const nextEntity = findRepositionedAuthoringEntity({
+      entities,
+      entityId,
+      position,
+    });
+
+    if (!nextEntity) {
+      return;
+    }
+
+    setEntities((current) => replaceEntityInCollection(current, nextEntity));
     handleSelectEntity(entityId);
   }
 
@@ -416,15 +384,18 @@ export function App() {
     kind: LibraryBodyKind,
     position: { x: number; y: number },
   ) {
-    setEntities((current) => {
-      const nextEntity = convertLegacyCreatedEntityToSceneUnits(
-        createPlacedBodyEntity(current, kind, position),
-        sceneSettings,
-        position,
-      );
-      handleSelectEntity(nextEntity.id);
-      return [...current, nextEntity];
-    });
+    const nextEntity = convertLegacyCreatedEntityToSceneUnits(
+      createPlacedBodyEntity(entities, kind, position),
+      sceneSettings,
+      position,
+    );
+
+    if (!canPlaceAuthoringCandidate(nextEntity, entities)) {
+      return;
+    }
+
+    setEntities((current) => [...current, nextEntity]);
+    handleSelectEntity(nextEntity.id);
   }
 
   function handleCreateEntity(position: { x: number; y: number }) {
@@ -543,6 +514,17 @@ export function App() {
       : null;
   const authoringLocked = playbackLocked;
   const scenePhysicsState = createScenePhysicsPanelState(sceneSettings, authoringLocked);
+  const libraryDragBlocked =
+    libraryDragSession && libraryDragHover?.isOverStage && libraryDragHover.authoringPosition
+      ? !canPlaceAuthoringCandidate(
+          convertLegacyCreatedEntityToSceneUnits(
+            createPlacedBodyEntity(entities, libraryDragSession.bodyKind, libraryDragHover.authoringPosition),
+            sceneSettings,
+            libraryDragHover.authoringPosition,
+          ),
+          entities,
+        )
+      : false;
 
   useEffect(() => {
     if (!libraryDragSession) {
@@ -578,6 +560,10 @@ export function App() {
       createDuplicatedEntity(entities, selectedEntity),
       sceneSettings,
     );
+
+    if (!canPlaceAuthoringCandidate(nextEntity, entities)) {
+      return;
+    }
 
     setEntities((current) => [...current, nextEntity]);
     handleSelectEntity(nextEntity.id);
@@ -956,6 +942,7 @@ export function App() {
           display={displaySettings}
           displayEntities={displayEntities}
           entities={entities}
+          libraryDragBlocked={libraryDragBlocked}
           onCancelPlacement={handleCancelConstraintPlacement}
           onCreateEntity={handleCreateEntity}
           onGridVisibleChange={handleGridVisibleChange}
