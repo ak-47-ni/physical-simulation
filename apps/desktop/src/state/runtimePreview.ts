@@ -10,6 +10,7 @@ import {
   normalizeGravityToSi,
   normalizeVelocityToSi,
 } from "./sceneUnits";
+import { authoringVelocityToRuntime } from "./velocitySemantics";
 
 function getEntityCenter(entity: EditorSceneEntity) {
   if (entity.kind === "ball") {
@@ -38,8 +39,12 @@ export function createRuntimePreviewFrame(
     frameNumber: input.nextFrameNumber,
     entities: entities.map((entity) => {
       const centerSi = projectAuthoringPointToSi(getEntityCenter(entity), viewport);
-      const velocityXSi = normalizeVelocityToSi(entity.velocityX, settings.velocityUnit);
-      const velocityYSi = normalizeVelocityToSi(entity.velocityY, settings.velocityUnit);
+      const runtimeVelocity = authoringVelocityToRuntime({
+        velocityX: normalizeVelocityToSi(entity.velocityX, settings.velocityUnit),
+        velocityY: normalizeVelocityToSi(entity.velocityY, settings.velocityUnit),
+      });
+      const velocityXSi = runtimeVelocity.velocityX;
+      const velocityYSi = runtimeVelocity.velocityY;
       const timeAdjustedPosition = entity.locked
         ? centerSi
         : {

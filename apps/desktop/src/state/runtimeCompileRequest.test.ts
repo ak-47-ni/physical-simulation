@@ -11,7 +11,7 @@ describe("runtimeCompileRequest", () => {
   it("maps editor entities and annotation strokes into a richer runtime compile payload", () => {
     const entities = createInitialSceneEntities().map((entity, index) =>
       index === 0
-        ? { ...entity, velocityX: 6, velocityY: -4 }
+        ? { ...entity, velocityX: 6, velocityY: 4 }
         : { ...entity, rotationDegrees: 30 },
     );
     const constraints = [
@@ -107,7 +107,7 @@ describe("runtimeCompileRequest", () => {
             radius: 24,
             mass: 1.2,
             friction: 0.14,
-            restitution: 0.82,
+            restitution: 1,
             locked: false,
             velocityX: 6,
             velocityY: -4,
@@ -122,7 +122,7 @@ describe("runtimeCompileRequest", () => {
             height: 18,
             mass: 5,
             friction: 0.42,
-            restitution: 0.18,
+            restitution: 1,
             locked: false,
             velocityX: 0,
             velocityY: 0,
@@ -174,7 +174,7 @@ describe("runtimeCompileRequest", () => {
             radius: 24,
             mass: 1200,
             velocityX: 125,
-            velocityY: -50,
+            velocityY: 50,
           }
         : {
             ...entity,

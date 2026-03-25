@@ -298,7 +298,7 @@ function mapSceneEntityToEditorEntity(entity: SceneEntity): EditorSceneEntity[] 
     friction: entity.friction ?? 0,
     locked: entity.locked ?? false,
     mass: entity.mass ?? 0,
-    restitution: entity.restitution ?? 0,
+    restitution: entity.restitution ?? 1,
     velocityX: entity.velocityX ?? 0,
     velocityY: entity.velocityY ?? 0,
   };
