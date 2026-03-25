@@ -11,6 +11,78 @@ fn gravity_force_source() -> serde_json::Value {
     ])
 }
 
+fn elastic_bounce_request(
+    ball_restitution: Option<f64>,
+    board_restitution: Option<f64>,
+) -> RuntimeCompileRequest {
+    let mut ball = json!({
+        "id": "ball-1",
+        "kind": "ball",
+        "x": 132.0,
+        "y": 96.0,
+        "radius": 24.0,
+        "locked": false,
+        "velocityX": 0.0,
+        "velocityY": -40.0
+    });
+    let mut board = json!({
+        "id": "board-1",
+        "kind": "board",
+        "x": 80.0,
+        "y": 0.0,
+        "width": 240.0,
+        "height": 16.0,
+        "locked": true,
+        "velocityX": 0.0,
+        "velocityY": 0.0
+    });
+
+    if let Some(value) = ball_restitution {
+        ball["restitution"] = json!(value);
+    }
+
+    if let Some(value) = board_restitution {
+        board["restitution"] = json!(value);
+    }
+
+    serde_json::from_value(json!({
+        "scene": {
+            "schemaVersion": 1,
+            "entities": [board, ball],
+            "constraints": [],
+            "forceSources": gravity_force_source(),
+            "analyzers": [],
+            "annotations": []
+        },
+        "dirtyScopes": ["physics"],
+        "rebuildRequired": true
+    }))
+    .expect("elastic bounce request should deserialize")
+}
+
+fn max_upward_velocity_over_steps(request: RuntimeCompileRequest, steps: usize) -> f64 {
+    let mut bridge = SimulationBridge::new(1.0 / 240.0);
+    bridge
+        .compile_runtime_request(request)
+        .expect("request should compile into runtime state");
+
+    let mut max_upward_velocity = f64::NEG_INFINITY;
+
+    for _ in 0..steps {
+        let frame = bridge.step().expect("runtime should step");
+        let velocity_y = frame
+            .entities
+            .iter()
+            .find(|entity| entity.entity_id == "ball-1")
+            .expect("ball should exist")
+            .velocity
+            .y;
+        max_upward_velocity = max_upward_velocity.max(velocity_y);
+    }
+
+    max_upward_velocity
+}
+
 #[test]
 fn serialization_contract_accepts_frontend_compile_request_shape() {
     let request: RuntimeCompileRequest = serde_json::from_value(json!({
@@ -218,4 +290,30 @@ fn serialization_contract_accepts_locked_board_payloads_as_static_runtime_entiti
     assert_eq!(baseline.entities[0].acceleration.y, 0.0);
     assert_eq!(stepped.entities[0].position.x, 378.0);
     assert_eq!(stepped.entities[0].position.y, 281.0);
+}
+
+#[test]
+fn serialization_contract_missing_restitution_defaults_to_fully_elastic_runtime_behavior() {
+    let max_upward_velocity =
+        max_upward_velocity_over_steps(elastic_bounce_request(None, None), 480);
+
+    assert!(
+        max_upward_velocity > 15.0,
+        "max_upward_velocity={}",
+        max_upward_velocity
+    );
+}
+
+#[test]
+fn serialization_contract_explicit_restitution_values_override_elastic_fallbacks() {
+    let default_velocity = max_upward_velocity_over_steps(elastic_bounce_request(None, None), 480);
+    let damped_velocity =
+        max_upward_velocity_over_steps(elastic_bounce_request(Some(0.2), Some(0.2)), 480);
+
+    assert!(
+        default_velocity > damped_velocity + 5.0,
+        "default_velocity={} damped_velocity={}",
+        default_velocity,
+        damped_velocity
+    );
 }

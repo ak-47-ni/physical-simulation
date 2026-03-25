@@ -1,3 +1,6 @@
+#[path = "contact_substeps.rs"]
+mod contact_substeps;
+
 use std::collections::HashMap;
 
 use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySample};
@@ -101,12 +104,18 @@ impl RuntimeScene {
     }
 
     pub fn step(&mut self) -> RuntimeFramePayload {
-        step_bodies(
-            &mut self.bodies,
-            &self.constraints,
-            self.gravity,
-            self.fixed_delta_seconds,
-        );
+        let substep_count =
+            contact_substeps::recommended_substep_count(&self.bodies, self.fixed_delta_seconds);
+        let substep_delta_seconds = self.fixed_delta_seconds / substep_count as f64;
+
+        for _ in 0..substep_count {
+            step_bodies(
+                &mut self.bodies,
+                &self.constraints,
+                self.gravity,
+                substep_delta_seconds,
+            );
+        }
         self.frame_number += 1;
         self.elapsed_time_seconds += self.fixed_delta_seconds;
         record_analyzers(
