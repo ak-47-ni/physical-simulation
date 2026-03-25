@@ -40,6 +40,20 @@ describe("App selection sync", () => {
     expect(screen.getByText("1.68 m, 2.2 m")).toBeDefined();
   });
 
+  it("rejects dragging a body into an overlapping authored position", () => {
+    render(<App />);
+
+    fireEvent.mouseDown(screen.getByTestId("scene-entity-ball-1"), { clientX: 132, clientY: 176 });
+    fireEvent.mouseMove(window, { clientX: 318, clientY: 272 });
+    fireEvent.mouseUp(window);
+
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    expect(ball.style.left).toBe("132px");
+    expect(ball.style.top).toBe("176px");
+    expect(screen.getByText("1.32 m, 1.76 m")).toBeDefined();
+  });
+
   it("updates entity positions from the property panel", () => {
     render(<App />);
 
@@ -52,6 +66,21 @@ describe("App selection sync", () => {
     expect(board.style.left).toBe("340px");
     expect(board.style.top).toBe("290px");
     expect(screen.getByText("3.4 m, 2.9 m")).toBeDefined();
+  });
+
+  it("rejects inspector position edits that would overlap another body", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Position X"), { target: { value: "3.18" } });
+    fireEvent.change(screen.getByLabelText("Position Y"), { target: { value: "2.72" } });
+
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    expect(ball.style.left).toBe("132px");
+    expect(ball.style.top).toBe("176px");
+    expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("1.32");
+    expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe("1.76");
   });
 
   it("updates entity label and dimensions from the property panel", () => {
@@ -162,6 +191,18 @@ describe("App selection sync", () => {
     expect(screen.getByTestId("scene-entity-board-2")).toBeDefined();
     expect(screen.getByTestId("scene-tree-item-board-2").getAttribute("data-selected")).toBe("true");
     expect(screen.getByText("3.42 m, 2.96 m")).toBeDefined();
+  });
+
+  it("rejects duplicating the selected entity when the duplicate offset overlaps the source", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+    fireEvent.click(screen.getByRole("button", { name: /duplicate entity/i }));
+
+    expect(screen.queryByTestId("scene-entity-board-2")).toBeNull();
+    expect(screen.queryByTestId("scene-tree-item-board-2")).toBeNull();
+    expect(screen.getByTestId("scene-entity-board-1").getAttribute("data-selected")).toBe("true");
+    expect(screen.getByText("3.18 m, 2.72 m")).toBeDefined();
   });
 
   it("preserves edited physics properties when duplicating an entity", () => {
