@@ -1,3 +1,6 @@
+#[path = "contact_budget.rs"]
+mod contact_budget;
+
 #[path = "contact_substeps.rs"]
 mod contact_substeps;
 

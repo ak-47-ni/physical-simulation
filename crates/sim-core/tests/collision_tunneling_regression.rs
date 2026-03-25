@@ -136,6 +136,32 @@ fn collision_tunneling_regression_fast_block_block_impact_does_not_cross_through
 }
 
 #[test]
+fn collision_tunneling_regression_very_fast_ball_does_not_skip_a_stationary_target() {
+    let mut runtime = runtime_for_scene(
+        vec![
+            ball("left", vector2(-6.0, 0.0), 0.5, vector2(600.0, 0.0), 1.0),
+            ball("right", vector2(0.0, 0.0), 0.5, Vector2::ZERO, 1.0),
+        ],
+        Vector2::ZERO,
+    );
+
+    runtime.step();
+    let left = runtime_entity(&runtime, "left");
+    let right = runtime_entity(&runtime, "right");
+
+    assert!(
+        left.position.x < right.position.x,
+        "left_x={} right_x={} left_vx={} right_vx={}",
+        left.position.x,
+        right.position.x,
+        left.velocity.x,
+        right.velocity.x
+    );
+    assert!(left.velocity.x <= 0.0, "left_vx={}", left.velocity.x);
+    assert!(right.velocity.x >= 200.0, "right_vx={}", right.velocity.x);
+}
+
+#[test]
 fn collision_tunneling_regression_fast_body_does_not_tunnel_through_locked_ground() {
     let mut runtime = runtime_for_scene(
         vec![
@@ -156,5 +182,29 @@ fn collision_tunneling_regression_fast_body_does_not_tunnel_through_locked_groun
     let ball = runtime_entity(&runtime, "ball");
 
     assert!(ball.position.y >= 1.0 - 1e-6, "ball_y={}", ball.position.y);
+    assert!(ball.velocity.y >= 0.0, "ball_vy={}", ball.velocity.y);
+}
+
+#[test]
+fn collision_tunneling_regression_very_fast_body_does_not_tunnel_through_thin_ground() {
+    let mut runtime = runtime_for_scene(
+        vec![
+            block(
+                "ground",
+                vector2(0.0, 0.0),
+                (20.0, 0.1),
+                Vector2::ZERO,
+                true,
+                1.0,
+            ),
+            ball("ball", vector2(0.0, 3.0), 0.5, vector2(0.0, -500.0), 1.0),
+        ],
+        vector2(0.0, -9.81),
+    );
+
+    runtime.step();
+    let ball = runtime_entity(&runtime, "ball");
+
+    assert!(ball.position.y >= 0.55 - 1e-6, "ball_y={}", ball.position.y);
     assert!(ball.velocity.y >= 0.0, "ball_vy={}", ball.velocity.y);
 }
