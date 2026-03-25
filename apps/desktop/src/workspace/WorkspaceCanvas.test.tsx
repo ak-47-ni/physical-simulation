@@ -7,7 +7,13 @@ import {
 } from "../state/editorStore";
 import { WorkspaceCanvas } from "./WorkspaceCanvas";
 import {
+  createBallEntityPx,
+  createBlockEntityPx,
+  createBoardEntityPx,
   createDisplaySettings,
+  createPolygonEntityPx,
+  createSpringConstraint,
+  createTrackConstraint,
   meterViewport,
   WorkspaceCanvasLibraryDragHover,
   WorkspaceCanvasPanHarness,
@@ -24,37 +30,7 @@ describe("WorkspaceCanvas", () => {
     render(
       <WorkspaceCanvas
         display={createDisplaySettings()}
-        entities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 120,
-            y: 180,
-            radius: 24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-          {
-            id: "board-1",
-            kind: "board",
-            label: "Board 1",
-            x: 320,
-            y: 260,
-            width: 120,
-            height: 18,
-            mass: 5,
-            friction: 0.42,
-            restitution: 0.18,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
+        entities={[createBallEntityPx(), createBoardEntityPx({ width: 120, height: 18 })]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         state={state}
@@ -100,37 +76,7 @@ describe("WorkspaceCanvas", () => {
     render(
       <WorkspaceCanvas
         display={createDisplaySettings()}
-        entities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 120,
-            y: 180,
-            radius: 24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-          {
-            id: "board-1",
-            kind: "board",
-            label: "Board 1",
-            x: 320,
-            y: 260,
-            width: 120,
-            height: 18,
-            mass: 5,
-            friction: 0.42,
-            restitution: 0.18,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
+        entities={[createBallEntityPx(), createBoardEntityPx({ width: 120, height: 18 })]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         state={state}
@@ -157,22 +103,7 @@ describe("WorkspaceCanvas", () => {
     render(
       <WorkspaceCanvas
         display={createDisplaySettings()}
-        entities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 120,
-            y: 180,
-            radius: 24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
+        entities={[createBallEntityPx()]}
         onCreateEntity={() => undefined}
         onMoveEntity={(id, position) => {
           moves.push({ id, ...position });
@@ -201,65 +132,10 @@ describe("WorkspaceCanvas", () => {
       <WorkspaceCanvas
         display={createDisplaySettings()}
         entities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 120,
-            y: 180,
-            radius: 30,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-          {
-            id: "block-1",
-            kind: "block",
-            label: "Block 1",
-            x: 212,
-            y: 236,
-            width: 84,
-            height: 52,
-            mass: 2.8,
-            friction: 0.36,
-            restitution: 0.24,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-          {
-            id: "board-1",
-            kind: "board",
-            label: "Board 1",
-            x: 320,
-            y: 260,
-            width: 148,
-            height: 24,
-            mass: 5,
-            friction: 0.42,
-            restitution: 0.18,
-            locked: true,
-            velocityX: 0,
-            velocityY: 0,
-          },
-          {
-            id: "polygon-1",
-            kind: "polygon",
-            label: "Polygon 1",
-            x: 460,
-            y: 188,
-            width: 76,
-            height: 76,
-            mass: 2.2,
-            friction: 0.28,
-            restitution: 0.22,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
+          createBallEntityPx({ radius: 30 }),
+          createBlockEntityPx(),
+          createBoardEntityPx({ locked: true }),
+          createPolygonEntityPx(),
         ]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
@@ -297,23 +173,7 @@ describe("WorkspaceCanvas", () => {
     render(
       <WorkspaceCanvas
         display={createDisplaySettings()}
-        entities={[
-          {
-            id: "board-1",
-            kind: "board",
-            label: "Board 1",
-            x: 320,
-            y: 260,
-            width: 148,
-            height: 24,
-            mass: 5,
-            friction: 0.42,
-            restitution: 0.18,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
+        entities={[createBoardEntityPx()]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         state={state}
@@ -340,35 +200,8 @@ describe("WorkspaceCanvas", () => {
           showVelocityVectors: true,
         })}
         entities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 120,
-            y: 180,
-            radius: 24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 12,
-            velocityY: -6,
-          },
-          {
-            id: "board-1",
-            kind: "board",
-            label: "Board 1",
-            x: 320,
-            y: 260,
-            width: 148,
-            height: 24,
-            mass: 5,
-            friction: 0.42,
-            restitution: 0.18,
-            locked: true,
-            velocityX: 0,
-            velocityY: 0,
-          },
+          createBallEntityPx({ velocityX: 12, velocityY: -6 }),
+          createBoardEntityPx({ locked: true }),
         ]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
@@ -457,22 +290,7 @@ describe("WorkspaceCanvas", () => {
           mode: "pick-entity",
         }}
         display={createDisplaySettings()}
-        entities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 120,
-            y: 180,
-            radius: 24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
+        entities={[createBallEntityPx()]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         onPlaceConstraintEntity={(entityId) => {
@@ -504,22 +322,7 @@ describe("WorkspaceCanvas", () => {
           mode: "pick-point",
         }}
         display={createDisplaySettings()}
-        entities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 120,
-            y: 180,
-            radius: 24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
+        entities={[createBallEntityPx()]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         onPlaceConstraintEntity={(entityId) => {
@@ -546,6 +349,92 @@ describe("WorkspaceCanvas", () => {
     expect(entityPicks).toEqual(["ball-1"]);
     expect(pointPicks).toEqual([{ x: 280, y: 220 }]);
     expect(selectedEntityIds).toEqual([]);
+  });
+
+  it("selects spring overlays directly in the stage without selecting entities", () => {
+    const selectedConstraintIds: string[] = [];
+    const selectedEntityIds: string[] = [];
+
+    render(
+      <WorkspaceCanvas
+        constraints={[createSpringConstraint()]}
+        display={createDisplaySettings()}
+        displayEntities={[
+          createBallEntityPx({ x: 236, y: 288 }),
+          createBoardEntityPx({ x: 400, y: 262, width: 120, height: 18 }),
+        ]}
+        entities={[
+          createBallEntityPx(),
+          createBoardEntityPx({ width: 120, height: 18 }),
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onSelectConstraint={(constraintId) => {
+          selectedConstraintIds.push(constraintId);
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={(entityId) => {
+          selectedEntityIds.push(entityId);
+        }}
+        onToolChange={() => undefined}
+        state={createInitialEditorState()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("scene-constraint-spring-spring-1"));
+
+    expect(selectedConstraintIds).toEqual(["spring-1"]);
+    expect(selectedEntityIds).toEqual([]);
+  });
+
+  it("selects track overlays and marks the selected constraint", () => {
+    const selectedConstraintIds: string[] = [];
+
+    const { rerender } = render(
+      <WorkspaceCanvas
+        constraints={[createTrackConstraint()]}
+        display={createDisplaySettings()}
+        displayEntities={[createBallEntityPx({ x: 236, y: 288 })]}
+        entities={[createBallEntityPx()]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onSelectConstraint={(constraintId) => {
+          selectedConstraintIds.push(constraintId);
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+        state={createInitialEditorState()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("scene-constraint-track-track-1"));
+
+    rerender(
+      <WorkspaceCanvas
+        constraints={[createTrackConstraint()]}
+        display={createDisplaySettings()}
+        displayEntities={[createBallEntityPx({ x: 236, y: 288 })]}
+        entities={[createBallEntityPx()]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onSelectConstraint={(constraintId) => {
+          selectedConstraintIds.push(constraintId);
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          selectedConstraintId: "track-1",
+        }}
+      />,
+    );
+
+    expect(selectedConstraintIds).toEqual(["track-1"]);
+    expect(screen.getByTestId("scene-constraint-track-track-1").getAttribute("data-selected")).toBe(
+      "true",
+    );
   });
 
   it("renders display entities separately from authoring entities", () => {
@@ -631,78 +520,15 @@ describe("WorkspaceCanvas", () => {
   it("renders spring overlays from projected display entity centers", () => {
     render(
       <WorkspaceCanvas
-        constraints={[
-          {
-            id: "spring-1",
-            kind: "spring",
-            entityAId: "ball-1",
-            entityBId: "board-1",
-            restLength: 236,
-            stiffness: 32,
-          },
-        ]}
+        constraints={[createSpringConstraint()]}
         display={createDisplaySettings()}
         displayEntities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 236,
-            y: 288,
-            radius: 24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-          {
-            id: "board-1",
-            kind: "board",
-            label: "Board 1",
-            x: 400,
-            y: 262,
-            width: 120,
-            height: 18,
-            mass: 5,
-            friction: 0.42,
-            restitution: 0.18,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
+          createBallEntityPx({ x: 236, y: 288 }),
+          createBoardEntityPx({ x: 400, y: 262, width: 120, height: 18 }),
         ]}
         entities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 120,
-            y: 180,
-            radius: 24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-          {
-            id: "board-1",
-            kind: "board",
-            label: "Board 1",
-            x: 320,
-            y: 260,
-            width: 120,
-            height: 18,
-            mass: 5,
-            friction: 0.42,
-            restitution: 0.18,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
+          createBallEntityPx(),
+          createBoardEntityPx({ width: 120, height: 18 }),
         ]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
@@ -722,48 +548,10 @@ describe("WorkspaceCanvas", () => {
   it("keeps track overlays visible while attached entities are projected", () => {
     render(
       <WorkspaceCanvas
-        constraints={[
-          {
-            id: "track-1",
-            kind: "track",
-            entityId: "ball-1",
-            origin: { x: 1.44, y: 2.04 },
-            axis: { x: 1.68, y: 0.44 },
-          },
-        ]}
+        constraints={[createTrackConstraint()]}
         display={createDisplaySettings()}
-        displayEntities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 236,
-            y: 288,
-            radius: 24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
-        entities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 120,
-            y: 180,
-            radius: 24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
+        displayEntities={[createBallEntityPx({ x: 236, y: 288 })]}
+        entities={[createBallEntityPx()]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         state={createInitialEditorState()}
@@ -785,40 +573,8 @@ describe("WorkspaceCanvas", () => {
     render(
       <WorkspaceCanvas
         display={createDisplaySettings()}
-        displayEntities={[
-          {
-            id: "board-1",
-            kind: "board",
-            label: "Ramp",
-            x: 400,
-            y: 262,
-            width: 148,
-            height: 24,
-            mass: 5,
-            friction: 0.42,
-            restitution: 0.18,
-            locked: true,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
-        entities={[
-          {
-            id: "board-1",
-            kind: "board",
-            label: "Ramp",
-            x: 320,
-            y: 260,
-            width: 148,
-            height: 24,
-            mass: 5,
-            friction: 0.42,
-            restitution: 0.18,
-            locked: true,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
+        displayEntities={[createBoardEntityPx({ label: "Ramp", x: 400, y: 262, locked: true })]}
+        entities={[createBoardEntityPx({ label: "Ramp", locked: true })]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         state={createInitialEditorState()}
@@ -836,6 +592,26 @@ describe("WorkspaceCanvas", () => {
     expect(screen.getByTestId("scene-entity-lock-board-1")).toBeDefined();
   });
 
+  it("renders rotated boards when display entities include rotation degrees", () => {
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        displayEntities={[createBoardEntityPx({ rotationDegrees: 30 })]}
+        entities={[createBoardEntityPx()]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={createInitialEditorState()}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    expect((screen.getByTestId("scene-entity-board-1") as HTMLElement).style.transform).toContain(
+      "rotate(30deg)",
+    );
+  });
+
   it("blocks dragging bodies while authoring is locked", () => {
     const moves: Array<{ id: string; x: number; y: number }> = [];
 
@@ -843,22 +619,7 @@ describe("WorkspaceCanvas", () => {
       <WorkspaceCanvas
         authoringLocked
         display={createDisplaySettings()}
-        entities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 120,
-            y: 180,
-            radius: 24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
+        entities={[createBallEntityPx()]}
         onCreateEntity={() => undefined}
         onMoveEntity={(id, position) => {
           moves.push({ id, ...position });
@@ -915,6 +676,64 @@ describe("WorkspaceCanvas", () => {
     });
   });
 
+  it("shows only the selected ball paused runtime velocity arrow from runtime data", () => {
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings({
+          showVelocityVectors: false,
+        })}
+        displayEntities={[
+          createBallEntityPx({
+            velocityX: 0,
+            velocityY: 0,
+          }),
+          createBallEntityPx({
+            id: "ball-2",
+            label: "Ball 2",
+            x: 240,
+            y: 120,
+            velocityX: 99,
+            velocityY: 99,
+          }),
+        ]}
+        entities={[
+          createBallEntityPx({
+            velocityX: 0,
+            velocityY: 0,
+          }),
+          createBallEntityPx({
+            id: "ball-2",
+            label: "Ball 2",
+            x: 240,
+            y: 120,
+            velocityX: 99,
+            velocityY: 99,
+          }),
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        selectedRuntimeVelocityVector={{
+          entityId: "ball-1",
+          velocityX: 12,
+          velocityY: 16,
+        }}
+        state={{
+          ...createInitialEditorState(),
+          selectedEntityId: "ball-1",
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    const selectedVelocityArrow = screen.getByTestId("scene-selected-runtime-velocity-ball-1") as HTMLElement;
+
+    expect(selectedVelocityArrow.style.width).toBe("60px");
+    expect(screen.queryByTestId("scene-selected-runtime-velocity-ball-2")).toBeNull();
+    expect(screen.queryByTestId("scene-velocity-vector-ball-1")).toBeNull();
+  });
+
   it("keeps selection available and blocks constraint picks while authoring is locked", () => {
     const entityPicks: string[] = [];
     const selectedEntityIds: string[] = [];
@@ -929,22 +748,7 @@ describe("WorkspaceCanvas", () => {
           mode: "pick-entity",
         }}
         display={createDisplaySettings()}
-        entities={[
-          {
-            id: "ball-1",
-            kind: "ball",
-            label: "Ball 1",
-            x: 120,
-            y: 180,
-            radius: 24,
-            mass: 1,
-            friction: 0.12,
-            restitution: 0.82,
-            locked: false,
-            velocityX: 0,
-            velocityY: 0,
-          },
-        ]}
+        entities={[createBallEntityPx()]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         onPlaceConstraintEntity={(entityId) => {

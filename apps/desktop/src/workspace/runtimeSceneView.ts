@@ -8,16 +8,39 @@ import {
   type UnitViewport,
 } from "./unitViewport";
 
+export type WorkspaceSceneEntity = EditorSceneEntity & {
+  rotationDegrees?: number;
+};
+
 type ProjectRuntimeSceneEntitiesInput = {
-  editorEntities: EditorSceneEntity[];
+  editorEntities: WorkspaceSceneEntity[];
   runtimeFrame: RuntimeFrameView | null;
   viewport?: UnitViewport;
 };
 
+function radiansToDegrees(radians: number): number {
+  return Number(((radians * 180) / Math.PI).toFixed(2));
+}
+
+function resolveRuntimeRotationDegrees(
+  editorEntity: WorkspaceSceneEntity,
+  runtimeRotationRadians: number,
+): number | undefined {
+  if (editorEntity.kind === "ball") {
+    return undefined;
+  }
+
+  if (Math.abs(runtimeRotationRadians) > Number.EPSILON) {
+    return radiansToDegrees(runtimeRotationRadians);
+  }
+
+  return editorEntity.rotationDegrees;
+}
+
 function projectEditorEntityToScreen(
-  entity: EditorSceneEntity,
+  entity: WorkspaceSceneEntity,
   viewport: UnitViewport,
-): EditorSceneEntity {
+): WorkspaceSceneEntity {
   const projectedPosition = projectAuthoringPointToScreen(
     {
       x: entity.x,
@@ -46,7 +69,7 @@ function projectEditorEntityToScreen(
 
 export function projectRuntimeSceneEntities(
   input: ProjectRuntimeSceneEntitiesInput,
-): EditorSceneEntity[] {
+): WorkspaceSceneEntity[] {
   const { editorEntities, runtimeFrame } = input;
   const viewport = input.viewport ?? DEFAULT_WORKSPACE_VIEWPORT;
 
@@ -84,6 +107,10 @@ export function projectRuntimeSceneEntities(
 
     return {
       ...projectedEditorEntity,
+      rotationDegrees: resolveRuntimeRotationDegrees(
+        editorEntity,
+        runtimeEntity.transform.rotation,
+      ),
       x: projectedRuntimeCenter.x - projectedEditorEntity.width / 2,
       y: projectedRuntimeCenter.y - projectedEditorEntity.height / 2,
     };

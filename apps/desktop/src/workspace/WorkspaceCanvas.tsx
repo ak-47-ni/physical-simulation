@@ -2,9 +2,13 @@ import { useEffect, useState, type CSSProperties, type MouseEvent } from "react"
 
 import type { SceneDisplaySettings } from "../io/sceneFile";
 import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
-import type { EditorSceneEntity, EditorState } from "../state/editorStore";
 import type { LibraryDragSession } from "./libraryDragSession";
+import type { WorkspaceSceneEntity } from "./runtimeSceneView";
 import type { EditorTool } from "./tools";
+import {
+  createConstraintLineGeometry,
+  createSpringOverlayGeometry,
+} from "./constraintOverlayGeometry";
 import {
   DEFAULT_WORKSPACE_VIEWPORT,
   projectAuthoringPointToScreen,
@@ -25,8 +29,8 @@ type WorkspaceCanvasProps = {
   constraintPlacement?: ConstraintPlacementState | null;
   constraints?: EditorConstraint[];
   display: SceneDisplaySettings;
-  displayEntities?: EditorSceneEntity[];
-  entities: EditorSceneEntity[];
+  displayEntities?: WorkspaceSceneEntity[];
+  entities: WorkspaceSceneEntity[];
   libraryDragSession?: LibraryDragSession | null;
   onCancelPlacement?: () => void;
   onCreateEntity: (position: { x: number; y: number }) => void;
@@ -35,10 +39,16 @@ type WorkspaceCanvasProps = {
   onPlaceConstraintPoint?: (position: { x: number; y: number }) => void;
   onGridVisibleChange: (visible: boolean) => void;
   onMoveEntity: (entityId: string, position: { x: number; y: number }) => void;
+  onSelectConstraint?: (constraintId: string) => void;
   onSelectEntity: (entityId: string) => void;
   onToolChange: (tool: EditorTool) => void;
   onViewportOffsetChange?: (offsetPx: { x: number; y: number }) => void;
-  state: EditorState;
+  selectedRuntimeVelocityVector?: {
+    entityId: string;
+    velocityX: number;
+    velocityY: number;
+  } | null;
+  state: import("../state/editorStore").EditorState;
   viewport?: UnitViewport;
 };
 
@@ -84,9 +94,10 @@ const authoringLockMessage =
   "Playback running. Move, placement, and constraint editing are temporarily locked.";
 
 function getEntityVisualStyle(
-  entity: EditorSceneEntity,
+  entity: WorkspaceSceneEntity,
   isSelected: boolean,
 ): CSSProperties {
+  const rotationDegrees = getEntityRotationDegrees(entity);
   const baseStyle: CSSProperties = {
     position: "absolute",
     left: `${entity.x}px`,
@@ -102,6 +113,9 @@ function getEntityVisualStyle(
     overflow: "hidden",
     padding: 0,
     boxShadow: entity.locked ? "0 0 0 2px rgba(245, 181, 62, 0.45)" : "none",
+    transform: rotationDegrees === 0 ? undefined : `rotate(${rotationDegrees}deg)`,
+    transformOrigin: "50% 50%",
+    zIndex: 1,
   };
 
   if (entity.kind === "ball") {
@@ -121,7 +135,7 @@ function getEntityVisualStyle(
   };
 }
 
-function getEntityCenter(entity: EditorSceneEntity): { x: number; y: number } {
+function getEntityCenter(entity: WorkspaceSceneEntity): { x: number; y: number } {
   if (entity.kind === "ball") {
     return {
       x: entity.x + entity.radius,
@@ -158,33 +172,55 @@ function createVectorStyle(
   };
 }
 
-function createConstraintStyle(
+function createConstraintOverlayStyle(
   start: { x: number; y: number },
-  end: { x: number; y: number },
-  color: string,
+  angleDegrees: number,
+  length: number,
+  thickness: number,
+  interactive: boolean,
 ): CSSProperties {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const length = Math.hypot(dx, dy);
-  const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
-
   return {
     position: "absolute",
     left: `${start.x}px`,
     top: `${start.y}px`,
     width: `${length}px`,
-    height: "4px",
-    borderRadius: "999px",
-    background: color,
-    opacity: 0.72,
-    transform: `translateY(-50%) rotate(${angle}deg)`,
+    height: `${thickness}px`,
+    padding: 0,
+    border: "none",
+    background: "transparent",
+    cursor: interactive ? "pointer" : "default",
+    pointerEvents: interactive ? "auto" : "none",
+    transform: `translateY(-50%) rotate(${angleDegrees}deg)`,
     transformOrigin: "0 50%",
-    pointerEvents: "none",
+    zIndex: 2,
   };
 }
 
-function getVelocityVector(entity: EditorSceneEntity): { dx: number; dy: number } | null {
-  const speed = Math.hypot(entity.velocityX, entity.velocityY);
+function createConstraintStrokeStyle(
+  color: string,
+  thickness: number,
+  selected: boolean,
+): CSSProperties {
+  return {
+    position: "absolute",
+    left: 0,
+    top: "50%",
+    width: "100%",
+    height: `${selected ? thickness + 1 : thickness}px`,
+    borderRadius: "999px",
+    background: color,
+    opacity: selected ? 0.98 : 0.78,
+    transform: "translateY(-50%)",
+    pointerEvents: "none",
+    boxShadow: selected ? `0 0 0 2px ${color}26` : "none",
+  };
+}
+
+function getVelocityVectorFromComponents(
+  velocityX: number,
+  velocityY: number,
+): { dx: number; dy: number } | null {
+  const speed = Math.hypot(velocityX, velocityY);
 
   if (speed === 0) {
     return null;
@@ -193,12 +229,16 @@ function getVelocityVector(entity: EditorSceneEntity): { dx: number; dy: number 
   const length = Math.max(18, Math.min(84, speed * 3));
 
   return {
-    dx: (entity.velocityX / speed) * length,
-    dy: (entity.velocityY / speed) * length,
+    dx: (velocityX / speed) * length,
+    dy: (velocityY / speed) * length,
   };
 }
 
-function getForceVector(entity: EditorSceneEntity): { dx: number; dy: number } | null {
+function getVelocityVector(entity: WorkspaceSceneEntity): { dx: number; dy: number } | null {
+  return getVelocityVectorFromComponents(entity.velocityX, entity.velocityY);
+}
+
+function getForceVector(entity: WorkspaceSceneEntity): { dx: number; dy: number } | null {
   if (entity.locked) {
     return null;
   }
@@ -229,6 +269,14 @@ function createBodyDragPreviewStyle(
   };
 }
 
+function getEntityRotationDegrees(entity: WorkspaceSceneEntity): number {
+  if (entity.kind === "ball") {
+    return 0;
+  }
+
+  return entity.rotationDegrees ?? 0;
+}
+
 export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   const {
     authoringLocked = false,
@@ -243,8 +291,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     onPlaceConstraintEntity,
     onPlaceConstraintPoint,
     onMoveEntity,
+    onSelectConstraint,
     onSelectEntity,
     onViewportOffsetChange,
+    selectedRuntimeVelocityVector = null,
     state,
     viewport = DEFAULT_WORKSPACE_VIEWPORT,
   } = props;
@@ -326,7 +376,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     onLibraryDragHoverChange?.(null);
   }, [libraryDragSession, onLibraryDragHoverChange]);
 
-  function beginEntityDrag(entity: EditorSceneEntity, event: MouseEvent<HTMLButtonElement>) {
+  function beginEntityDrag(entity: WorkspaceSceneEntity, event: MouseEvent<HTMLButtonElement>) {
     if (event.button !== 0 || authoringLocked || state.activeTool === "place-constraint") {
       return;
     }
@@ -448,7 +498,36 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     return entityId ? renderedEntities.find((entity) => entity.id === entityId) ?? null : null;
   }
 
+  const constraintSelectionEnabled = !(state.activeTool === "place-constraint" && !authoringLocked);
+  const selectedRuntimeVelocityEntity =
+    selectedRuntimeVelocityVector && state.selectedEntityId === selectedRuntimeVelocityVector.entityId
+      ? getEntityById(selectedRuntimeVelocityVector.entityId)
+      : null;
+  const selectedRuntimeVelocity =
+    selectedRuntimeVelocityEntity?.kind === "ball" && selectedRuntimeVelocityVector
+      ? getVelocityVectorFromComponents(
+          selectedRuntimeVelocityVector.velocityX,
+          selectedRuntimeVelocityVector.velocityY,
+        )
+      : null;
+
+  function handleConstraintClick(
+    event: MouseEvent<HTMLButtonElement>,
+    constraintId: string,
+  ) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!constraintSelectionEnabled) {
+      return;
+    }
+
+    onSelectConstraint?.(constraintId);
+  }
+
   function renderConstraint(constraint: EditorConstraint) {
+    const isSelected = state.selectedConstraintId === constraint.id;
+
     if (constraint.kind === "spring") {
       const entityA = getEntityById(constraint.entityAId);
       const entityB = getEntityById(constraint.entityBId);
@@ -457,13 +536,43 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
         return null;
       }
 
+      const start = getEntityCenter(entityA);
+      const spring = createSpringOverlayGeometry(start, getEntityCenter(entityB));
+
       return (
-        <div
+        <button
           key={constraint.id}
+          aria-label={`Select ${constraint.label}`}
+          data-selected={String(isSelected)}
           data-rest-length={String(constraint.restLength)}
           data-testid={`scene-constraint-spring-${constraint.id}`}
-          style={createConstraintStyle(getEntityCenter(entityA), getEntityCenter(entityB), "#6d58c9")}
-        />
+          type="button"
+          onClick={(event) => handleConstraintClick(event, constraint.id)}
+          style={createConstraintOverlayStyle(
+            start,
+            spring.angleDegrees,
+            spring.length,
+            spring.hitboxThickness,
+            constraintSelectionEnabled,
+          )}
+        >
+          <svg
+            aria-hidden="true"
+            height={spring.hitboxThickness}
+            style={{ display: "block", overflow: "visible", pointerEvents: "none" }}
+            viewBox={`0 0 ${Math.max(spring.length, 1)} ${spring.hitboxThickness}`}
+            width={spring.length}
+          >
+            <polyline
+              fill="none"
+              points={spring.pointsAttribute}
+              stroke={isSelected ? "#5435c7" : "#6d58c9"}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={isSelected ? spring.strokeThickness + 1 : spring.strokeThickness}
+            />
+          </svg>
+        </button>
       );
     }
 
@@ -480,13 +589,33 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     };
     const projectedOrigin = projectAuthoringPointToScreen(origin, viewport);
     const projectedEnd = projectAuthoringPointToScreen(end, viewport);
+    const track = createConstraintLineGeometry(projectedOrigin, projectedEnd);
 
     return (
-      <div
+      <button
         key={constraint.id}
+        aria-label={`Select ${constraint.label}`}
+        data-selected={String(isSelected)}
         data-testid={`scene-constraint-track-${constraint.id}`}
-        style={createConstraintStyle(projectedOrigin, projectedEnd, "#1ba784")}
-      />
+        type="button"
+        onClick={(event) => handleConstraintClick(event, constraint.id)}
+        style={createConstraintOverlayStyle(
+          projectedOrigin,
+          track.angleDegrees,
+          track.length,
+          track.hitboxThickness,
+          constraintSelectionEnabled,
+        )}
+      >
+        <span
+          aria-hidden="true"
+          style={createConstraintStrokeStyle(
+            isSelected ? "#12755d" : "#1ba784",
+            track.strokeThickness,
+            isSelected,
+          )}
+        />
+      </button>
     );
   }
 
@@ -549,6 +678,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
 
         {display.showVelocityVectors
           ? renderedEntities.map((entity) => {
+              if (selectedRuntimeVelocityEntity?.id === entity.id && selectedRuntimeVelocity) {
+                return null;
+              }
+
               const vector = getVelocityVector(entity);
 
               if (!vector) {
@@ -564,6 +697,18 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
               );
             })
           : null}
+
+        {selectedRuntimeVelocity && selectedRuntimeVelocityEntity ? (
+          <div
+            data-testid={`scene-selected-runtime-velocity-${selectedRuntimeVelocityEntity.id}`}
+            style={createVectorStyle(
+              getEntityCenter(selectedRuntimeVelocityEntity),
+              selectedRuntimeVelocity.dx,
+              selectedRuntimeVelocity.dy,
+              "#2457a6",
+            )}
+          />
+        ) : null}
 
         {display.showForceVectors
           ? renderedEntities.map((entity) => {

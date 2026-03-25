@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import type { RuntimeFrameView } from "../state/runtimeBridge";
 import type { EditorSceneEntity } from "../state/editorStore";
-import { projectRuntimeSceneEntities } from "./runtimeSceneView";
+import {
+  projectRuntimeSceneEntities,
+  type WorkspaceSceneEntity,
+} from "./runtimeSceneView";
 import type { UnitViewport } from "./unitViewport";
 
 const meterViewport: UnitViewport = {
@@ -42,6 +45,13 @@ function createBoardEntity(): EditorSceneEntity {
     locked: false,
     velocityX: 0,
     velocityY: 0,
+  };
+}
+
+function createRotatedBoardEntity(rotationDegrees: number): WorkspaceSceneEntity {
+  return {
+    ...createBoardEntity(),
+    rotationDegrees,
   };
 }
 
@@ -216,6 +226,32 @@ describe("projectRuntimeSceneEntities", () => {
         locked: true,
         velocityX: 8,
         velocityY: -4,
+      }),
+    );
+  });
+
+  it("preserves runtime or authored rotation for rotated boards", () => {
+    const projected = projectRuntimeSceneEntities({
+      editorEntities: [createRotatedBoardEntity(18)],
+      runtimeFrame: createRuntimeFrame({
+        entities: [
+          {
+            id: "board-1",
+            transform: {
+              x: 4.6,
+              y: 2.71,
+              rotation: Math.PI / 6,
+            },
+          },
+        ],
+      }),
+      viewport: meterViewport,
+    });
+
+    expect(projected[0]).toEqual(
+      expect.objectContaining({
+        id: "board-1",
+        rotationDegrees: 30,
       }),
     );
   });
