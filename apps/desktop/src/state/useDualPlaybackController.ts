@@ -13,10 +13,12 @@ import {
 import { createRuntimeCompileRequestFromEditorState } from "./runtimeCompileRequest";
 import type { SceneAuthoringSettings } from "./sceneAuthoringSettings";
 import { useRuntimePlaybackLoop } from "./useRuntimePlaybackLoop";
+import { yieldToBrowserFrame } from "./yieldToBrowserFrame";
 
 export const DEFAULT_PRECOMPUTE_DURATION_SECONDS = 20;
 export const REALTIME_MAX_DURATION_SECONDS = 40;
 const PRECOMPUTE_STEP_SECONDS = 1 / 60;
+const PRECOMPUTE_PROGRESS_BATCH_SIZE = 10;
 
 type PrecomputedFrame = {
   frame: RuntimeFrameView | null;
@@ -352,7 +354,10 @@ export function useDualPlaybackController(
           ),
         });
 
-        if (stepIndex === totalSteps || stepIndex % 10 === 0) {
+        if (
+          stepIndex === totalSteps ||
+          stepIndex % PRECOMPUTE_PROGRESS_BATCH_SIZE === 0
+        ) {
           setPrecomputedPlayback((current) =>
             current.status === "preparing"
               ? {
@@ -361,6 +366,14 @@ export function useDualPlaybackController(
                 }
               : current,
           );
+
+          if (stepIndex < totalSteps) {
+            await yieldToBrowserFrame();
+
+            if (precomputeBuildTokenRef.current !== buildToken) {
+              return null;
+            }
+          }
         }
       }
 

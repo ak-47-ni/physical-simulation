@@ -126,6 +126,7 @@ async function startPrecomputedPlayback(
     current: ReturnType<typeof useDualPlaybackControllerHarness>;
   },
   durationSeconds = 4,
+  animationFrame?: ReturnType<typeof createControlledAnimationFrame>,
 ) {
   act(() => {
     result.current.handlePlaybackModeChange("precomputed");
@@ -135,9 +136,44 @@ async function startPrecomputedPlayback(
     result.current.handlePrecomputeDurationChange(durationSeconds);
   });
 
-  await act(async () => {
-    await result.current.handleTransportStart();
+  let startPromise: Promise<void> | null = null;
+
+  act(() => {
+    startPromise = result.current.handleTransportStart();
   });
+
+  if (!animationFrame) {
+    await act(async () => {
+      await startPromise;
+    });
+    return;
+  }
+
+  await act(async () => {
+    let settled = false;
+
+    void startPromise?.then(() => {
+      settled = true;
+    });
+
+    await flushMicrotasks();
+
+    while (!settled) {
+      if (animationFrame.pendingCount() > 0) {
+        animationFrame.runNext(16);
+      }
+
+      await flushMicrotasks();
+    }
+
+    await startPromise;
+  });
+}
+
+async function flushMicrotasks(iterations = 80) {
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    await Promise.resolve();
+  }
 }
 
 afterEach(() => {
@@ -146,12 +182,58 @@ afterEach(() => {
 });
 
 describe("useDualPlaybackController", () => {
+  it("exposes intermediate preparation progress before a precomputed build finishes", async () => {
+    const animationFrame = createControlledAnimationFrame();
+    const runtimePort = createControllerRuntimePort();
+    const { result } = renderHook(() => useDualPlaybackControllerHarness(runtimePort));
+    let startPromise: Promise<void> | null = null;
+
+    act(() => {
+      result.current.handlePlaybackModeChange("precomputed");
+    });
+
+    act(() => {
+      result.current.handlePrecomputeDurationChange(1);
+    });
+
+    act(() => {
+      startPromise = result.current.handleTransportStart();
+    });
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    expect(result.current.isPreparing).toBe(true);
+    expect(result.current.preparationProgress).toBeGreaterThan(0);
+    expect(result.current.preparationProgress).toBeLessThan(1);
+    expect(result.current.seekEnabled).toBe(false);
+
+    await act(async () => {
+      let guard = 0;
+
+      while (result.current.isPreparing && guard < 20) {
+        if (animationFrame.pendingCount() > 0) {
+          animationFrame.runNext(16);
+        }
+
+        await flushMicrotasks();
+        guard += 1;
+      }
+
+      await startPromise;
+    });
+
+    expect(result.current.transportRuntime.status).toBe("running");
+    expect(result.current.seekEnabled).toBe(true);
+  });
+
   it("keeps the latest cached seek target and prevents stale running frames from re-entering", async () => {
     const animationFrame = createControlledAnimationFrame();
     const runtimePort = createControllerRuntimePort();
     const { result } = renderHook(() => useDualPlaybackControllerHarness(runtimePort));
 
-    await startPrecomputedPlayback(result);
+    await startPrecomputedPlayback(result, 4, animationFrame);
 
     await waitFor(() => {
       expect(result.current.playbackMode).toBe("precomputed");

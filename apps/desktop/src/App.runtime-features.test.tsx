@@ -1,9 +1,78 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const workspaceCanvasSpy = vi.hoisted(() => ({
   latestProps: null as null | Record<string, unknown>,
 }));
+
+type QueuedAnimationFrame = {
+  callback: FrameRequestCallback;
+  cancelled: boolean;
+  handle: number;
+  ran: boolean;
+};
+
+function createControlledAnimationFrame() {
+  let nextHandle = 1;
+  const queuedFrames: QueuedAnimationFrame[] = [];
+
+  vi.stubGlobal(
+    "requestAnimationFrame",
+    ((callback: FrameRequestCallback) => {
+      const frame: QueuedAnimationFrame = {
+        callback,
+        cancelled: false,
+        handle: nextHandle,
+        ran: false,
+      };
+
+      nextHandle += 1;
+      queuedFrames.push(frame);
+
+      return frame.handle;
+    }) as typeof requestAnimationFrame,
+  );
+
+  vi.stubGlobal(
+    "cancelAnimationFrame",
+    ((handle: number) => {
+      const frame = queuedFrames.find(
+        (candidate) => candidate.handle === handle && candidate.ran === false,
+      );
+
+      if (frame) {
+        frame.cancelled = true;
+      }
+    }) as typeof cancelAnimationFrame,
+  );
+
+  return {
+    pendingCount() {
+      return queuedFrames.filter((frame) => frame.ran === false && frame.cancelled === false)
+        .length;
+    },
+    runNext(timestamp: number, options: { includeCancelled?: boolean } = {}) {
+      const frame = queuedFrames.find(
+        (candidate) =>
+          candidate.ran === false && (options.includeCancelled === true || !candidate.cancelled),
+      );
+
+      if (!frame) {
+        throw new Error("No queued animation frame available.");
+      }
+
+      frame.ran = true;
+      frame.callback(timestamp);
+      return frame.handle;
+    },
+  };
+}
+
+async function flushMicrotasks(iterations = 80) {
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    await Promise.resolve();
+  }
+}
 
 vi.mock("./workspace/WorkspaceCanvas", async () => {
   const actual = await vi.importActual<typeof import("./workspace/WorkspaceCanvas")>(
@@ -28,6 +97,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
 });
 
 describe("App runtime features", () => {
@@ -415,6 +485,45 @@ describe("App runtime features", () => {
     await waitFor(() => {
       expect(screen.getByText("0.25 s")).toBeDefined();
       expect(ball.style.left).toBe("147px");
+    });
+  });
+
+  it("shows intermediate preparing progress before cached playback finishes building", async () => {
+    const animationFrame = createControlledAnimationFrame();
+
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.change(screen.getByLabelText("Playback mode"), { target: { value: "precomputed" } });
+    fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
+    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    expect(screen.getByTestId("transport-preparing-progress").textContent).toBe("Preparing 17%");
+    expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
+      true,
+    );
+
+    await act(async () => {
+      let guard = 0;
+
+      while (screen.queryByTestId("transport-preparing-progress") && guard < 20) {
+        if (animationFrame.pendingCount() > 0) {
+          animationFrame.runNext(16);
+        }
+
+        await flushMicrotasks();
+        guard += 1;
+      }
+    });
+
+    await waitFor(() => {
+      expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
+        false,
+      );
     });
   });
 
