@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySample};
 use crate::entity::{CompiledShape, Vector2};
 use crate::scene::CompiledScene;
-use crate::solver::{RuntimeBodyState, project_track_bindings, step_bodies};
+use crate::solver::{RuntimeBodyShape, RuntimeBodyState, project_track_bindings, step_bodies};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -44,6 +44,7 @@ impl RuntimeScene {
             .into_iter()
             .map(|entity| RuntimeBodyState {
                 entity_id: entity.id,
+                shape: runtime_body_shape(&entity.shape),
                 position: entity.position,
                 half_extents: shape_half_extents(&entity.shape),
                 rotation_radians: entity.rotation_radians,
@@ -154,6 +155,13 @@ impl RuntimeScene {
 
     pub fn set_fixed_delta_seconds(&mut self, fixed_delta_seconds: f64) {
         self.fixed_delta_seconds = fixed_delta_seconds.max(f64::EPSILON);
+    }
+}
+
+fn runtime_body_shape(shape: &CompiledShape) -> RuntimeBodyShape {
+    match shape {
+        CompiledShape::Ball { .. } => RuntimeBodyShape::Ball,
+        CompiledShape::Block { .. } | CompiledShape::ConvexPolygon { .. } => RuntimeBodyShape::Box,
     }
 }
 
