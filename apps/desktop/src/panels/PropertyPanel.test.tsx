@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -7,6 +8,66 @@ import { PropertyPanel } from "./PropertyPanel";
 afterEach(() => {
   cleanup();
 });
+
+const TEST_SCENE_PHYSICS = {
+  gravity: 9.8,
+  gravityUnitLabel: "m/s²",
+  lengthUnit: "m",
+  lengthUnitOptions: ["m", "cm"],
+  lockReason: null,
+  massUnit: "kg",
+  massUnitOptions: ["kg", "g"],
+  pixelsPerMeter: 100,
+  velocityUnit: "m/s",
+  velocityUnitOptions: ["m/s", "cm/s"],
+} as const;
+
+function BoardSelectionHarness() {
+  const [entity, setEntity] = useState({
+    id: "board-1",
+    kind: "board" as const,
+    label: "Board 1",
+    x: 3.18,
+    y: 2.72,
+    width: 1.2,
+    height: 0.18,
+    rotationDegrees: 30,
+    mass: 5,
+    friction: 0.42,
+    restitution: 0.18,
+    locked: false,
+    velocityX: 4,
+    velocityY: 0,
+  });
+
+  return (
+    <PropertyPanel
+      display={createSceneDisplaySettings()}
+      onDeleteSelectedEntity={() => undefined}
+      onDuplicateSelectedEntity={() => undefined}
+      onScenePhysicsChange={() => undefined}
+      onUpdateDisplaySetting={() => undefined}
+      onUpdateSelectedEntityLabel={() => undefined}
+      onUpdateSelectedEntityPhysics={(physics) => {
+        setEntity((current) => ({
+          ...current,
+          ...physics,
+        }));
+      }}
+      onUpdateSelectedEntityPosition={() => undefined}
+      onUpdateSelectedEntityRadius={() => undefined}
+      onUpdateSelectedEntityRotation={(rotationDegrees) => {
+        setEntity((current) => ({
+          ...current,
+          rotationDegrees,
+        }));
+      }}
+      onUpdateSelectedEntitySize={() => undefined}
+      scenePhysics={TEST_SCENE_PHYSICS}
+      selectedEntity={entity}
+    />
+  );
+}
 
 describe("PropertyPanel", () => {
   it("edits selected ball properties and exposes duplicate and delete actions", () => {
@@ -120,6 +181,7 @@ describe("PropertyPanel", () => {
           y: 272,
           width: 120,
           height: 18,
+          rotationDegrees: 0,
           mass: 5,
           friction: 0.42,
           restitution: 0.18,
@@ -137,6 +199,71 @@ describe("PropertyPanel", () => {
       { width: 148, height: 18 },
       { width: 120, height: 24 },
     ]);
+  });
+
+  it("shows board angle and keeps speed direction synced with cartesian velocity", () => {
+    render(<BoardSelectionHarness />);
+
+    expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("30");
+    expect((screen.getByLabelText("Speed") as HTMLInputElement).value).toBe("4");
+    expect((screen.getByLabelText("Direction") as HTMLInputElement).value).toBe("0");
+
+    fireEvent.change(screen.getByLabelText("Direction"), { target: { value: "90" } });
+
+    expect(Number((screen.getByLabelText("Velocity X") as HTMLInputElement).value)).toBeCloseTo(0);
+    expect(Number((screen.getByLabelText("Velocity Y") as HTMLInputElement).value)).toBeCloseTo(4);
+
+    fireEvent.change(screen.getByLabelText("Speed"), { target: { value: "10" } });
+
+    expect(Number((screen.getByLabelText("Velocity X") as HTMLInputElement).value)).toBeCloseTo(0);
+    expect(Number((screen.getByLabelText("Velocity Y") as HTMLInputElement).value)).toBeCloseTo(10);
+
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "6" } });
+    fireEvent.change(screen.getByLabelText("Velocity Y"), { target: { value: "8" } });
+
+    expect(Number((screen.getByLabelText("Speed") as HTMLInputElement).value)).toBeCloseTo(10);
+    expect(Number((screen.getByLabelText("Direction") as HTMLInputElement).value)).toBeCloseTo(
+      53.13,
+      2,
+    );
+
+    fireEvent.change(screen.getByLabelText("Angle"), { target: { value: "45" } });
+
+    expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("45");
+  });
+
+  it("does not show the board-only angle control for balls", () => {
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings()}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onScenePhysicsChange={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        scenePhysics={TEST_SCENE_PHYSICS}
+        selectedEntity={{
+          id: "ball-1",
+          kind: "ball",
+          label: "Ball 1",
+          x: 1.32,
+          y: 1.76,
+          radius: 0.24,
+          mass: 1.2,
+          friction: 0.14,
+          restitution: 0.82,
+          locked: false,
+          velocityX: 4,
+          velocityY: 0,
+        }}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Angle")).toBeNull();
   });
 
   it("edits display settings toggles", () => {

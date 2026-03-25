@@ -3,6 +3,10 @@ import type { CSSProperties } from "react";
 import type { SceneDisplaySettings } from "../io/sceneFile";
 import type { EditorConstraint } from "../state/editorConstraints";
 import type { EditorEntityPhysics, EditorSceneEntity } from "../state/editorStore";
+import {
+  cartesianVelocityToPolar,
+  polarVelocityToCartesian,
+} from "../state/velocityPolar";
 import { MeasurementInput } from "./property/MeasurementInput";
 import { ScenePhysicsCard } from "./property/ScenePhysicsCard";
 
@@ -48,6 +52,7 @@ type PropertyPanelProps = {
   onUpdateSelectedEntityPosition: (position: { x: number; y: number }) => void;
   onUpdateSelectedEntityPhysics: (physics: Partial<EditorEntityPhysics>) => void;
   onUpdateSelectedEntityRadius: (radius: number) => void;
+  onUpdateSelectedEntityRotation?: (rotationDegrees: number) => void;
   onUpdateSelectedEntitySize: (size: { width: number; height: number }) => void;
   scenePhysics?: ScenePhysicsPanelState | null;
   selectedConstraint?: EditorConstraint | null;
@@ -240,6 +245,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
     onUpdateSelectedEntityPosition,
     onUpdateSelectedEntityPhysics,
     onUpdateSelectedEntityRadius,
+    onUpdateSelectedEntityRotation = () => undefined,
     onUpdateSelectedEntitySize,
     scenePhysics = null,
     selectedConstraint = null,
@@ -250,6 +256,12 @@ export function PropertyPanel(props: PropertyPanelProps) {
   const massUnitLabel = scenePhysics?.massUnit ?? null;
   const selectionLockReason = authoringLocked ? authoringLockReason : null;
   const scenePhysicsLockReason = scenePhysics?.lockReason ?? selectionLockReason;
+  const selectedVelocityPolar = selectedEntity
+    ? cartesianVelocityToPolar({
+        velocityX: selectedEntity.velocityX,
+        velocityY: selectedEntity.velocityY,
+      })
+    : null;
 
   return (
     <div style={{ display: "grid", gap: "16px" }}>
@@ -466,6 +478,15 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 />
               </div>
             )}
+            {selectedEntity.kind === "board" ? (
+              <PositionInput
+                disabled={authoringLocked}
+                label="Angle"
+                suffix="°"
+                value={selectedEntity.rotationDegrees ?? 0}
+                onChange={onUpdateSelectedEntityRotation}
+              />
+            ) : null}
             <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
               <PositionInput
                 disabled={authoringLocked}
@@ -507,6 +528,36 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 suffix={velocityUnitLabel ?? undefined}
                 value={selectedEntity.velocityY}
                 onChange={(velocityY) => onUpdateSelectedEntityPhysics({ velocityY })}
+              />
+            </div>
+            <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+              <PositionInput
+                disabled={authoringLocked}
+                label="Speed"
+                suffix={velocityUnitLabel ?? undefined}
+                value={selectedVelocityPolar?.speed ?? 0}
+                onChange={(speed) =>
+                  onUpdateSelectedEntityPhysics(
+                    polarVelocityToCartesian({
+                      directionDegrees: selectedVelocityPolar?.directionDegrees ?? 0,
+                      speed,
+                    }),
+                  )
+                }
+              />
+              <PositionInput
+                disabled={authoringLocked}
+                label="Direction"
+                suffix="°"
+                value={selectedVelocityPolar?.directionDegrees ?? 0}
+                onChange={(directionDegrees) =>
+                  onUpdateSelectedEntityPhysics(
+                    polarVelocityToCartesian({
+                      directionDegrees,
+                      speed: selectedVelocityPolar?.speed ?? 0,
+                    }),
+                  )
+                }
               />
             </div>
             <div style={{ display: "grid", gap: "8px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>

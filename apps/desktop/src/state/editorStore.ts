@@ -30,6 +30,7 @@ export type SizedSceneEntity = BaseEditorSceneEntity & {
   kind: "block" | "board" | "polygon";
   width: number;
   height: number;
+  rotationDegrees?: number;
 };
 
 export type EditorSceneEntity = BallSceneEntity | SizedSceneEntity;
@@ -71,6 +72,7 @@ export function createInitialSceneEntities(): EditorSceneEntity[] {
       y: 272,
       width: 120,
       height: 18,
+      rotationDegrees: 0,
       ...BODY_PHYSICS_DEFAULTS.board,
     },
   ];
@@ -165,6 +167,7 @@ export function createPlacedBodyEntity(
         kind: "block",
         width: BODY_DEFAULTS.block.width,
         height: BODY_DEFAULTS.block.height,
+        rotationDegrees: 0,
       };
     case "board":
       return {
@@ -172,6 +175,7 @@ export function createPlacedBodyEntity(
         kind: "board",
         width: BODY_DEFAULTS.board.width,
         height: BODY_DEFAULTS.board.height,
+        rotationDegrees: 0,
       };
     case "polygon":
       return {
@@ -179,6 +183,7 @@ export function createPlacedBodyEntity(
         kind: "polygon",
         width: BODY_DEFAULTS.polygon.width,
         height: BODY_DEFAULTS.polygon.height,
+        rotationDegrees: 0,
       };
   }
 }
@@ -216,6 +221,7 @@ export function createDuplicatedEntity(
       kind: entity.kind,
       width: entity.width,
       height: entity.height,
+      rotationDegrees: entity.rotationDegrees ?? 0,
     };
   }
 
@@ -241,5 +247,6 @@ export function createDuplicatedEntity(
     y: duplicatedPosition.y,
     width: entity.width,
     height: entity.height,
+    rotationDegrees: entity.rotationDegrees ?? 0,
   };
 }

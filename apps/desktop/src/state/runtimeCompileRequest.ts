@@ -59,6 +59,7 @@ export type RuntimeSizedSceneEntity = RuntimeBaseSceneEntity & {
   y: number;
   width: number;
   height: number;
+  rotationRadians?: number;
 };
 
 export type RuntimeSceneEntity =
@@ -209,6 +210,7 @@ function cloneRuntimeSceneEntity(
     y: entity.y,
     width: entity.width,
     height: entity.height,
+    rotationRadians: readEntityRotationRadians(entity),
   };
 }
 
@@ -345,6 +347,7 @@ function normalizeRuntimeSceneEntityToSi(
     y: normalizeLengthToSi(entity.y, settings.lengthUnit),
     width: normalizeLengthToSi(entity.width, settings.lengthUnit),
     height: normalizeLengthToSi(entity.height, settings.lengthUnit),
+    rotationRadians: entity.rotationRadians ?? 0,
   };
 }
 
@@ -410,4 +413,28 @@ function readOptionalString<T extends object, K extends keyof T>(value: T, key: 
   const candidate = value[key];
 
   return typeof candidate === "string" ? candidate : undefined;
+}
+
+function readOptionalNumber(value: object, key: string): number | undefined {
+  const candidate = (value as Record<string, unknown>)[key];
+
+  return typeof candidate === "number" ? candidate : undefined;
+}
+
+function readEntityRotationRadians(
+  entity: RuntimeSceneDocument["entities"][number] | LegacySceneDocument["entities"][number],
+): number {
+  const runtimeRadians = readOptionalNumber(entity, "rotationRadians");
+
+  if (runtimeRadians !== undefined) {
+    return runtimeRadians;
+  }
+
+  const authoredDegrees = readOptionalNumber(entity, "rotationDegrees");
+
+  if (authoredDegrees !== undefined) {
+    return (authoredDegrees * Math.PI) / 180;
+  }
+
+  return 0;
 }

@@ -33,12 +33,14 @@ import {
 } from "./state/editorStore";
 import {
   createMockRuntimeBridgePort,
-  type RuntimeBridgePortSnapshot,
-  type RuntimeTrajectorySample,
 } from "./state/runtimeBridge";
 import { createDesktopRuntimeBridgePort } from "./state/desktopRuntimeBridgePort";
 import { convertSceneAuthoringUnits } from "./state/editorSceneDocument";
 import { createRuntimeCompileRequestFromEditorState } from "./state/runtimeCompileRequest";
+import {
+  createRuntimePreviewFrame,
+  createRuntimePreviewTrajectorySamples,
+} from "./state/runtimePreview";
 import {
   createSceneAuthoringSettings,
   type SceneAuthoringSettings,
@@ -47,8 +49,6 @@ import {
   convertLengthValue,
   convertMassValue,
   getGravityUnitLabel,
-  normalizeGravityToSi,
-  normalizeVelocityToSi,
   type LengthUnit,
   type MassUnit,
   type VelocityUnit,
@@ -61,7 +61,6 @@ import type { LibraryDragSession } from "./workspace/libraryDragSession";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import { projectRuntimeSceneEntities } from "./workspace/runtimeSceneView";
 import {
-  projectAuthoringPointToSi,
   type UnitViewport,
 } from "./workspace/unitViewport";
 import type { EditorTool } from "./workspace/tools";
@@ -113,6 +112,12 @@ type DirectManipulationLibraryPanelProps = ComponentProps<typeof ObjectLibraryPa
 type DirectManipulationWorkspaceCanvasProps = ComponentProps<typeof WorkspaceCanvas> & {
   libraryDragSession?: LibraryDragSession | null;
   onLibraryDragHoverChange?: (hover: LibraryDragHoverState | null) => void;
+  onSelectConstraint?: (constraintId: string) => void;
+  selectedRuntimeVelocityVector?: {
+    entityId: string;
+    velocityX: number;
+    velocityY: number;
+  } | null;
 };
 
 const DirectManipulationObjectLibraryPanel = ObjectLibraryPanel as unknown as (
@@ -134,74 +139,6 @@ function getEntityCenter(entity: EditorSceneEntity) {
   return {
     x: entity.x + entity.width / 2,
     y: entity.y + entity.height / 2,
-  };
-}
-
-function createRuntimePreviewFrame(
-  entities: EditorSceneEntity[],
-  settings: SceneAuthoringSettings,
-  viewport: UnitViewport,
-  input: RuntimeBridgePortSnapshot & { nextFrameNumber: number },
-) {
-  const elapsedTimeSeconds = input.bridge.currentTimeSeconds;
-  const gravityAccelerationSi = normalizeGravityToSi(settings.gravity, settings.lengthUnit);
-
-  return {
-    frameNumber: input.nextFrameNumber,
-    entities: entities.map((entity) => {
-      const centerSi = projectAuthoringPointToSi(getEntityCenter(entity), viewport);
-      const velocityXSi = normalizeVelocityToSi(entity.velocityX, settings.velocityUnit);
-      const velocityYSi = normalizeVelocityToSi(entity.velocityY, settings.velocityUnit);
-      const timeAdjustedPosition = entity.locked
-        ? centerSi
-        : {
-            x: centerSi.x + velocityXSi * elapsedTimeSeconds,
-            y:
-              centerSi.y +
-              velocityYSi * elapsedTimeSeconds +
-              0.5 * gravityAccelerationSi * elapsedTimeSeconds * elapsedTimeSeconds,
-          };
-
-      return {
-        entityId: entity.id,
-        position: timeAdjustedPosition,
-        rotation: 0,
-        velocity: entity.locked
-          ? { x: 0, y: 0 }
-          : {
-              x: velocityXSi,
-              y: velocityYSi + gravityAccelerationSi * elapsedTimeSeconds,
-            },
-        acceleration: entity.locked ? { x: 0, y: 0 } : { x: 0, y: gravityAccelerationSi },
-      };
-    }),
-  };
-}
-
-function createRuntimePreviewTrajectorySamples(input: {
-  bridge: RuntimeBridgePortSnapshot["bridge"];
-  currentSamplesByAnalyzer: Record<string, RuntimeTrajectorySample[]>;
-}) {
-  const trackedEntity = input.bridge.currentFrame?.entities[0];
-
-  if (!trackedEntity) {
-    return input.currentSamplesByAnalyzer;
-  }
-
-  return {
-    [PRIMARY_ANALYZER_ID]: [
-      ...(input.currentSamplesByAnalyzer[PRIMARY_ANALYZER_ID] ?? []),
-      {
-        frameNumber: input.bridge.currentFrame?.frameNumber ?? 0,
-        timeSeconds: input.bridge.currentTimeSeconds,
-        position: {
-          x: trackedEntity.transform.x,
-          y: trackedEntity.transform.y,
-        },
-        velocity: trackedEntity.velocity ?? { x: 0, y: 0 },
-        acceleration: trackedEntity.acceleration ?? { x: 0, y: 0 },
-      },
-    ],
   };
 }
 
@@ -341,6 +278,7 @@ export function App() {
           ),
         createTrajectorySamples: ({ bridge, currentSamplesByAnalyzer }) =>
           createRuntimePreviewTrajectorySamples({
+            analyzerId: PRIMARY_ANALYZER_ID,
             bridge,
             currentSamplesByAnalyzer,
           }),
@@ -547,17 +485,35 @@ export function App() {
   }
 
   function handleDeleteSelectedEntity() {
-    if (!editorState.selectedEntityId) {
+    const deletedEntityId = editorState.selectedEntityId;
+
+    if (!deletedEntityId) {
       return;
     }
 
+    const removedConstraintIds = new Set(
+      constraints
+        .filter((constraint) =>
+          constraint.kind === "spring"
+            ? constraint.entityAId === deletedEntityId || constraint.entityBId === deletedEntityId
+            : constraint.entityId === deletedEntityId,
+        )
+        .map((constraint) => constraint.id),
+    );
+
     setEntities((current) =>
-      current.filter((entity) => entity.id !== editorState.selectedEntityId),
+      current.filter((entity) => entity.id !== deletedEntityId),
+    );
+    setConstraints((current) =>
+      current.filter((constraint) => !removedConstraintIds.has(constraint.id)),
     );
     setEditorState((current) => ({
       ...current,
-      selectedConstraintId: null,
-      selectedEntityId: null,
+      selectedConstraintId:
+        current.selectedConstraintId && removedConstraintIds.has(current.selectedConstraintId)
+          ? null
+          : current.selectedConstraintId,
+      selectedEntityId: current.selectedEntityId === deletedEntityId ? null : current.selectedEntityId,
     }));
   }
 
@@ -569,6 +525,12 @@ export function App() {
     runtimeFrame: visibleRuntimeFrame,
     viewport: workspaceViewport,
   });
+  const selectedRuntimeVelocityVector =
+    transportRuntime.status === "paused" && selectedEntity?.kind === "ball"
+      ? visibleRuntimeFrame?.entities.find(
+          (entity) => entity.id === selectedEntity.id && entity.velocity,
+        )?.velocity
+      : null;
   const authoringLocked = playbackLocked;
   const scenePhysicsState = createScenePhysicsPanelState(sceneSettings, authoringLocked);
 
@@ -648,6 +610,19 @@ export function App() {
         ...entity,
         width: size.width,
         height: size.height,
+      };
+    });
+  }
+
+  function handleUpdateSelectedEntityRotation(rotationDegrees: number) {
+    updateSelectedEntity((entity) => {
+      if (entity.kind === "ball") {
+        return entity;
+      }
+
+      return {
+        ...entity,
+        rotationDegrees,
       };
     });
   }
@@ -926,6 +901,7 @@ export function App() {
             onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
             onUpdateSelectedEntityPhysics={handleUpdateSelectedEntityPhysics}
             onUpdateSelectedEntityRadius={handleUpdateSelectedEntityRadius}
+            onUpdateSelectedEntityRotation={handleUpdateSelectedEntityRotation}
             onUpdateSelectedEntitySize={handleUpdateSelectedEntitySize}
             scenePhysics={scenePhysicsState}
             selectedConstraint={selectedConstraint}
@@ -977,8 +953,18 @@ export function App() {
           onMoveEntity={handleMoveEntity}
           onPlaceConstraintEntity={handleConstraintEntityPick}
           onPlaceConstraintPoint={handleConstraintPointPick}
+          onSelectConstraint={handleSelectConstraint}
           onSelectEntity={handleSelectEntity}
           onToolChange={handleToolChange}
+          selectedRuntimeVelocityVector={
+            selectedRuntimeVelocityVector && selectedEntity
+              ? {
+                  entityId: selectedEntity.id,
+                  velocityX: selectedRuntimeVelocityVector.x,
+                  velocityY: selectedRuntimeVelocityVector.y,
+                }
+              : null
+          }
           state={editorState}
           libraryDragSession={libraryDragSession}
           viewport={workspaceViewport}
