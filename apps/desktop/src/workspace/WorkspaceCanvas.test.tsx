@@ -697,6 +697,27 @@ describe("WorkspaceCanvas", () => {
     });
   });
 
+  it("marks the library body preview as blocked when App flags the hover as invalid", () => {
+    render(
+      <WorkspaceCanvasPanHarness
+        libraryDragBlocked
+        libraryDragSession={{
+          bodyKind: "ball",
+          pointerClientPx: { x: 248, y: 204 },
+        }}
+      />,
+    );
+
+    fireEvent.mouseMove(screen.getByTestId("workspace-stage"), {
+      clientX: 248,
+      clientY: 204,
+    });
+
+    expect(screen.getByTestId("workspace-stage-body-preview").getAttribute("data-placement-valid")).toBe(
+      "false",
+    );
+  });
+
   it("shows only the selected ball paused runtime velocity arrow from runtime data", () => {
     render(
       <WorkspaceCanvas

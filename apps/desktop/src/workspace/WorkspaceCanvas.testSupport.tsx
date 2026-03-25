@@ -167,6 +167,7 @@ export function createTrackConstraint(
 
 export function WorkspaceCanvasPanHarness(props: {
   libraryDragSession?: LibraryDragSession | null;
+  libraryDragBlocked?: boolean;
   entities?: WorkspaceSceneEntity[];
   onLibraryDragHoverChange?: (hover: WorkspaceCanvasLibraryDragHover | null) => void;
   onMoveEntity?: (id: string, position: { x: number; y: number }) => void;
@@ -204,6 +205,7 @@ export function WorkspaceCanvasPanHarness(props: {
         onMoveEntity={props.onMoveEntity ?? (() => undefined)}
         onSelectConstraint={props.onSelectConstraint}
         state={props.state ?? createInitialEditorState()}
+        libraryDragBlocked={props.libraryDragBlocked ?? false}
         selectedRuntimeVelocityVector={props.selectedRuntimeVelocityVector ?? null}
         viewport={viewport}
         libraryDragSession={props.libraryDragSession ?? null}

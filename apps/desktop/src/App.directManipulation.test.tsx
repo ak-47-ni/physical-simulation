@@ -53,6 +53,7 @@ vi.mock("./workspace/WorkspaceCanvas", () => ({
 
     return (
       <div
+        data-library-drag-blocked={String(Boolean(props.libraryDragBlocked))}
         data-library-drag-active={String(Boolean(props.libraryDragSession))}
         data-testid="mock-workspace-canvas"
         data-tool={String((props.state as { activeTool: string }).activeTool)}
@@ -76,12 +77,38 @@ vi.mock("./workspace/WorkspaceCanvas", () => ({
             (props.onLibraryDragHoverChange as
               | undefined
               | ((hover: unknown) => void))?.({
+              authoringPosition: { x: 3.18, y: 2.72 },
+              isOverStage: true,
+            })
+          }
+        >
+          Hover occupied stage
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            (props.onLibraryDragHoverChange as
+              | undefined
+              | ((hover: unknown) => void))?.({
               authoringPosition: null,
               isOverStage: false,
             })
           }
         >
           Leave stage
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            (props.onMoveEntity as
+              | undefined
+              | ((entityId: string, position: { x: number; y: number }) => void))?.("ball-1", {
+              x: 3.18,
+              y: 2.72,
+            })
+          }
+        >
+          Move ball to occupied area
         </button>
         <button type="button" onClick={() => (props.onCancelPlacement as () => void)?.()}>
           Cancel placement
@@ -139,6 +166,31 @@ describe("App direct manipulation contracts", () => {
     expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-library-drag-active")).toBe(
       "false",
     );
+  });
+
+  it("keeps the last legal body position when a drag move targets an occupied area", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("scene-tree-item-ball-1"));
+
+    expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("1.32");
+    expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe("1.76");
+
+    fireEvent.click(screen.getByRole("button", { name: "Move ball to occupied area" }));
+
+    expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("1.32");
+    expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe("1.76");
+  });
+
+  it("does not create a new body when a dragged library body is released over an occupied area", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start ball drag" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Hover occupied stage" }));
+    fireEvent.pointerUp(window);
+
+    expect(screen.queryByTestId("scene-tree-item-ball-2")).toBeNull();
   });
 
   it("keeps guided constraint placement cancelable while body drags use the select tool", () => {

@@ -32,6 +32,7 @@ type WorkspaceCanvasProps = {
   display: SceneDisplaySettings;
   displayEntities?: WorkspaceSceneEntity[];
   entities: WorkspaceSceneEntity[];
+  libraryDragBlocked?: boolean;
   libraryDragSession?: LibraryDragSession | null;
   onCancelPlacement?: () => void;
   onCreateEntity: (position: { x: number; y: number }) => void;
@@ -245,15 +246,18 @@ function getForceVector(entity: WorkspaceSceneEntity): { dx: number; dy: number 
 function createBodyDragPreviewStyle(
   preview: { screenPosition: { x: number; y: number } },
   bodyKind: LibraryDragSession["bodyKind"],
+  blocked: boolean,
 ): CSSProperties {
   return {
     position: "absolute",
     left: `${preview.screenPosition.x}px`,
     top: `${preview.screenPosition.y}px`,
     borderRadius: bodyKind === "ball" ? "999px" : "0px",
-    border: "1px dashed rgba(36, 87, 166, 0.55)",
-    background: "rgba(36, 87, 166, 0.12)",
-    color: "#17304f",
+    border: blocked
+      ? "1px dashed rgba(185, 28, 28, 0.6)"
+      : "1px dashed rgba(36, 87, 166, 0.55)",
+    background: blocked ? "rgba(220, 38, 38, 0.12)" : "rgba(36, 87, 166, 0.12)",
+    color: blocked ? "#991b1b" : "#17304f",
     fontSize: "11px",
     fontWeight: 700,
     padding: "6px 8px",
@@ -278,6 +282,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     display,
     displayEntities,
     entities,
+    libraryDragBlocked = false,
     libraryDragSession = null,
     onCancelPlacement,
     onLibraryDragHoverChange,
@@ -726,8 +731,13 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
         {libraryDragSession && libraryDragPreview ? (
           <div
             data-body-kind={libraryDragSession.bodyKind}
+            data-placement-valid={String(!libraryDragBlocked)}
             data-testid="workspace-stage-body-preview"
-            style={createBodyDragPreviewStyle(libraryDragPreview, libraryDragSession.bodyKind)}
+            style={createBodyDragPreviewStyle(
+              libraryDragPreview,
+              libraryDragSession.bodyKind,
+              libraryDragBlocked,
+            )}
           >
             {libraryDragSession.bodyKind}
           </div>
