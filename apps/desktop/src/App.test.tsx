@@ -134,6 +134,25 @@ describe("App selection sync", () => {
     expect(screen.getByText("No entity selected")).toBeDefined();
   });
 
+  it("cascade deletes dependent constraints when deleting a referenced body", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Spring" }));
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+
+    expect(screen.getByTestId("scene-constraint-spring-spring-1")).toBeDefined();
+    expect(screen.getByTestId("scene-tree-constraint-spring-1")).toBeDefined();
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.click(screen.getByRole("button", { name: /delete entity/i }));
+
+    expect(screen.queryByTestId("scene-entity-ball-1")).toBeNull();
+    expect(screen.queryByTestId("scene-constraint-spring-spring-1")).toBeNull();
+    expect(screen.queryByTestId("scene-tree-constraint-spring-1")).toBeNull();
+    expect(screen.getByText("No entity selected")).toBeDefined();
+  });
+
   it("duplicates the selected entity from the property panel", () => {
     render(<App />);
 

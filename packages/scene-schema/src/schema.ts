@@ -40,6 +40,7 @@ export type SizedSceneEntity = BaseSceneEntity &
     y: number;
     width: number;
     height: number;
+    rotationDegrees?: number;
   };
 
 export type SceneEntity = UserPolygonEntity | BallSceneEntity | SizedSceneEntity;

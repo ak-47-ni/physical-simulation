@@ -127,6 +127,7 @@ describe("scene schema", () => {
         y: 272,
         width: 120,
         height: 18,
+        rotationDegrees: 12,
         mass: 5,
         friction: 0.42,
         restitution: 0.18,
@@ -166,6 +167,30 @@ describe("scene schema", () => {
 
     expect(clonedPolygon.points).not.toBe(originalPolygon.points);
     expect(clone.annotations[0]?.points).not.toBe(scene.annotations[0]?.points);
+  });
+
+  it("preserves sized-entity rotationDegrees when cloning scene documents", () => {
+    const scene = createEmptySceneDocument();
+
+    scene.entities.push({
+      id: "board-1",
+      kind: "board",
+      label: "Board 1",
+      x: 3.18,
+      y: 2.72,
+      width: 1.2,
+      height: 0.18,
+      rotationDegrees: 24,
+    });
+
+    const clone = cloneSceneDocument(scene);
+    const clonedBoard = clone.entities[0];
+
+    if (!clonedBoard || clonedBoard.kind !== "board") {
+      throw new Error("expected board entity");
+    }
+
+    expect(clonedBoard.rotationDegrees).toBe(24);
   });
 
   it("creates runtime compile requests from cloned scene state and dirty scopes", () => {

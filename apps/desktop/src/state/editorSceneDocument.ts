@@ -247,6 +247,7 @@ function mapEditorEntityToSceneEntity(entity: EditorSceneEntity): SceneEntity {
     id: entity.id,
     kind: entity.kind,
     label: entity.label,
+    rotationDegrees: entity.rotationDegrees ?? 0,
     width: entity.width,
     x: entity.x,
     y: entity.y,
@@ -323,6 +324,7 @@ function mapSceneEntityToEditorEntity(entity: SceneEntity): EditorSceneEntity[] 
       id: entity.id,
       kind: entity.kind,
       label: entity.label ?? entity.id,
+      rotationDegrees: entity.rotationDegrees ?? 0,
       width: entity.width,
       x: entity.x,
       y: entity.y,
@@ -413,6 +415,7 @@ function convertEditorEntityUnits(
     kind: entity.kind,
     width: convertLengthValue(entity.width, fromSettings.lengthUnit, toSettings.lengthUnit),
     height: convertLengthValue(entity.height, fromSettings.lengthUnit, toSettings.lengthUnit),
+    rotationDegrees: entity.rotationDegrees ?? 0,
   };
 }
 

@@ -145,6 +145,7 @@ describe("editorSceneDocument", () => {
         y: 27200,
         width: 12000,
         height: 1800,
+        rotationDegrees: 0,
         mass: 5000,
         friction: 0.42,
         restitution: 0.18,

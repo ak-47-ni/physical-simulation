@@ -10,7 +10,9 @@ import {
 describe("runtimeCompileRequest", () => {
   it("maps editor entities and annotation strokes into a richer runtime compile payload", () => {
     const entities = createInitialSceneEntities().map((entity, index) =>
-      index === 0 ? { ...entity, velocityX: 6, velocityY: -4 } : entity,
+      index === 0
+        ? { ...entity, velocityX: 6, velocityY: -4 }
+        : { ...entity, rotationDegrees: 30 },
     );
     const constraints = [
       {
@@ -129,6 +131,13 @@ describe("runtimeCompileRequest", () => {
       },
     });
     expect(request.scene.annotations[0]?.points).not.toBe(annotations[0]?.points);
+    const compiledBoard = request.scene.entities[1];
+
+    if (!compiledBoard || compiledBoard.kind !== "board") {
+      throw new Error("expected board runtime entity");
+    }
+
+    expect(compiledBoard.rotationRadians).toBeCloseTo(Math.PI / 6);
   });
 
   it("respects an explicit analyzer target and omits analyzers when no entity matches", () => {
@@ -265,16 +274,20 @@ describe("runtimeCompileRequest", () => {
       entities: createInitialSceneEntities(),
     });
     const clonedRequest = createRuntimeCompileRequest(request.scene, ["analysis"]);
+    const mutableEntity = request.scene.entities[0];
+    const mutableForceSource = request.scene.forceSources[0];
 
-    request.scene.entities[0] = {
-      ...request.scene.entities[0],
-      x: 999,
-      y: 999,
-    };
-    request.scene.forceSources[0] = {
-      ...request.scene.forceSources[0],
-      acceleration: { x: 1, y: 1 },
-    };
+    if (!mutableEntity || mutableEntity.kind !== "ball") {
+      throw new Error("expected ball runtime entity");
+    }
+
+    if (!mutableForceSource || mutableForceSource.kind !== "gravity") {
+      throw new Error("expected gravity force source");
+    }
+
+    mutableEntity.x = 999;
+    mutableEntity.y = 999;
+    mutableForceSource.acceleration = { x: 1, y: 1 };
 
     expect(clonedRequest.scene.entities[0]).toMatchObject({
       x: 132,
