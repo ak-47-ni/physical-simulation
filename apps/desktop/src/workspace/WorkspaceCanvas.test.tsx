@@ -218,6 +218,27 @@ describe("WorkspaceCanvas", () => {
     expect(screen.queryByTestId("scene-force-vector-board-1")).toBeNull();
   });
 
+  it("renders positive authored velocityY as an upward screen arrow", () => {
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings({
+          showVelocityVectors: true,
+        })}
+        entities={[createBallEntityPx({ velocityX: 0, velocityY: 5 })]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={createInitialEditorState()}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    expect((screen.getByTestId("scene-velocity-vector-ball-1") as HTMLElement).style.transform).toContain(
+      "rotate(-90deg)",
+    );
+  });
+
   it("does not create a new entity from legacy place-body stage clicks", () => {
     const created: Array<{ x: number; y: number }> = [];
 
@@ -730,6 +751,7 @@ describe("WorkspaceCanvas", () => {
     const selectedVelocityArrow = screen.getByTestId("scene-selected-runtime-velocity-ball-1") as HTMLElement;
 
     expect(selectedVelocityArrow.style.width).toBe("60px");
+    expect(selectedVelocityArrow.style.transform).toContain("rotate(-53.13010235415598deg)");
     expect(screen.queryByTestId("scene-selected-runtime-velocity-ball-2")).toBeNull();
     expect(screen.queryByTestId("scene-velocity-vector-ball-1")).toBeNull();
   });
