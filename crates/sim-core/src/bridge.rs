@@ -927,7 +927,7 @@ impl EntityPhysicsDefaults {
         Self {
             mass: 1.0,
             friction: 0.2,
-            restitution: 0.0,
+            restitution: 1.0,
             locked: false,
         }
     }
