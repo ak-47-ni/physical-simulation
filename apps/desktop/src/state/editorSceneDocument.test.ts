@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createEmptySceneDocument } from "../../../../packages/scene-schema/src";
 
 import {
   createDefaultSceneAuthoringSettings,
@@ -91,6 +92,44 @@ describe("editorSceneDocument", () => {
     expect(restored.selectedConstraintId).toBe("track-1");
   });
 
+  it("defaults missing persisted restitution to 1 while preserving explicit saved values", () => {
+    const scene = createEmptySceneDocument();
+
+    scene.entities.push(
+      {
+        id: "ball-legacy",
+        kind: "ball",
+        label: "Legacy Ball",
+        radius: 0.24,
+        x: 1.32,
+        y: 1.76,
+      },
+      {
+        id: "board-explicit",
+        kind: "board",
+        label: "Board Explicit",
+        width: 1.2,
+        height: 0.18,
+        x: 3.18,
+        y: 2.72,
+        restitution: 0.35,
+      },
+    );
+
+    const restored = createEditorSceneStateFromSceneDocument({ scene });
+
+    expect(restored.entities).toEqual([
+      expect.objectContaining({
+        id: "ball-legacy",
+        restitution: 1,
+      }),
+      expect.objectContaining({
+        id: "board-explicit",
+        restitution: 0.35,
+      }),
+    ]);
+  });
+
   it("converts stored authored values when scene units change", () => {
     const entities = createInitialSceneEntities().map((entity, index) =>
       index === 0
@@ -132,7 +171,7 @@ describe("editorSceneDocument", () => {
         radius: 2400,
         mass: 1200,
         friction: 0.14,
-        restitution: 0.82,
+        restitution: 1,
         locked: false,
         velocityX: 125,
         velocityY: -50,
@@ -148,7 +187,7 @@ describe("editorSceneDocument", () => {
         rotationDegrees: 0,
         mass: 5000,
         friction: 0.42,
-        restitution: 0.18,
+        restitution: 1,
         locked: false,
         velocityX: 0,
         velocityY: 0,

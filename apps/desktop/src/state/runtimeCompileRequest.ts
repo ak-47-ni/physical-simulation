@@ -25,6 +25,7 @@ import {
   normalizeMassToSi,
   normalizeVelocityToSi,
 } from "./sceneUnits";
+import { authoringVelocityToRuntime } from "./velocitySemantics";
 import type { EditorSceneEntity } from "./editorStore";
 
 export type RuntimeSceneEntityPhysics = {
@@ -306,16 +307,20 @@ function normalizeRuntimeSceneEntityToSi(
   entity: RuntimeSceneEntity,
   settings: SceneAuthoringSettings,
 ): RuntimeSceneEntity {
+  const runtimeVelocity = authoringVelocityToRuntime({
+    velocityX: entity.velocityX ?? 0,
+    velocityY: entity.velocityY ?? 0,
+  });
   const physics = {
     ...(entity.mass !== undefined ? { mass: normalizeMassToSi(entity.mass, settings.massUnit) } : {}),
     ...(entity.friction !== undefined ? { friction: entity.friction } : {}),
     ...(entity.restitution !== undefined ? { restitution: entity.restitution } : {}),
     ...(entity.locked !== undefined ? { locked: entity.locked } : {}),
     ...(entity.velocityX !== undefined
-      ? { velocityX: normalizeVelocityToSi(entity.velocityX, settings.velocityUnit) }
+      ? { velocityX: normalizeVelocityToSi(runtimeVelocity.velocityX, settings.velocityUnit) }
       : {}),
     ...(entity.velocityY !== undefined
-      ? { velocityY: normalizeVelocityToSi(entity.velocityY, settings.velocityUnit) }
+      ? { velocityY: normalizeVelocityToSi(runtimeVelocity.velocityY, settings.velocityUnit) }
       : {}),
   };
 

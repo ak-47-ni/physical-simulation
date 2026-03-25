@@ -41,6 +41,7 @@ import {
   createRuntimePreviewFrame,
   createRuntimePreviewTrajectorySamples,
 } from "./state/runtimePreview";
+import { runtimeVelocityToAuthoring } from "./state/velocitySemantics";
 import {
   createSceneAuthoringSettings,
   type SceneAuthoringSettings,
@@ -527,9 +528,18 @@ export function App() {
   });
   const selectedRuntimeVelocityVector =
     transportRuntime.status === "paused" && selectedEntity?.kind === "ball"
-      ? visibleRuntimeFrame?.entities.find(
-          (entity) => entity.id === selectedEntity.id && entity.velocity,
-        )?.velocity
+      ? (() => {
+          const runtimeVelocity = visibleRuntimeFrame?.entities.find(
+            (entity) => entity.id === selectedEntity.id && entity.velocity,
+          )?.velocity;
+
+          return runtimeVelocity
+            ? runtimeVelocityToAuthoring({
+                velocityX: runtimeVelocity.x,
+                velocityY: runtimeVelocity.y,
+              })
+            : null;
+        })()
       : null;
   const authoringLocked = playbackLocked;
   const scenePhysicsState = createScenePhysicsPanelState(sceneSettings, authoringLocked);
@@ -960,8 +970,8 @@ export function App() {
             selectedRuntimeVelocityVector && selectedEntity
               ? {
                   entityId: selectedEntity.id,
-                  velocityX: selectedRuntimeVelocityVector.x,
-                  velocityY: selectedRuntimeVelocityVector.y,
+                  velocityX: selectedRuntimeVelocityVector.velocityX,
+                  velocityY: selectedRuntimeVelocityVector.velocityY,
                 }
               : null
           }

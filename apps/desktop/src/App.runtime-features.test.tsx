@@ -1,7 +1,30 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const workspaceCanvasSpy = vi.hoisted(() => ({
+  latestProps: null as null | Record<string, unknown>,
+}));
+
+vi.mock("./workspace/WorkspaceCanvas", async () => {
+  const actual = await vi.importActual<typeof import("./workspace/WorkspaceCanvas")>(
+    "./workspace/WorkspaceCanvas",
+  );
+
+  return {
+    ...actual,
+    WorkspaceCanvas: (props: Parameters<typeof actual.WorkspaceCanvas>[0]) => {
+      workspaceCanvasSpy.latestProps = props as Record<string, unknown>;
+
+      return actual.WorkspaceCanvas(props);
+    },
+  };
+});
 
 import { App } from "./App";
+
+beforeEach(() => {
+  workspaceCanvasSpy.latestProps = null;
+});
 
 afterEach(() => {
   cleanup();
@@ -236,6 +259,50 @@ describe("App runtime features", () => {
     });
 
     fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+  });
+
+  it("passes paused runtime velocity to the canvas in authored cartesian semantics", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    fireEvent.click(ball);
+    fireEvent.change(screen.getByLabelText("Velocity Y"), { target: { value: "3" } });
+    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+
+    await waitFor(() => {
+      expect(ball.style.top).not.toBe("176px");
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+
+    await waitFor(() => {
+      expect(
+        (
+          workspaceCanvasSpy.latestProps as {
+            selectedRuntimeVelocityVector?: {
+              entityId: string;
+              velocityX: number;
+              velocityY: number;
+            } | null;
+          } | null
+        )?.selectedRuntimeVelocityVector,
+      ).toMatchObject({
+        entityId: "ball-1",
+      });
+    });
+
+    expect(
+      (
+        workspaceCanvasSpy.latestProps as {
+          selectedRuntimeVelocityVector?: {
+            entityId: string;
+            velocityX: number;
+            velocityY: number;
+          } | null;
+        }
+      ).selectedRuntimeVelocityVector?.velocityY,
+    ).toBeGreaterThan(0);
   });
 
   it("converts authored values and clears visible runtime state after changing units while paused", async () => {

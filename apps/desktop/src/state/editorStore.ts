@@ -96,7 +96,7 @@ const BODY_PHYSICS_DEFAULTS: Record<LibraryBodyKind, EditorEntityPhysics> = {
   ball: {
     mass: 1.2,
     friction: 0.14,
-    restitution: 0.82,
+    restitution: 1,
     locked: false,
     velocityX: 0,
     velocityY: 0,
@@ -104,7 +104,7 @@ const BODY_PHYSICS_DEFAULTS: Record<LibraryBodyKind, EditorEntityPhysics> = {
   block: {
     mass: 2.8,
     friction: 0.36,
-    restitution: 0.24,
+    restitution: 1,
     locked: false,
     velocityX: 0,
     velocityY: 0,
@@ -112,7 +112,7 @@ const BODY_PHYSICS_DEFAULTS: Record<LibraryBodyKind, EditorEntityPhysics> = {
   board: {
     mass: 5,
     friction: 0.42,
-    restitution: 0.18,
+    restitution: 1,
     locked: false,
     velocityX: 0,
     velocityY: 0,
@@ -120,7 +120,7 @@ const BODY_PHYSICS_DEFAULTS: Record<LibraryBodyKind, EditorEntityPhysics> = {
   polygon: {
     mass: 2.2,
     friction: 0.28,
-    restitution: 0.22,
+    restitution: 1,
     locked: false,
     velocityX: 0,
     velocityY: 0,
