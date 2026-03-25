@@ -71,4 +71,60 @@ describe("PlaybackTransportDeck", () => {
     expect(screen.getByTestId("transport-timeline-compact").getAttribute("data-align")).toBe("left");
     expect(screen.queryByText(/Realtime cap/i)).toBeNull();
   });
+
+  it("rerenders live preparing progress through the compact transport shell", () => {
+    const { rerender } = render(
+      <PlaybackTransportDeck
+        currentTimeSeconds={0}
+        isPreparing
+        mode="precomputed"
+        onModeChange={() => undefined}
+        onPause={() => undefined}
+        onPrecomputeDurationChange={() => undefined}
+        onReset={() => undefined}
+        onSeek={() => undefined}
+        onStart={() => undefined}
+        onStep={() => undefined}
+        onTimeScaleChange={() => undefined}
+        precomputeDurationSeconds={20}
+        preparationProgress={0.1}
+        realtimeCapSeconds={40}
+        runtime={createRuntimeView()}
+        seekEnabled={false}
+        timelineMaxSeconds={20}
+      />,
+    );
+
+    expect(screen.getByTestId("transport-compact-preparing-badge").textContent).toContain(
+      "Preparing 10%",
+    );
+    expect(screen.getByRole("button", { name: "Preparing…" })).toBeDefined();
+
+    rerender(
+      <PlaybackTransportDeck
+        currentTimeSeconds={0}
+        isPreparing
+        mode="precomputed"
+        onModeChange={() => undefined}
+        onPause={() => undefined}
+        onPrecomputeDurationChange={() => undefined}
+        onReset={() => undefined}
+        onSeek={() => undefined}
+        onStart={() => undefined}
+        onStep={() => undefined}
+        onTimeScaleChange={() => undefined}
+        precomputeDurationSeconds={20}
+        preparationProgress={0.45}
+        realtimeCapSeconds={40}
+        runtime={createRuntimeView()}
+        seekEnabled={false}
+        timelineMaxSeconds={20}
+      />,
+    );
+
+    expect(screen.getByTestId("transport-compact-preparing-badge").textContent).toContain(
+      "Preparing 45%",
+    );
+    expect(screen.getByTestId("transport-preparing-progress").textContent).toContain("45%");
+  });
 });

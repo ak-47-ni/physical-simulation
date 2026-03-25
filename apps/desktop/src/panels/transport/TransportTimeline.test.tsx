@@ -62,6 +62,42 @@ describe("TransportTimeline", () => {
     expect(screen.getByTestId("transport-preparing-progress").textContent).toContain("35%");
   });
 
+  it("updates visible preparing progress across rerenders without collapsing the compact timeline", () => {
+    const { rerender } = render(
+      <CompactTransportTimeline
+        layout="compact"
+        progress={createProgress({
+          totalDurationSeconds: 20,
+          preparingProgress: 0.1,
+          status: "preparing",
+          canSeek: false,
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("transport-timeline-compact")).toBeDefined();
+    expect(screen.getByTestId("transport-preparing-progress").textContent).toContain("10%");
+    expect(
+      (screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled,
+    ).toBe(true);
+
+    rerender(
+      <CompactTransportTimeline
+        layout="compact"
+        progress={createProgress({
+          totalDurationSeconds: 20,
+          preparingProgress: 0.45,
+          status: "preparing",
+          canSeek: false,
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId("transport-timeline-compact")).toBeDefined();
+    expect(screen.getByTestId("transport-preparing-progress").textContent).toContain("45%");
+    expect((screen.getByLabelText("Jump to time") as HTMLInputElement).disabled).toBe(true);
+  });
+
   it("routes slider drag input events and direct time commits to the seek callback", () => {
     const calls: number[] = [];
 

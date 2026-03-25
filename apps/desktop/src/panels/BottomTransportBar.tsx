@@ -117,6 +117,19 @@ const inputStyle: CSSProperties = {
   fontSize: "13px",
 };
 
+const compactPreparingBadgeStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  borderRadius: "999px",
+  border: "1px solid rgba(37, 99, 235, 0.18)",
+  background: "rgba(239, 246, 255, 0.92)",
+  color: "#1d4ed8",
+  padding: "7px 12px",
+  fontSize: "12px",
+  fontWeight: 600,
+  whiteSpace: "nowrap",
+};
+
 function readTransportStateCopy(runtime: BottomTransportRuntimeView): string {
   if (runtime.lastErrorMessage) {
     return "Runtime needs attention. Review the runtime message above.";
@@ -181,6 +194,18 @@ function shouldShowCompactBanner(runtime: BottomTransportRuntimeView): boolean {
   );
 }
 
+function readPreparingProgressLabel(runtime: BottomTransportRuntimeView): string | null {
+  if (
+    runtime.status !== "preparing" ||
+    runtime.playbackMode !== "precomputed" ||
+    runtime.preparingProgress === null
+  ) {
+    return null;
+  }
+
+  return `Preparing ${Math.round(runtime.preparingProgress * 100)}%`;
+}
+
 export function BottomTransportBar(props: BottomTransportBarProps) {
   const {
     onPause,
@@ -209,6 +234,7 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
       : blockedMessage;
   const transportStateCopy = readTransportStateCopy(runtime);
   const timelineProgress = createTimelineProgress(runtime);
+  const preparingProgressLabel = readPreparingProgressLabel(runtime);
   const primaryActionLabel =
     runtime.status === "preparing" && runtime.playbackMode === "precomputed"
       ? "Preparing…"
@@ -239,6 +265,7 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
       <button
         type="button"
         style={isCompactLayout ? compactButtonStyle : buttonStyle}
+        disabled={runtime.status === "preparing"}
         onClick={onPause}
       >
         Pause
@@ -342,6 +369,15 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
               {playbackFields}
               <div style={{ ...fieldGroupStyle, marginLeft: "auto" }}>
                 {transportButtons}
+                {preparingProgressLabel ? (
+                  <span
+                    aria-live="polite"
+                    data-testid="transport-compact-preparing-badge"
+                    style={compactPreparingBadgeStyle}
+                  >
+                    {preparingProgressLabel}
+                  </span>
+                ) : null}
                 {speedField}
                 {currentTimeReadout}
               </div>

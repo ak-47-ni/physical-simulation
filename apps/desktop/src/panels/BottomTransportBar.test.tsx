@@ -303,6 +303,44 @@ describe("BottomTransportBar", () => {
     expect(screen.getByTestId("transport-preparing-progress").textContent).toContain("40%");
   });
 
+  it("keeps compact preparing feedback prominent and disables pause during cache building", () => {
+    render(
+      <CompactBottomTransportBar
+        layout="compact"
+        runtime={createRuntimeView({
+          status: "preparing",
+          playbackMode: "precomputed",
+          totalDurationSeconds: 20,
+          preparingProgress: 0.4,
+          canSeek: false,
+        })}
+        playbackSettings={createPlaybackSettings({
+          mode: "precomputed",
+          precomputeDurationSeconds: 20,
+        })}
+        onPause={() => undefined}
+        onReset={() => undefined}
+        onStart={() => undefined}
+        onStep={() => undefined}
+        onTimeScaleChange={() => undefined}
+      />,
+    );
+
+    expect(
+      (screen.getByRole("button", { name: "Preparing…" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect((screen.getByRole("button", { name: /pause/i }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect((screen.getByRole("button", { name: /step/i }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect(screen.getByTestId("transport-compact-preparing-badge").textContent).toContain(
+      "Preparing 40%",
+    );
+    expect(screen.getByTestId("transport-preparing-progress").textContent).toContain("40%");
+  });
+
   it("makes the transport timeline draggable once cached playback is ready", () => {
     render(
       <BottomTransportBar
