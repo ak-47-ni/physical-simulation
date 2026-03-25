@@ -195,7 +195,13 @@ fn mechanics_regression_dynamic_balls_do_not_pass_through_each_other() {
     let mut runtime = runtime_for_scene_with_gravity(
         vec![
             ball("ball-left", vector2(-2.0, 0.0), 0.5, vector2(5.0, 0.0), 0.8),
-            ball("ball-right", vector2(2.0, 0.0), 0.5, vector2(-5.0, 0.0), 0.8),
+            ball(
+                "ball-right",
+                vector2(2.0, 0.0),
+                0.5,
+                vector2(-5.0, 0.0),
+                0.8,
+            ),
         ],
         Vector2::ZERO,
     );

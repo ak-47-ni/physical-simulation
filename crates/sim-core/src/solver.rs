@@ -178,7 +178,7 @@ fn resolve_dynamic_contact(
     delta_seconds: f64,
 ) {
     let Some((normal_x, normal_y, penetration)) =
-        axis_aligned_contact_normal_and_penetration(body_a, body_b)
+        dynamic_contact_normal_and_penetration(body_a, body_b)
     else {
         return;
     };
@@ -243,6 +243,71 @@ fn resolve_dynamic_contact(
         body_b.velocity.x - tangent_x * tangential_delta * position_share_b,
         body_b.velocity.y - tangent_y * tangential_delta * position_share_b,
     );
+}
+
+fn dynamic_contact_normal_and_penetration(
+    body_a: &RuntimeBodyState,
+    body_b: &RuntimeBodyState,
+) -> Option<(f64, f64, f64)> {
+    let delta_x = body_a.position.x - body_b.position.x;
+    let delta_y = body_a.position.y - body_b.position.y;
+    let relative_velocity_x = body_a.velocity.x - body_b.velocity.x;
+    let relative_velocity_y = body_a.velocity.y - body_b.velocity.y;
+    let overlap_x = body_a.half_extents.x + body_b.half_extents.x - delta_x.abs();
+    let overlap_y = body_a.half_extents.y + body_b.half_extents.y - delta_y.abs();
+
+    if overlap_x <= 0.0 || overlap_y <= 0.0 {
+        return None;
+    }
+
+    let overlap_gap = (overlap_x - overlap_y).abs();
+
+    if overlap_gap <= 1e-6 {
+        let relative_speed_x = relative_velocity_x.abs();
+        let relative_speed_y = relative_velocity_y.abs();
+
+        if relative_speed_x >= relative_speed_y {
+            return Some((
+                separation_direction(delta_x, relative_velocity_x),
+                0.0,
+                overlap_x,
+            ));
+        }
+
+        return Some((
+            0.0,
+            separation_direction(delta_y, relative_velocity_y),
+            overlap_y,
+        ));
+    }
+
+    if overlap_y <= overlap_x {
+        Some((
+            0.0,
+            separation_direction(delta_y, relative_velocity_y),
+            overlap_y,
+        ))
+    } else {
+        Some((
+            separation_direction(delta_x, relative_velocity_x),
+            0.0,
+            overlap_x,
+        ))
+    }
+}
+
+fn separation_direction(delta: f64, relative_velocity: f64) -> f64 {
+    if delta > 0.0 {
+        1.0
+    } else if delta < 0.0 {
+        -1.0
+    } else if relative_velocity > 0.0 {
+        -1.0
+    } else if relative_velocity < 0.0 {
+        1.0
+    } else {
+        1.0
+    }
 }
 
 fn static_contact_normal_and_penetration(
