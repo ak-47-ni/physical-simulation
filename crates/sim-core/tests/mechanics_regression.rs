@@ -374,3 +374,38 @@ fn mechanics_regression_rotated_dynamic_block_does_not_tunnel_through_ground() {
         block.velocity.y
     );
 }
+
+#[test]
+fn mechanics_regression_off_center_impact_still_rotates_a_dynamic_block() {
+    let mut runtime = runtime_for_scene_with_gravity(
+        vec![
+            rotated_block(
+                "block",
+                vector2(0.0, 0.0),
+                (1.2, 0.8),
+                0.0,
+                Vector2::ZERO,
+                false,
+                0.2,
+                0.1,
+            ),
+            ball(
+                "ball",
+                vector2(-3.0, 0.3),
+                0.25,
+                vector2(9.0, 0.0),
+                0.2,
+            ),
+        ],
+        Vector2::ZERO,
+    );
+
+    run_steps(&mut runtime, 20);
+    let block = runtime_entity(&runtime, "block");
+
+    assert!(
+        block.rotation.abs() > 1e-3,
+        "expected true off-center impact to keep rotating the block, got rotation={}",
+        block.rotation
+    );
+}

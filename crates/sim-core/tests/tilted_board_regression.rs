@@ -235,3 +235,48 @@ fn tilted_board_regression_exact_contact_block_slides_without_opening_a_gap() {
         block.rotation
     );
 }
+
+#[test]
+fn tilted_board_regression_locked_support_sliding_does_not_flip_block_upward() {
+    let rotation = FRAC_PI_6;
+    let board_half_height = 0.25;
+    let block_size = (1.2, 0.6);
+    let tangent = vector2(rotation.cos(), rotation.sin());
+    let normal = vector2(-rotation.sin(), rotation.cos());
+    let board_position = vector2(0.0, 0.0);
+    let initial_block_position = board_position
+        .add(tangent.scale(2.0))
+        .add(normal.scale(board_half_height + box_extent_along_axis(block_size, rotation, normal)));
+    let mut runtime = runtime_for_scene(vec![
+        board("board", board_position, (8.0, 0.5), 0.1, rotation),
+        dynamic_block("block", initial_block_position, block_size, rotation, 0.1),
+    ]);
+
+    run_steps(&mut runtime, 48);
+    let block = runtime_entity(&runtime, "block");
+    let local = block.position.sub(board_position);
+    let local_normal_distance = local.dot(normal);
+    let block_normal_extent = box_extent_along_axis(block_size, block.rotation, normal);
+    let contact_gap = local_normal_distance - (board_half_height + block_normal_extent);
+    let rotation_delta = (block.rotation - rotation).abs();
+
+    assert!(
+        block.position.x < initial_block_position.x - 0.6,
+        "expected support sliding to keep moving down the incline, got x={} initial_x={}",
+        block.position.x,
+        initial_block_position.x
+    );
+    assert!(
+        contact_gap.abs() <= 0.06,
+        "expected locked support sliding to stay in contact, got contact_gap={} rotation={}",
+        contact_gap,
+        block.rotation
+    );
+    assert!(
+        rotation_delta <= 0.2,
+        "expected support contact to avoid self-flipping, got rotation={} board_rotation={} delta={}",
+        block.rotation,
+        rotation,
+        rotation_delta
+    );
+}
