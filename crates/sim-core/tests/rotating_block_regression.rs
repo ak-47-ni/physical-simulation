@@ -90,7 +90,7 @@ fn rotating_block_regression_off_center_impact_changes_block_rotation() {
         vec![
             block(
                 "block",
-                vector2(0.0, 0.0),
+                vector2(4.0, 1.0),
                 (1.2, 0.8),
                 0.0,
                 Vector2::ZERO,
@@ -98,13 +98,7 @@ fn rotating_block_regression_off_center_impact_changes_block_rotation() {
                 0.2,
                 0.1,
             ),
-            ball(
-                "ball",
-                vector2(-3.0, 0.3),
-                0.25,
-                vector2(9.0, 0.0),
-                0.2,
-            ),
+            ball("ball", vector2(1.0, 1.3), 0.25, vector2(9.0, 0.0), 0.2),
         ],
         Vector2::ZERO,
     );
@@ -127,7 +121,7 @@ fn rotating_block_regression_runtime_frames_show_block_rotation_changing_over_ti
         vec![
             block(
                 "block",
-                vector2(0.0, 0.0),
+                vector2(4.0, 1.0),
                 (1.2, 0.8),
                 0.0,
                 Vector2::ZERO,
@@ -135,13 +129,7 @@ fn rotating_block_regression_runtime_frames_show_block_rotation_changing_over_ti
                 0.2,
                 0.1,
             ),
-            ball(
-                "ball",
-                vector2(-3.0, 0.3),
-                0.25,
-                vector2(9.0, 0.0),
-                0.2,
-            ),
+            ball("ball", vector2(1.0, 1.3), 0.25, vector2(9.0, 0.0), 0.2),
         ],
         Vector2::ZERO,
     );

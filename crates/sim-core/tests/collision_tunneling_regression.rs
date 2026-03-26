@@ -80,8 +80,8 @@ fn runtime_entity(runtime: &RuntimeScene, entity_id: &str) -> RuntimeEntityFrame
 fn collision_tunneling_regression_fast_ball_ball_impact_does_not_cross_through() {
     let mut runtime = runtime_for_scene(
         vec![
-            ball("left", vector2(-3.0, 0.0), 0.5, vector2(80.0, 0.0), 1.0),
-            ball("right", vector2(3.0, 0.0), 0.5, vector2(-80.0, 0.0), 1.0),
+            ball("left", vector2(2.0, 1.0), 0.5, vector2(80.0, 0.0), 1.0),
+            ball("right", vector2(8.0, 1.0), 0.5, vector2(-80.0, 0.0), 1.0),
         ],
         Vector2::ZERO,
     );
@@ -108,7 +108,7 @@ fn collision_tunneling_regression_fast_block_block_impact_does_not_cross_through
         vec![
             block(
                 "left",
-                vector2(-5.0, 0.0),
+                vector2(2.0, 1.0),
                 (1.0, 1.0),
                 vector2(120.0, 0.0),
                 false,
@@ -116,7 +116,7 @@ fn collision_tunneling_regression_fast_block_block_impact_does_not_cross_through
             ),
             block(
                 "right",
-                vector2(0.0, 0.0),
+                vector2(8.0, 1.0),
                 (1.0, 1.0),
                 vector2(0.0, 0.0),
                 false,
@@ -139,8 +139,8 @@ fn collision_tunneling_regression_fast_block_block_impact_does_not_cross_through
 fn collision_tunneling_regression_very_fast_ball_does_not_skip_a_stationary_target() {
     let mut runtime = runtime_for_scene(
         vec![
-            ball("left", vector2(-6.0, 0.0), 0.5, vector2(600.0, 0.0), 1.0),
-            ball("right", vector2(0.0, 0.0), 0.5, Vector2::ZERO, 1.0),
+            ball("left", vector2(2.0, 1.0), 0.5, vector2(600.0, 0.0), 1.0),
+            ball("right", vector2(8.0, 1.0), 0.5, Vector2::ZERO, 1.0),
         ],
         Vector2::ZERO,
     );

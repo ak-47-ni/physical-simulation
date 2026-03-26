@@ -220,10 +220,10 @@ fn mechanics_regression_friction_reduces_sliding_motion_on_a_board() {
 fn mechanics_regression_dynamic_balls_do_not_pass_through_each_other() {
     let mut runtime = runtime_for_scene_with_gravity(
         vec![
-            ball("ball-left", vector2(-2.0, 0.0), 0.5, vector2(5.0, 0.0), 0.8),
+            ball("ball-left", vector2(2.0, 1.0), 0.5, vector2(5.0, 0.0), 0.8),
             ball(
                 "ball-right",
-                vector2(2.0, 0.0),
+                vector2(6.0, 1.0),
                 0.5,
                 vector2(-5.0, 0.0),
                 0.8,
@@ -247,7 +247,7 @@ fn mechanics_regression_dynamic_blocks_do_not_tunnel_through_each_other() {
         vec![
             block(
                 "block-left",
-                vector2(-3.0, 0.0),
+                vector2(3.0, 1.0),
                 (1.0, 1.0),
                 vector2(10.0, 0.0),
                 false,
@@ -256,7 +256,7 @@ fn mechanics_regression_dynamic_blocks_do_not_tunnel_through_each_other() {
             ),
             block(
                 "block-right",
-                vector2(0.0, 0.0),
+                vector2(6.0, 1.0),
                 (1.0, 1.0),
                 vector2(0.0, 0.0),
                 false,
@@ -381,7 +381,7 @@ fn mechanics_regression_off_center_impact_still_rotates_a_dynamic_block() {
         vec![
             rotated_block(
                 "block",
-                vector2(0.0, 0.0),
+                vector2(4.0, 1.0),
                 (1.2, 0.8),
                 0.0,
                 Vector2::ZERO,
@@ -389,13 +389,7 @@ fn mechanics_regression_off_center_impact_still_rotates_a_dynamic_block() {
                 0.2,
                 0.1,
             ),
-            ball(
-                "ball",
-                vector2(-3.0, 0.3),
-                0.25,
-                vector2(9.0, 0.0),
-                0.2,
-            ),
+            ball("ball", vector2(1.0, 1.3), 0.25, vector2(9.0, 0.0), 0.2),
         ],
         Vector2::ZERO,
     );

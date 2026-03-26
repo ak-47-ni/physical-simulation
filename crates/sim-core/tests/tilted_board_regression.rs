@@ -164,7 +164,7 @@ fn tilted_board_regression_ball_slides_along_locked_incline() {
     let ball_radius = 0.4;
     let tangent = vector2(rotation.cos(), rotation.sin());
     let normal = vector2(-rotation.sin(), rotation.cos());
-    let board_position = vector2(0.0, 0.0);
+    let board_position = vector2(4.0, 2.0);
     let initial_ball_position = board_position
         .add(tangent.scale(1.5))
         .add(normal.scale(board_half_height + ball_radius - 0.02));
@@ -196,7 +196,7 @@ fn tilted_board_regression_exact_contact_block_slides_without_opening_a_gap() {
     let block_size = (1.2, 0.6);
     let tangent = vector2(rotation.cos(), rotation.sin());
     let normal = vector2(-rotation.sin(), rotation.cos());
-    let board_position = vector2(0.0, 0.0);
+    let board_position = vector2(4.0, 2.0);
     let initial_tangent_distance = 1.5;
     let initial_block_normal_extent = box_extent_along_axis(block_size, rotation, normal);
     let initial_block_position = board_position
@@ -243,7 +243,7 @@ fn tilted_board_regression_locked_support_sliding_does_not_flip_block_upward() {
     let block_size = (1.2, 0.6);
     let tangent = vector2(rotation.cos(), rotation.sin());
     let normal = vector2(-rotation.sin(), rotation.cos());
-    let board_position = vector2(0.0, 0.0);
+    let board_position = vector2(4.0, 2.0);
     let initial_block_position = board_position
         .add(tangent.scale(2.0))
         .add(normal.scale(board_half_height + box_extent_along_axis(block_size, rotation, normal)));

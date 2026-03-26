@@ -13,6 +13,13 @@ pub use angular_dynamics::inverse_inertia_for_body;
 
 const DYNAMIC_CONTACT_PASSES: usize = 16;
 const POSITION_CORRECTION_SLOP: f64 = 1e-6;
+const SUPPORT_CONTACT_LINEAR_SPEED_THRESHOLD: f64 = 1.5;
+const SUPPORT_CONTACT_PENETRATION_THRESHOLD: f64 = 0.15;
+const SUPPORT_CONTACT_ANGULAR_DAMPING: f64 = 0.4;
+const SUPPORT_CONTACT_ANGULAR_REST_THRESHOLD: f64 = 1e-3;
+const IMPLICIT_BOUNDARY_NORMALS: [Vector2; 2] = [Vector2::new(1.0, 0.0), Vector2::new(0.0, 1.0)];
+const IMPLICIT_BOUNDARY_FRICTION_COEFFICIENT: f64 = 0.0;
+const IMPLICIT_BOUNDARY_RESTITUTION_COEFFICIENT: f64 = 0.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeBodyShape {
@@ -105,9 +112,13 @@ fn resolve_static_contacts(bodies: &mut [RuntimeBodyState], static_surfaces: &[R
             continue;
         }
 
+        resolve_implicit_boundaries(body);
+
         for surface in static_surfaces {
             resolve_contact_with_surface(body, surface);
         }
+
+        resolve_implicit_boundaries(body);
     }
 }
 
@@ -134,6 +145,38 @@ fn resolve_contact_with_surface(body: &mut RuntimeBodyState, surface: &RuntimeBo
         return;
     };
 
+    resolve_surface_contact_manifold(
+        body,
+        contact,
+        surface.friction_coefficient,
+        surface.restitution_coefficient,
+        surface.is_static,
+    );
+}
+
+fn resolve_implicit_boundaries(body: &mut RuntimeBodyState) {
+    for normal in IMPLICIT_BOUNDARY_NORMALS {
+        let Some(contact) = contact_geometry::boundary_contact_manifold(body, normal) else {
+            continue;
+        };
+
+        resolve_surface_contact_manifold(
+            body,
+            contact,
+            IMPLICIT_BOUNDARY_FRICTION_COEFFICIENT,
+            IMPLICIT_BOUNDARY_RESTITUTION_COEFFICIENT,
+            true,
+        );
+    }
+}
+
+fn resolve_surface_contact_manifold(
+    body: &mut RuntimeBodyState,
+    contact: contact_geometry::ContactManifold,
+    surface_friction_coefficient: f64,
+    surface_restitution_coefficient: f64,
+    locked_surface: bool,
+) {
     let inverse_mass_body = inverse_mass(body);
 
     if inverse_mass_body <= f64::EPSILON {
@@ -143,7 +186,13 @@ fn resolve_contact_with_surface(body: &mut RuntimeBodyState, surface: &RuntimeBo
     let correction = positional_correction(contact.penetration);
     body.position = body.position.add(contact.normal.scale(correction));
 
-    let point = contact.point;
+    let support_contact =
+        is_support_contact(body, contact.normal, contact.penetration, locked_surface);
+    let point = if support_contact {
+        body.position
+    } else {
+        contact.point
+    };
     let normal = contact.normal;
     let radial_offset = point.sub(body.position);
     let relative_velocity = angular_dynamics::velocity_at_point(body, point);
@@ -154,14 +203,27 @@ fn resolve_contact_with_surface(body: &mut RuntimeBodyState, surface: &RuntimeBo
     let mut normal_impulse = 0.0;
 
     if normal_velocity < 0.0 && inverse_normal_mass > f64::EPSILON {
-        let restitution = body
-            .restitution_coefficient
-            .max(surface.restitution_coefficient);
+        let restitution = if support_contact {
+            0.0
+        } else {
+            body.restitution_coefficient
+                .max(surface_restitution_coefficient)
+        };
         normal_impulse = -((1.0 + restitution) * normal_velocity) / inverse_normal_mass;
         angular_dynamics::apply_impulse(body, normal.scale(normal_impulse), point);
     }
 
-    apply_friction_impulse_against_surface(body, surface, point, normal, normal_impulse);
+    apply_friction_impulse_against_surface(
+        body,
+        surface_friction_coefficient,
+        point,
+        normal,
+        normal_impulse,
+    );
+
+    if support_contact {
+        damp_support_rotation(body);
+    }
 }
 
 fn resolve_contact_pair(body_a: &mut RuntimeBodyState, body_b: &mut RuntimeBodyState) {
@@ -212,7 +274,7 @@ fn resolve_contact_pair(body_a: &mut RuntimeBodyState, body_b: &mut RuntimeBodyS
 
 fn apply_friction_impulse_against_surface(
     body: &mut RuntimeBodyState,
-    surface: &RuntimeBodyState,
+    surface_friction_coefficient: f64,
     point: Vector2,
     normal: Vector2,
     normal_impulse: f64,
@@ -233,10 +295,10 @@ fn apply_friction_impulse_against_surface(
         return;
     }
 
-    let friction = (body.friction_coefficient + surface.friction_coefficient) * 0.5;
+    let friction = (body.friction_coefficient + surface_friction_coefficient) * 0.5;
     let max_friction_impulse = friction * normal_impulse.abs();
-    let tangential_impulse =
-        (-tangential_speed / inverse_tangent_mass).clamp(-max_friction_impulse, max_friction_impulse);
+    let tangential_impulse = (-tangential_speed / inverse_tangent_mass)
+        .clamp(-max_friction_impulse, max_friction_impulse);
 
     angular_dynamics::apply_impulse(body, tangent.scale(tangential_impulse), point);
 }
@@ -270,8 +332,8 @@ fn apply_friction_impulse_between_bodies(
 
     let friction = (body_a.friction_coefficient + body_b.friction_coefficient) * 0.5;
     let max_friction_impulse = friction * normal_impulse.abs();
-    let tangential_impulse =
-        (-tangential_speed / inverse_tangent_mass).clamp(-max_friction_impulse, max_friction_impulse);
+    let tangential_impulse = (-tangential_speed / inverse_tangent_mass)
+        .clamp(-max_friction_impulse, max_friction_impulse);
     let impulse = tangent.scale(tangential_impulse);
 
     angular_dynamics::apply_impulse(body_a, impulse, point);
@@ -280,6 +342,34 @@ fn apply_friction_impulse_between_bodies(
 
 fn positional_correction(penetration: f64) -> f64 {
     (penetration - POSITION_CORRECTION_SLOP).max(0.0)
+}
+
+fn is_support_contact(
+    body: &RuntimeBodyState,
+    normal: Vector2,
+    penetration: f64,
+    locked_surface: bool,
+) -> bool {
+    if !locked_surface || body.shape != RuntimeBodyShape::Box {
+        return false;
+    }
+
+    let penetration_limit = (contact_geometry::projected_extent(body, normal) * 0.5)
+        .min(SUPPORT_CONTACT_PENETRATION_THRESHOLD);
+
+    if penetration > penetration_limit {
+        return false;
+    }
+
+    body.velocity.dot(normal) >= -SUPPORT_CONTACT_LINEAR_SPEED_THRESHOLD
+}
+
+fn damp_support_rotation(body: &mut RuntimeBodyState) {
+    body.angular_velocity_radians *= SUPPORT_CONTACT_ANGULAR_DAMPING;
+
+    if body.angular_velocity_radians.abs() <= SUPPORT_CONTACT_ANGULAR_REST_THRESHOLD {
+        body.angular_velocity_radians = 0.0;
+    }
 }
 
 fn tangent_direction(relative_velocity: Vector2, normal: Vector2) -> Vector2 {

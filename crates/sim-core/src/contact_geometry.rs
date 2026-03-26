@@ -29,6 +29,30 @@ pub fn contact_manifold(
     }
 }
 
+pub fn boundary_contact_manifold(
+    body: &RuntimeBodyState,
+    inward_normal: Vector2,
+) -> Option<ContactManifold> {
+    let normal = inward_normal.normalized();
+
+    if normal.length() <= CONTACT_EPSILON {
+        return None;
+    }
+
+    let extent = projected_extent(body, normal);
+    let signed_distance_to_boundary = body.position.dot(normal) - extent;
+
+    if signed_distance_to_boundary >= 0.0 {
+        return None;
+    }
+
+    Some(ContactManifold {
+        normal,
+        penetration: -signed_distance_to_boundary,
+        point: body.position.sub(normal.scale(extent)),
+    })
+}
+
 pub fn projected_extent(body: &RuntimeBodyState, axis: Vector2) -> f64 {
     match body.shape {
         RuntimeBodyShape::Ball => body.half_extents.x,
@@ -67,13 +91,20 @@ fn ball_ball_contact(
     })
 }
 
-fn ball_box_contact(ball: &RuntimeBodyState, box_body: &RuntimeBodyState) -> Option<ContactManifold> {
+fn ball_box_contact(
+    ball: &RuntimeBodyState,
+    box_body: &RuntimeBodyState,
+) -> Option<ContactManifold> {
     let [axis_x, axis_y] = box_axes(box_body);
     let relative = ball.position.sub(box_body.position);
     let local = Vector2::new(relative.dot(axis_x), relative.dot(axis_y));
     let clamped = Vector2::new(
-        local.x.clamp(-box_body.half_extents.x, box_body.half_extents.x),
-        local.y.clamp(-box_body.half_extents.y, box_body.half_extents.y),
+        local
+            .x
+            .clamp(-box_body.half_extents.x, box_body.half_extents.x),
+        local
+            .y
+            .clamp(-box_body.half_extents.y, box_body.half_extents.y),
     );
     let closest_world = box_body
         .position
@@ -104,7 +135,13 @@ fn ball_box_contact(ball: &RuntimeBodyState, box_body: &RuntimeBodyState) -> Opt
         let point = box_body
             .position
             .add(axis_x.scale(box_body.half_extents.x * direction))
-            .add(axis_y.scale(local.y.clamp(-box_body.half_extents.y, box_body.half_extents.y)));
+            .add(
+                axis_y.scale(
+                    local
+                        .y
+                        .clamp(-box_body.half_extents.y, box_body.half_extents.y),
+                ),
+            );
 
         Some(ContactManifold {
             normal,
@@ -116,7 +153,13 @@ fn ball_box_contact(ball: &RuntimeBodyState, box_body: &RuntimeBodyState) -> Opt
         let normal = axis_y.scale(direction);
         let point = box_body
             .position
-            .add(axis_x.scale(local.x.clamp(-box_body.half_extents.x, box_body.half_extents.x)))
+            .add(
+                axis_x.scale(
+                    local
+                        .x
+                        .clamp(-box_body.half_extents.x, box_body.half_extents.x),
+                ),
+            )
             .add(axis_y.scale(box_body.half_extents.y * direction));
 
         Some(ContactManifold {
