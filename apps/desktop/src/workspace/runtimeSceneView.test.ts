@@ -73,6 +73,13 @@ function createBlockEntity(): EditorSceneEntity {
   };
 }
 
+function createRotatedBlockEntity(rotationDegrees: number): WorkspaceSceneEntity {
+  return {
+    ...createBlockEntity(),
+    rotationDegrees,
+  };
+}
+
 function createPolygonEntity(): EditorSceneEntity {
   return {
     id: "polygon-1",
@@ -278,6 +285,34 @@ describe("projectRuntimeSceneEntities", () => {
       expect.objectContaining({
         id: "board-1",
         rotationDegrees: 18,
+      }),
+    );
+  });
+
+  it("falls back to authored block rotation when runtime rotation rounds to zero", () => {
+    const projected = projectRuntimeSceneEntities({
+      editorEntities: [createRotatedBlockEntity(22)],
+      runtimeFrame: createRuntimeFrame({
+        entities: [
+          {
+            id: "block-1",
+            transform: {
+              x: 2.62,
+              y: 2.66,
+              rotation: 0.00001,
+            },
+          },
+        ],
+      }),
+      viewport: meterViewport,
+    });
+
+    expect(projected[0]).toEqual(
+      expect.objectContaining({
+        id: "block-1",
+        rotationDegrees: 22,
+        width: 84,
+        height: 52,
       }),
     );
   });
