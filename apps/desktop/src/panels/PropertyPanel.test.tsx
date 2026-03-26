@@ -232,7 +232,44 @@ describe("PropertyPanel", () => {
     expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("45");
   });
 
-  it("does not show the board-only angle control for balls", () => {
+  it("shows the angle control for blocks too", () => {
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings()}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onScenePhysicsChange={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntityRotation={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        scenePhysics={TEST_SCENE_PHYSICS}
+        selectedEntity={{
+          id: "block-1",
+          kind: "block",
+          label: "Block 1",
+          x: 3.36,
+          y: 2.2,
+          width: 0.84,
+          height: 0.52,
+          rotationDegrees: 15,
+          mass: 2.8,
+          friction: 0.36,
+          restitution: 1,
+          locked: false,
+          velocityX: 0,
+          velocityY: 0,
+        }}
+      />,
+    );
+
+    expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("15");
+  });
+
+  it("does not show the rectangular-body angle control for balls", () => {
     render(
       <PropertyPanel
         display={createSceneDisplaySettings()}

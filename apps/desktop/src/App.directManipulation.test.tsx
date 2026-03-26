@@ -32,6 +32,19 @@ vi.mock("./panels/ObjectLibraryPanel", () => ({
         </button>
         <button
           type="button"
+          onClick={() => {
+            const session: LibraryDragSession = {
+              bodyKind: "block",
+              pointerClientPx: { x: 24, y: 36 },
+            };
+
+            (props.onStartBodyDrag as undefined | ((session: unknown) => void))?.(session);
+          }}
+        >
+          Start block drag
+        </button>
+        <button
+          type="button"
           onClick={() => (props.onSelectItem as (itemId: string) => void)("spring")}
         >
           Select spring
@@ -55,6 +68,9 @@ vi.mock("./workspace/WorkspaceCanvas", () => ({
       <div
         data-library-drag-blocked={String(Boolean(props.libraryDragBlocked))}
         data-library-drag-active={String(Boolean(props.libraryDragSession))}
+        data-placement-preview-status={String(
+          (props.authoringPlacementPreview as { status?: string } | null)?.status ?? "none",
+        )}
         data-testid="mock-workspace-canvas"
         data-tool={String((props.state as { activeTool: string }).activeTool)}
       >
@@ -90,6 +106,19 @@ vi.mock("./workspace/WorkspaceCanvas", () => ({
             (props.onLibraryDragHoverChange as
               | undefined
               | ((hover: unknown) => void))?.({
+              authoringPosition: { x: 3.36, y: 2.24 },
+              isOverStage: true,
+            })
+          }
+        >
+          Hover block snap stage
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            (props.onLibraryDragHoverChange as
+              | undefined
+              | ((hover: unknown) => void))?.({
               authoringPosition: null,
               isOverStage: false,
             })
@@ -109,6 +138,32 @@ vi.mock("./workspace/WorkspaceCanvas", () => ({
           }
         >
           Move ball to occupied area
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            (props.onMoveEntity as
+              | undefined
+              | ((entityId: string, position: { x: number; y: number }) => void))?.("block-1", {
+              x: 3.36,
+              y: 2.24,
+            })
+          }
+        >
+          Move block near board face
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            (props.onMoveEntity as
+              | undefined
+              | ((entityId: string, position: { x: number; y: number }) => void))?.("block-1", {
+              x: 3.18,
+              y: 2.72,
+            })
+          }
+        >
+          Move block to deep overlap
         </button>
         <button type="button" onClick={() => (props.onCancelPlacement as () => void)?.()}>
           Cancel placement
@@ -191,6 +246,53 @@ describe("App direct manipulation contracts", () => {
     fireEvent.pointerUp(window);
 
     expect(screen.queryByTestId("scene-tree-item-ball-2")).toBeNull();
+  });
+
+  it("publishes a snap preview and commits a snapped block on library drop release", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start block drag" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hover block snap stage" }));
+
+    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-placement-preview-status")).toBe(
+      "snap",
+    );
+
+    fireEvent.pointerUp(window);
+
+    expect(screen.getByTestId("scene-tree-item-block-1").getAttribute("data-selected")).toBe("true");
+    expect(screen.getByText("3.36 m, 2.2 m")).toBeDefined();
+  });
+
+  it("commits a snapped block pose when a drag release lands near a board face", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start block drag" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
+    fireEvent.pointerUp(window);
+
+    expect(screen.getByText("2.48 m, 2.04 m")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Move block near board face" }));
+
+    expect(screen.getByText("2.48 m, 2.04 m")).toBeDefined();
+
+    fireEvent.mouseUp(window);
+
+    expect(screen.getByText("3.36 m, 2.2 m")).toBeDefined();
+  });
+
+  it("keeps the last legal block pose when release target cannot resolve to contact", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start block drag" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
+    fireEvent.pointerUp(window);
+
+    fireEvent.click(screen.getByRole("button", { name: "Move block to deep overlap" }));
+    fireEvent.mouseUp(window);
+
+    expect(screen.getByText("2.48 m, 2.04 m")).toBeDefined();
   });
 
   it("keeps guided constraint placement cancelable while body drags use the select tool", () => {

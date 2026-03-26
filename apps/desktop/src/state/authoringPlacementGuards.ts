@@ -1,6 +1,7 @@
 import type { SceneAuthoringSettings } from "./sceneAuthoringSettings";
 import { convertLengthValue, convertMassValue } from "./sceneUnits";
 import { canPlaceAuthoringEntity, createRepositionedEntity } from "./authoringOccupancy";
+import { resolveAuthoringPlacement } from "./authoringContactSnap";
 import type { EditorSceneEntity } from "./editorStore";
 
 const LEGACY_LENGTH_UNIT = "cm";
@@ -29,14 +30,14 @@ export function findRepositionedAuthoringEntity(input: {
   }
 
   const candidate = createRepositionedEntity(currentEntity, input.position);
-
-  return canPlaceAuthoringEntity({
+  const resolution = resolveAuthoringPlacement({
     candidate,
     entities: input.entities,
     ignoreEntityId: currentEntity.id,
-  })
-    ? candidate
-    : null;
+    maxSnapDistance: 0,
+  });
+
+  return resolution.status === "blocked" ? null : resolution.entity;
 }
 
 export function convertLegacyCreatedEntityToSceneUnits(

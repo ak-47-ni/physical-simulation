@@ -478,7 +478,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 />
               </div>
             )}
-            {selectedEntity.kind === "board" ? (
+            {selectedEntity.kind !== "ball" ? (
               <PositionInput
                 disabled={authoringLocked}
                 label="Angle"

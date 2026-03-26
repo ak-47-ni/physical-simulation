@@ -7,6 +7,33 @@ afterEach(() => {
   cleanup();
 });
 
+function createBlockViaLibraryDrop(screenPosition: { x: number; y: number }) {
+  fireEvent.mouseDown(screen.getByTestId("library-item-block"), {
+    button: 0,
+    clientX: 24,
+    clientY: 36,
+  });
+  fireEvent.mouseMove(screen.getByTestId("workspace-stage"), {
+    clientX: screenPosition.x,
+    clientY: screenPosition.y,
+  });
+  fireEvent.pointerUp(window);
+}
+
+function readBoardCenterY() {
+  return 2.72 + 0.18 / 2;
+}
+
+function readBlockSupportAlongUpNormal(rotationDegrees: number) {
+  const rotationRadians = (rotationDegrees * Math.PI) / 180;
+
+  return Math.abs(Math.sin(rotationRadians)) * (0.84 / 2) + Math.abs(Math.cos(rotationRadians)) * (0.52 / 2);
+}
+
+function readExpectedBlockContactTopLeftY(rotationDegrees: number) {
+  return readBoardCenterY() - 0.18 / 2 - readBlockSupportAlongUpNormal(rotationDegrees) - 0.52 / 2;
+}
+
 describe("App selection sync", () => {
   it("synchronizes selection across scene tree, workspace, and property panel", () => {
     render(<App />);
@@ -98,6 +125,34 @@ describe("App selection sync", () => {
     expect(board.style.width).toBe("148px");
     expect(board.style.height).toBe("24px");
     expect(sceneTreeItem.textContent).toBe("Ramp");
+  });
+
+  it("shows block angle and snaps a modest rotation edit into contact", () => {
+    render(<App />);
+
+    createBlockViaLibraryDrop({ x: 336, y: 224 });
+
+    expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("0");
+    expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe("2.2");
+
+    fireEvent.change(screen.getByLabelText("Angle"), { target: { value: "15" } });
+
+    expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("15");
+    expect(Number((screen.getByLabelText("Position Y") as HTMLInputElement).value)).toBeCloseTo(
+      readExpectedBlockContactTopLeftY(15),
+      4,
+    );
+  });
+
+  it("rejects block rotation edits that cannot resolve within the snap distance", () => {
+    render(<App />);
+
+    createBlockViaLibraryDrop({ x: 336, y: 224 });
+
+    fireEvent.change(screen.getByLabelText("Angle"), { target: { value: "90" } });
+
+    expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("0");
+    expect(Number((screen.getByLabelText("Position Y") as HTMLInputElement).value)).toBeCloseTo(2.2, 6);
   });
 
   it("updates ball radius from the property panel", () => {
