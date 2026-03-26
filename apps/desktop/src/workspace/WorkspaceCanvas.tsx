@@ -8,6 +8,7 @@ import {
   projectAuthoringEntityToScreen,
   type WorkspaceSceneEntity,
 } from "./runtimeSceneView";
+import { createSceneDomainOverlay } from "./sceneDomainOverlay";
 import type { EditorTool } from "./tools";
 import {
   createConstraintLineGeometry,
@@ -417,6 +418,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       }
     : null;
   const contactTargetEntityId = projectedPlacementPreview?.contactWithEntityId ?? null;
+  const sceneDomainOverlay = createSceneDomainOverlay(viewport);
 
   useEffect(() => {
     if (!dragSession) {
@@ -778,6 +780,17 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
         onMouseLeave={handleStageMouseLeave}
         onMouseMove={handleStageMouseMove}
       >
+        {sceneDomainOverlay.invalidRegions.map((region) => (
+          <div key={region.testId} data-testid={region.testId} style={region.style} />
+        ))}
+        <div
+          data-testid={sceneDomainOverlay.yAxis.testId}
+          style={sceneDomainOverlay.yAxis.style}
+        />
+        <div
+          data-testid={sceneDomainOverlay.xAxis.testId}
+          style={sceneDomainOverlay.xAxis.style}
+        />
         <div
           style={{
             position: "absolute",
