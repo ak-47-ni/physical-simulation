@@ -9,7 +9,10 @@ use std::collections::HashMap;
 use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySample};
 use crate::entity::{CompiledShape, Vector2};
 use crate::scene::CompiledScene;
-use crate::solver::{RuntimeBodyShape, RuntimeBodyState, project_track_bindings, step_bodies};
+use crate::solver::{
+    RuntimeBodyShape, RuntimeBodyState, inverse_inertia_for_body, project_track_bindings,
+    step_bodies,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -55,12 +58,19 @@ impl RuntimeScene {
                 half_extents: shape_half_extents(&entity.shape),
                 rotation_radians: entity.rotation_radians,
                 velocity: entity.initial_velocity,
+                angular_velocity_radians: 0.0,
                 acceleration: if entity.is_static {
                     Vector2::ZERO
                 } else {
                     gravity
                 },
                 mass: entity.mass,
+                inverse_inertia: inverse_inertia_for_body(
+                    runtime_body_shape(&entity.shape),
+                    shape_half_extents(&entity.shape),
+                    entity.mass,
+                    entity.is_static,
+                ),
                 friction_coefficient: entity.friction_coefficient,
                 restitution_coefficient: entity.restitution_coefficient,
                 is_static: entity.is_static,
