@@ -7,7 +7,7 @@ import {
   type EditorSceneEntity,
 } from "../state/editorStore";
 import type { LibraryDragSession } from "./libraryDragSession";
-import { WorkspaceCanvas } from "./WorkspaceCanvas";
+import { WorkspaceCanvas, type WorkspaceCanvasAuthoringPlacementPreview } from "./WorkspaceCanvas";
 import {
   projectRuntimeSceneEntities,
   type WorkspaceSceneEntity,
@@ -52,6 +52,45 @@ export const authoredBallInMeters: EditorSceneEntity = {
   velocityY: 0,
 };
 
+export const authoredBoardInMeters: EditorSceneEntity = {
+  id: "board-1",
+  kind: "board",
+  label: "Board 1",
+  x: 3.2,
+  y: 2.6,
+  width: 1.48,
+  height: 0.24,
+  mass: 5,
+  friction: 0.42,
+  restitution: 1,
+  locked: false,
+  rotationDegrees: 0,
+  velocityX: 0,
+  velocityY: 0,
+};
+
+export function createAuthoredBlockEntity(
+  overrides: Partial<Extract<EditorSceneEntity, { kind: "block" }>> = {},
+): Extract<EditorSceneEntity, { kind: "block" }> {
+  return {
+    id: "block-1",
+    kind: "block",
+    label: "Block 1",
+    x: 2.12,
+    y: 2.36,
+    width: 0.84,
+    height: 0.52,
+    mass: 2.8,
+    friction: 0.36,
+    restitution: 1,
+    locked: false,
+    rotationDegrees: 0,
+    velocityX: 0,
+    velocityY: 0,
+    ...overrides,
+  };
+}
+
 export function createBallEntityPx(
   overrides: Partial<Extract<WorkspaceSceneEntity, { kind: "ball" }>> = {},
 ): WorkspaceSceneEntity {
@@ -92,6 +131,10 @@ export function createBlockEntityPx(
     velocityY: 0,
     ...overrides,
   };
+}
+
+export function createRotatedBlockEntityPx(rotationDegrees: number) {
+  return createBlockEntityPx({ rotationDegrees });
 }
 
 export function createBoardEntityPx(
@@ -166,6 +209,7 @@ export function createTrackConstraint(
 }
 
 export function WorkspaceCanvasPanHarness(props: {
+  authoringPlacementPreview?: WorkspaceCanvasAuthoringPlacementPreview;
   libraryDragSession?: LibraryDragSession | null;
   libraryDragBlocked?: boolean;
   entities?: WorkspaceSceneEntity[];
@@ -205,6 +249,7 @@ export function WorkspaceCanvasPanHarness(props: {
         onMoveEntity={props.onMoveEntity ?? (() => undefined)}
         onSelectConstraint={props.onSelectConstraint}
         state={props.state ?? createInitialEditorState()}
+        authoringPlacementPreview={props.authoringPlacementPreview ?? null}
         libraryDragBlocked={props.libraryDragBlocked ?? false}
         selectedRuntimeVelocityVector={props.selectedRuntimeVelocityVector ?? null}
         viewport={viewport}

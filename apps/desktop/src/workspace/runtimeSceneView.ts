@@ -30,14 +30,16 @@ function resolveRuntimeRotationDegrees(
     return undefined;
   }
 
-  if (Math.abs(runtimeRotationRadians) > Number.EPSILON) {
-    return radiansToDegrees(runtimeRotationRadians);
+  const runtimeRotationDegrees = radiansToDegrees(runtimeRotationRadians);
+
+  if (Math.abs(runtimeRotationDegrees) > 0) {
+    return runtimeRotationDegrees;
   }
 
   return editorEntity.rotationDegrees;
 }
 
-function projectEditorEntityToScreen(
+export function projectAuthoringEntityToScreen(
   entity: WorkspaceSceneEntity,
   viewport: UnitViewport,
 ): WorkspaceSceneEntity {
@@ -74,7 +76,7 @@ export function projectRuntimeSceneEntities(
   const viewport = input.viewport ?? DEFAULT_WORKSPACE_VIEWPORT;
 
   if (!runtimeFrame) {
-    return editorEntities.map((entity) => projectEditorEntityToScreen(entity, viewport));
+    return editorEntities.map((entity) => projectAuthoringEntityToScreen(entity, viewport));
   }
 
   const runtimeEntitiesById = new Map(
@@ -82,7 +84,7 @@ export function projectRuntimeSceneEntities(
   );
 
   return editorEntities.map((editorEntity) => {
-    const projectedEditorEntity = projectEditorEntityToScreen(editorEntity, viewport);
+    const projectedEditorEntity = projectAuthoringEntityToScreen(editorEntity, viewport);
     const runtimeEntity = runtimeEntitiesById.get(editorEntity.id);
 
     if (!runtimeEntity) {

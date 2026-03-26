@@ -2,8 +2,12 @@ import { useEffect, useState, type CSSProperties, type MouseEvent } from "react"
 
 import type { SceneDisplaySettings } from "../io/sceneFile";
 import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
+import type { EditorSceneEntity } from "../state/editorStore";
 import type { LibraryDragSession } from "./libraryDragSession";
-import type { WorkspaceSceneEntity } from "./runtimeSceneView";
+import {
+  projectAuthoringEntityToScreen,
+  type WorkspaceSceneEntity,
+} from "./runtimeSceneView";
 import type { EditorTool } from "./tools";
 import {
   createConstraintLineGeometry,
@@ -26,6 +30,7 @@ type ConstraintPlacementState = {
 };
 
 type WorkspaceCanvasProps = {
+  authoringPlacementPreview?: WorkspaceCanvasAuthoringPlacementPreview;
   authoringLocked?: boolean;
   constraintPlacement?: ConstraintPlacementState | null;
   constraints?: EditorConstraint[];
@@ -54,6 +59,16 @@ type WorkspaceCanvasProps = {
   viewport?: UnitViewport;
 };
 
+type WorkspaceCanvasAuthoringPlacementStatus = "free" | "snap" | "blocked";
+
+export type WorkspaceCanvasAuthoringPlacementPreview =
+  | {
+      contactWithEntityId?: string;
+      entity: EditorSceneEntity;
+      status: WorkspaceCanvasAuthoringPlacementStatus;
+    }
+  | null;
+
 type EntityDragSession = {
   entityId: string;
   originScreenX: number;
@@ -72,6 +87,12 @@ type PanSession = {
 type WorkspaceCanvasLibraryDragHover = {
   authoringPosition: { x: number; y: number } | null;
   isOverStage: boolean;
+};
+
+type ProjectedPlacementPreview = {
+  contactWithEntityId?: string;
+  entity: WorkspaceSceneEntity;
+  status: WorkspaceCanvasAuthoringPlacementStatus;
 };
 
 const toolbarStyle: CSSProperties = {
@@ -98,13 +119,26 @@ const authoringLockMessage =
 function getEntityVisualStyle(
   entity: WorkspaceSceneEntity,
   isSelected: boolean,
+  isContactTarget: boolean,
 ): CSSProperties {
   const rotationDegrees = getEntityRotationDegrees(entity);
+  const boxShadows: string[] = [];
+
+  if (entity.locked) {
+    boxShadows.push("0 0 0 2px rgba(245, 181, 62, 0.45)");
+  }
+
+  if (isContactTarget) {
+    boxShadows.push("0 0 0 4px rgba(27, 167, 132, 0.18)");
+  }
+
   const baseStyle: CSSProperties = {
     position: "absolute",
     left: `${entity.x}px`,
     top: `${entity.y}px`,
-    border: "1px solid rgba(17, 37, 64, 0.16)",
+    border: isContactTarget
+      ? "1px solid rgba(18, 117, 93, 0.42)"
+      : "1px solid rgba(17, 37, 64, 0.16)",
     background: isSelected ? "#2457a6" : "rgba(17, 37, 64, 0.88)",
     color: "#f7fbff",
     fontSize: entity.kind === "board" ? "10px" : "12px",
@@ -114,7 +148,7 @@ function getEntityVisualStyle(
     placeItems: "center",
     overflow: "hidden",
     padding: 0,
-    boxShadow: entity.locked ? "0 0 0 2px rgba(245, 181, 62, 0.45)" : "none",
+    boxShadow: boxShadows.join(", ") || "none",
     transform: rotationDegrees === 0 ? undefined : `rotate(${rotationDegrees}deg)`,
     transformOrigin: "50% 50%",
     zIndex: 1,
@@ -266,6 +300,78 @@ function createBodyDragPreviewStyle(
   };
 }
 
+function getPlacementPreviewPalette(
+  status: WorkspaceCanvasAuthoringPlacementStatus,
+): {
+  background: string;
+  border: string;
+  boxShadow: string;
+  color: string;
+} {
+  switch (status) {
+    case "snap":
+      return {
+        border: "1px solid rgba(18, 117, 93, 0.7)",
+        background: "rgba(27, 167, 132, 0.14)",
+        boxShadow: "0 0 0 2px rgba(27, 167, 132, 0.16)",
+        color: "#12564a",
+      };
+    case "blocked":
+      return {
+        border: "1px dashed rgba(185, 28, 28, 0.6)",
+        background: "rgba(220, 38, 38, 0.12)",
+        boxShadow: "0 0 0 2px rgba(220, 38, 38, 0.08)",
+        color: "#991b1b",
+      };
+    case "free":
+      return {
+        border: "1px dashed rgba(36, 87, 166, 0.55)",
+        background: "rgba(36, 87, 166, 0.12)",
+        boxShadow: "0 0 0 2px rgba(36, 87, 166, 0.08)",
+        color: "#17304f",
+      };
+  }
+}
+
+function createPlacementPreviewStyle(preview: ProjectedPlacementPreview): CSSProperties {
+  const { background, border, boxShadow, color } = getPlacementPreviewPalette(preview.status);
+  const rotationDegrees = getEntityRotationDegrees(preview.entity);
+  const baseStyle: CSSProperties = {
+    position: "absolute",
+    left: `${preview.entity.x}px`,
+    top: `${preview.entity.y}px`,
+    border,
+    background,
+    boxShadow,
+    color,
+    fontSize: preview.entity.kind === "board" ? "10px" : "12px",
+    fontWeight: 700,
+    pointerEvents: "none",
+    display: "grid",
+    placeItems: "center",
+    overflow: "hidden",
+    transform: rotationDegrees === 0 ? undefined : `rotate(${rotationDegrees}deg)`,
+    transformOrigin: "50% 50%",
+    zIndex: 3,
+  };
+
+  if (preview.entity.kind === "ball") {
+    return {
+      ...baseStyle,
+      width: `${preview.entity.radius * 2}px`,
+      height: `${preview.entity.radius * 2}px`,
+      borderRadius: "999px",
+    };
+  }
+
+  return {
+    ...baseStyle,
+    width: `${preview.entity.width}px`,
+    height: `${preview.entity.height}px`,
+    borderRadius: "0px",
+  };
+}
+
 function getEntityRotationDegrees(entity: WorkspaceSceneEntity): number {
   if (entity.kind === "ball") {
     return 0;
@@ -276,6 +382,7 @@ function getEntityRotationDegrees(entity: WorkspaceSceneEntity): number {
 
 export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   const {
+    authoringPlacementPreview = null,
     authoringLocked = false,
     constraintPlacement,
     constraints = [],
@@ -303,6 +410,13 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     screenPosition: { x: number; y: number };
   } | null>(null);
   const renderedEntities = displayEntities ?? entities;
+  const projectedPlacementPreview = authoringPlacementPreview
+    ? {
+        ...authoringPlacementPreview,
+        entity: projectAuthoringEntityToScreen(authoringPlacementPreview.entity, viewport),
+      }
+    : null;
+  const contactTargetEntityId = projectedPlacementPreview?.contactWithEntityId ?? null;
 
   useEffect(() => {
     if (!dragSession) {
@@ -728,10 +842,21 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
 
         {constraints.map(renderConstraint)}
 
-        {libraryDragSession && libraryDragPreview ? (
+        {projectedPlacementPreview ? (
+          <div
+            data-body-kind={projectedPlacementPreview.entity.kind}
+            data-placement-valid={String(projectedPlacementPreview.status !== "blocked")}
+            data-preview-status={projectedPlacementPreview.status}
+            data-testid="workspace-stage-body-preview"
+            style={createPlacementPreviewStyle(projectedPlacementPreview)}
+          >
+            {projectedPlacementPreview.entity.label}
+          </div>
+        ) : libraryDragSession && libraryDragPreview ? (
           <div
             data-body-kind={libraryDragSession.bodyKind}
             data-placement-valid={String(!libraryDragBlocked)}
+            data-preview-status={libraryDragBlocked ? "blocked" : "free"}
             data-testid="workspace-stage-body-preview"
             style={createBodyDragPreviewStyle(
               libraryDragPreview,
@@ -747,12 +872,17 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           <button
             key={entity.id}
             aria-label={`Select ${entity.label}`}
+            data-contact-target={String(contactTargetEntityId === entity.id)}
             data-locked={String(entity.locked)}
             data-selected={String(state.selectedEntityId === entity.id)}
             data-testid={`scene-entity-${entity.id}`}
             type="button"
             onClick={() => handleEntityClick(entity.id)}
-            style={getEntityVisualStyle(entity, state.selectedEntityId === entity.id)}
+            style={getEntityVisualStyle(
+              entity,
+              state.selectedEntityId === entity.id,
+              contactTargetEntityId === entity.id,
+            )}
             onMouseDown={(event) => beginEntityDrag(entity, event)}
           >
             {entity.locked ? (

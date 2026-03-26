@@ -7,9 +7,12 @@ import {
 } from "../state/editorStore";
 import { WorkspaceCanvas } from "./WorkspaceCanvas";
 import {
+  authoredBoardInMeters,
   createBallEntityPx,
+  createAuthoredBlockEntity,
   createBlockEntityPx,
   createBoardEntityPx,
+  createRotatedBlockEntityPx,
   createDisplaySettings,
   createPolygonEntityPx,
   createSpringConstraint,
@@ -633,6 +636,28 @@ describe("WorkspaceCanvas", () => {
     );
   });
 
+  it("keeps runtime-projected block rotation visible without distorting its rigid dimensions", () => {
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        displayEntities={[createRotatedBlockEntityPx(24)]}
+        entities={[createBlockEntityPx()]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={createInitialEditorState()}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    const block = screen.getByTestId("scene-entity-block-1") as HTMLElement;
+
+    expect(block.style.transform).toContain("rotate(24deg)");
+    expect(block.style.width).toBe("84px");
+    expect(block.style.height).toBe("52px");
+  });
+
   it("blocks dragging bodies while authoring is locked", () => {
     const moves: Array<{ id: string; x: number; y: number }> = [];
 
@@ -716,6 +741,98 @@ describe("WorkspaceCanvas", () => {
     expect(screen.getByTestId("workspace-stage-body-preview").getAttribute("data-placement-valid")).toBe(
       "false",
     );
+  });
+
+  it("renders snapped placement previews at the resolved pose and highlights the contacted body", () => {
+    render(
+      <WorkspaceCanvasPanHarness
+        authoringPlacementPreview={{
+          entity: createAuthoredBlockEntity({
+            x: 4.12,
+            y: 1.54,
+            rotationDegrees: 18,
+          }),
+          status: "snap",
+          contactWithEntityId: "board-1",
+        }}
+        entities={[authoredBoardInMeters]}
+        libraryDragSession={{
+          bodyKind: "block",
+          pointerClientPx: { x: 248, y: 204 },
+        }}
+      />,
+    );
+
+    fireEvent.mouseMove(screen.getByTestId("workspace-stage"), {
+      clientX: 248,
+      clientY: 204,
+    });
+
+    const preview = screen.getByTestId("workspace-stage-body-preview") as HTMLElement;
+    const board = screen.getByTestId("scene-entity-board-1");
+
+    expect(preview.getAttribute("data-preview-status")).toBe("snap");
+    expect(preview.getAttribute("data-placement-valid")).toBe("true");
+    expect(preview.style.left).toBe("412px");
+    expect(preview.style.top).toBe("154px");
+    expect(preview.style.width).toBe("84px");
+    expect(preview.style.height).toBe("52px");
+    expect(preview.style.transform).toContain("rotate(18deg)");
+    expect(board.getAttribute("data-contact-target")).toBe("true");
+  });
+
+  it("renders blocked placement previews as invalid and visually distinct from snapped previews", () => {
+    const previewEntity = createAuthoredBlockEntity({
+      x: 2.94,
+      y: 1.84,
+    });
+    const libraryDragSession = {
+      bodyKind: "block" as const,
+      pointerClientPx: { x: 248, y: 204 },
+    };
+    const { rerender } = render(
+      <WorkspaceCanvasPanHarness
+        authoringPlacementPreview={{
+          entity: previewEntity,
+          status: "snap",
+          contactWithEntityId: "board-1",
+        }}
+        entities={[authoredBoardInMeters]}
+        libraryDragSession={libraryDragSession}
+      />,
+    );
+
+    fireEvent.mouseMove(screen.getByTestId("workspace-stage"), {
+      clientX: 248,
+      clientY: 204,
+    });
+
+    const snappedPreview = screen.getByTestId("workspace-stage-body-preview") as HTMLElement;
+    const snapBorder = snappedPreview.style.border;
+    const snapBackground = snappedPreview.style.background;
+
+    rerender(
+      <WorkspaceCanvasPanHarness
+        authoringPlacementPreview={{
+          entity: previewEntity,
+          status: "blocked",
+        }}
+        entities={[authoredBoardInMeters]}
+        libraryDragSession={libraryDragSession}
+      />,
+    );
+
+    fireEvent.mouseMove(screen.getByTestId("workspace-stage"), {
+      clientX: 248,
+      clientY: 204,
+    });
+
+    const blockedPreview = screen.getByTestId("workspace-stage-body-preview") as HTMLElement;
+
+    expect(blockedPreview.getAttribute("data-preview-status")).toBe("blocked");
+    expect(blockedPreview.getAttribute("data-placement-valid")).toBe("false");
+    expect(blockedPreview.style.border).not.toBe(snapBorder);
+    expect(blockedPreview.style.background).not.toBe(snapBackground);
   });
 
   it("shows only the selected ball paused runtime velocity arrow from runtime data", () => {
