@@ -54,6 +54,29 @@ fn ball(
     }
 }
 
+fn dynamic_block(
+    id: &str,
+    position: Vector2,
+    size: (f64, f64),
+    rotation_radians: f64,
+    friction: f64,
+) -> EntityDefinition {
+    EntityDefinition {
+        id: id.to_string(),
+        shape: ShapeDefinition::Block {
+            width: size.0,
+            height: size.1,
+        },
+        position,
+        rotation_radians,
+        initial_velocity: Vector2::ZERO,
+        mass: 1.0,
+        is_static: false,
+        friction_coefficient: friction,
+        restitution_coefficient: 0.0,
+    }
+}
+
 fn runtime_for_scene(entities: Vec<EntityDefinition>) -> RuntimeScene {
     let compiled = compile_scene(&CompileSceneRequest {
         entities,
@@ -155,4 +178,51 @@ fn tilted_board_regression_ball_slides_along_locked_incline() {
     assert!(ball.position.x < initial_ball_position.x - 0.2);
     assert!(ball.velocity.x < -0.2);
     assert!(local_normal_distance >= board_half_height + ball_radius - 0.03);
+}
+
+#[test]
+fn tilted_board_regression_exact_contact_block_slides_without_opening_a_gap() {
+    let rotation = FRAC_PI_6;
+    let board_half_height = 0.25;
+    let block_half_height = 0.3;
+    let tangent = vector2(rotation.cos(), rotation.sin());
+    let normal = vector2(-rotation.sin(), rotation.cos());
+    let board_position = vector2(0.0, 0.0);
+    let initial_tangent_distance = 1.5;
+    let initial_block_position = board_position
+        .add(tangent.scale(initial_tangent_distance))
+        .add(normal.scale(board_half_height + block_half_height));
+    let mut runtime = runtime_for_scene(vec![
+        board("board", board_position, (8.0, 0.5), 0.05, rotation),
+        dynamic_block(
+            "block",
+            initial_block_position,
+            (1.2, 0.6),
+            rotation,
+            0.05,
+        ),
+    ]);
+
+    run_steps(&mut runtime, 12);
+    let block = runtime_entity(&runtime, "block");
+    let local = block.position.sub(board_position);
+    let local_tangent = local.dot(tangent);
+    let local_normal_distance = local.dot(normal);
+    let exact_contact_distance = board_half_height + block_half_height;
+
+    assert!(
+        local_tangent < initial_tangent_distance - 0.1,
+        "expected block to slide down the incline, got local_tangent={}",
+        local_tangent
+    );
+    assert!(
+        local_normal_distance >= exact_contact_distance - 0.05,
+        "expected block to stay non-penetrating, got local_normal_distance={}",
+        local_normal_distance
+    );
+    assert!(
+        local_normal_distance <= exact_contact_distance + 0.05,
+        "expected block to stay near exact contact instead of floating, got local_normal_distance={}",
+        local_normal_distance
+    );
 }

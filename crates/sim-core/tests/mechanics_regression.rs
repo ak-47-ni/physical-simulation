@@ -32,6 +32,32 @@ fn block(
     }
 }
 
+fn rotated_block(
+    id: &str,
+    position: Vector2,
+    size: (f64, f64),
+    rotation_radians: f64,
+    initial_velocity: Vector2,
+    is_static: bool,
+    friction: f64,
+    restitution: f64,
+) -> EntityDefinition {
+    EntityDefinition {
+        id: id.to_string(),
+        shape: ShapeDefinition::Block {
+            width: size.0,
+            height: size.1,
+        },
+        position,
+        rotation_radians,
+        initial_velocity,
+        mass: if is_static { 0.0 } else { 1.0 },
+        is_static,
+        friction_coefficient: friction,
+        restitution_coefficient: restitution,
+    }
+}
+
 fn ball(
     id: &str,
     position: Vector2,
@@ -306,4 +332,45 @@ fn mechanics_regression_dynamic_support_stays_non_overlapping_under_falling_body
         falling.velocity.y
     );
     assert!(falling.velocity.y.abs() < 1.0);
+}
+
+#[test]
+fn mechanics_regression_rotated_dynamic_block_does_not_tunnel_through_ground() {
+    let rotation = std::f64::consts::FRAC_PI_4;
+    let half_width = 0.6;
+    let half_height = 0.3;
+    let vertical_extent = half_width * rotation.sin().abs() + half_height * rotation.cos().abs();
+    let mut runtime = runtime_for_scene(vec![
+        block(
+            "ground",
+            vector2(0.0, 0.0),
+            (20.0, 1.0),
+            vector2(0.0, 0.0),
+            true,
+            0.8,
+            0.0,
+        ),
+        rotated_block(
+            "block",
+            vector2(0.0, 4.0),
+            (1.2, 0.6),
+            rotation,
+            vector2(0.0, -1.0),
+            false,
+            0.4,
+            0.0,
+        ),
+    ]);
+
+    run_steps(&mut runtime, 80);
+    let block = runtime_entity(&runtime, "block");
+    let minimum_center_y = 0.5 + vertical_extent;
+
+    assert!(
+        block.position.y >= minimum_center_y - 1e-3,
+        "block_y={} minimum_center_y={} block_velocity_y={}",
+        block.position.y,
+        minimum_center_y,
+        block.velocity.y
+    );
 }
