@@ -355,4 +355,78 @@ describe("projectRuntimeSceneEntities", () => {
       }),
     );
   });
+
+  it("keeps runtime entities aligned to the visible x=0 and y=0 boundaries", () => {
+    const projected = projectRuntimeSceneEntities({
+      editorEntities: [createBallEntity(), createRotatedBoardEntity(18)],
+      runtimeFrame: createRuntimeFrame({
+        entities: [
+          {
+            id: "ball-1",
+            transform: {
+              x: 0.24,
+              y: 0.24,
+              rotation: 0,
+            },
+          },
+          {
+            id: "board-1",
+            transform: {
+              x: 0.6,
+              y: 0.09,
+              rotation: 0,
+            },
+          },
+        ],
+      }),
+      viewport: meterViewport,
+    });
+
+    expect(projected).toEqual([
+      expect.objectContaining({
+        id: "ball-1",
+        x: 0,
+        y: 0,
+      }),
+      expect.objectContaining({
+        id: "board-1",
+        x: 0,
+        y: 0,
+        rotationDegrees: 18,
+      }),
+    ]);
+  });
+
+  it("applies viewport offsets at the first-quadrant boundary without adding negative padding", () => {
+    const projected = projectRuntimeSceneEntities({
+      editorEntities: [createRotatedBlockEntity(24)],
+      runtimeFrame: createRuntimeFrame({
+        entities: [
+          {
+            id: "block-1",
+            transform: {
+              x: 0.42,
+              y: 0.26,
+              rotation: 0,
+            },
+          },
+        ],
+      }),
+      viewport: {
+        ...meterViewport,
+        offsetPx: { x: 28, y: 16 },
+      },
+    });
+
+    expect(projected[0]).toEqual(
+      expect.objectContaining({
+        id: "block-1",
+        x: 28,
+        y: 16,
+        width: 84,
+        height: 52,
+        rotationDegrees: 24,
+      }),
+    );
+  });
 });
