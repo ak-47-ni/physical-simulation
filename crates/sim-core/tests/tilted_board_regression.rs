@@ -11,6 +11,15 @@ fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
 }
 
+fn box_extent_along_axis(size: (f64, f64), rotation_radians: f64, axis: Vector2) -> f64 {
+    let half_width = size.0 * 0.5;
+    let half_height = size.1 * 0.5;
+    let axis_x = vector2(rotation_radians.cos(), rotation_radians.sin());
+    let axis_y = vector2(-rotation_radians.sin(), rotation_radians.cos());
+
+    half_width * axis.dot(axis_x).abs() + half_height * axis.dot(axis_y).abs()
+}
+
 fn board(
     id: &str,
     position: Vector2,
@@ -184,23 +193,18 @@ fn tilted_board_regression_ball_slides_along_locked_incline() {
 fn tilted_board_regression_exact_contact_block_slides_without_opening_a_gap() {
     let rotation = FRAC_PI_6;
     let board_half_height = 0.25;
-    let block_half_height = 0.3;
+    let block_size = (1.2, 0.6);
     let tangent = vector2(rotation.cos(), rotation.sin());
     let normal = vector2(-rotation.sin(), rotation.cos());
     let board_position = vector2(0.0, 0.0);
     let initial_tangent_distance = 1.5;
+    let initial_block_normal_extent = box_extent_along_axis(block_size, rotation, normal);
     let initial_block_position = board_position
         .add(tangent.scale(initial_tangent_distance))
-        .add(normal.scale(board_half_height + block_half_height));
+        .add(normal.scale(board_half_height + initial_block_normal_extent));
     let mut runtime = runtime_for_scene(vec![
         board("board", board_position, (8.0, 0.5), 0.05, rotation),
-        dynamic_block(
-            "block",
-            initial_block_position,
-            (1.2, 0.6),
-            rotation,
-            0.05,
-        ),
+        dynamic_block("block", initial_block_position, block_size, rotation, 0.05),
     ]);
 
     run_steps(&mut runtime, 12);
@@ -208,7 +212,8 @@ fn tilted_board_regression_exact_contact_block_slides_without_opening_a_gap() {
     let local = block.position.sub(board_position);
     let local_tangent = local.dot(tangent);
     let local_normal_distance = local.dot(normal);
-    let exact_contact_distance = board_half_height + block_half_height;
+    let block_normal_extent = box_extent_along_axis(block_size, block.rotation, normal);
+    let contact_gap = local_normal_distance - (board_half_height + block_normal_extent);
 
     assert!(
         local_tangent < initial_tangent_distance - 0.1,
@@ -216,13 +221,17 @@ fn tilted_board_regression_exact_contact_block_slides_without_opening_a_gap() {
         local_tangent
     );
     assert!(
-        local_normal_distance >= exact_contact_distance - 0.05,
-        "expected block to stay non-penetrating, got local_normal_distance={}",
-        local_normal_distance
+        contact_gap >= -0.05,
+        "expected block to stay non-penetrating, got contact_gap={} local_normal_distance={} block_rotation={}",
+        contact_gap,
+        local_normal_distance,
+        block.rotation
     );
     assert!(
-        local_normal_distance <= exact_contact_distance + 0.05,
-        "expected block to stay near exact contact instead of floating, got local_normal_distance={}",
-        local_normal_distance
+        contact_gap <= 0.05,
+        "expected block to stay near exact contact instead of floating, got contact_gap={} local_normal_distance={} block_rotation={}",
+        contact_gap,
+        local_normal_distance,
+        block.rotation
     );
 }

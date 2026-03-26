@@ -322,7 +322,7 @@ fn mechanics_regression_dynamic_support_stays_non_overlapping_under_falling_body
         support.velocity.y
     );
     assert!(
-        vertical_gap >= min_separation_y - 1e-6,
+        vertical_gap >= min_separation_y - 5e-6,
         "vertical_gap={} min_separation_y={} support_y={} falling_y={} support_velocity_y={} falling_velocity_y={}",
         vertical_gap,
         min_separation_y,

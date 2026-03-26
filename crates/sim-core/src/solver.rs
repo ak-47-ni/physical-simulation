@@ -1,10 +1,18 @@
-#[path = "tilted_contacts.rs"]
-mod tilted_contacts;
+#[path = "angular_dynamics.rs"]
+mod angular_dynamics;
+
+#[path = "contact_geometry.rs"]
+mod contact_geometry;
 
 use std::collections::HashMap;
 
 use crate::constraint::CompiledConstraint;
 use crate::entity::Vector2;
+
+pub use angular_dynamics::inverse_inertia_for_body;
+
+const DYNAMIC_CONTACT_PASSES: usize = 16;
+const POSITION_CORRECTION_SLOP: f64 = 1e-6;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeBodyShape {
@@ -20,8 +28,10 @@ pub struct RuntimeBodyState {
     pub half_extents: Vector2,
     pub rotation_radians: f64,
     pub velocity: Vector2,
+    pub angular_velocity_radians: f64,
     pub acceleration: Vector2,
     pub mass: f64,
+    pub inverse_inertia: f64,
     pub friction_coefficient: f64,
     pub restitution_coefficient: f64,
     pub is_static: bool,
@@ -47,6 +57,7 @@ pub fn step_bodies(
     for body in bodies.iter_mut() {
         if body.is_static {
             body.acceleration = Vector2::ZERO;
+            body.angular_velocity_radians = 0.0;
             continue;
         }
 
@@ -60,18 +71,13 @@ pub fn step_bodies(
             continue;
         }
 
-        body.velocity = Vector2::new(
-            body.velocity.x + body.acceleration.x * delta_seconds,
-            body.velocity.y + body.acceleration.y * delta_seconds,
-        );
-        body.position = Vector2::new(
-            body.position.x + body.velocity.x * delta_seconds,
-            body.position.y + body.velocity.y * delta_seconds,
-        );
+        body.velocity = body.velocity.add(body.acceleration.scale(delta_seconds));
+        body.position = body.position.add(body.velocity.scale(delta_seconds));
+        angular_dynamics::integrate_rotation(body, delta_seconds);
     }
 
-    resolve_static_contacts(bodies, &static_surfaces, delta_seconds);
-    resolve_dynamic_contacts(bodies, &static_surfaces, delta_seconds);
+    resolve_static_contacts(bodies, &static_surfaces);
+    resolve_dynamic_contacts(bodies, &static_surfaces);
     enforce_track_bindings(bodies, constraints, &index_by_id);
 }
 
@@ -85,76 +91,27 @@ pub fn project_track_bindings(bodies: &mut [RuntimeBodyState], constraints: &[Co
     enforce_track_bindings(bodies, constraints, &index_by_id);
 }
 
-fn resolve_static_contact(
-    body: &mut RuntimeBodyState,
-    surface: &RuntimeBodyState,
-    delta_seconds: f64,
-) {
-    let Some((normal_x, normal_y, penetration)) =
-        static_contact_normal_and_penetration(body, surface)
-    else {
-        return;
-    };
-
-    body.position = Vector2::new(
-        body.position.x + normal_x * penetration,
-        body.position.y + normal_y * penetration,
-    );
-
-    let normal_velocity = body.velocity.x * normal_x + body.velocity.y * normal_y;
-
-    if normal_velocity < 0.0 {
-        let restitution = body
-            .restitution_coefficient
-            .max(surface.restitution_coefficient);
-        let target_normal_velocity = -normal_velocity * restitution;
-        let normal_delta = target_normal_velocity - normal_velocity;
-
-        body.velocity = Vector2::new(
-            body.velocity.x + normal_x * normal_delta,
-            body.velocity.y + normal_y * normal_delta,
-        );
+pub fn inverse_mass(body: &RuntimeBodyState) -> f64 {
+    if body.is_static || body.mass <= f64::EPSILON {
+        0.0
+    } else {
+        1.0 / body.mass
     }
-
-    let tangent_x = -normal_y;
-    let tangent_y = normal_x;
-    let tangential_velocity = body.velocity.x * tangent_x + body.velocity.y * tangent_y;
-    let friction = (body.friction_coefficient + surface.friction_coefficient) * 0.5;
-    let friction_delta = friction * 9.81 * delta_seconds;
-    let target_tangential_velocity = reduce_magnitude(tangential_velocity, friction_delta);
-    let tangential_delta = target_tangential_velocity - tangential_velocity;
-
-    body.velocity = Vector2::new(
-        body.velocity.x + tangent_x * tangential_delta,
-        body.velocity.y + tangent_y * tangential_delta,
-    );
 }
 
-fn resolve_static_contacts(
-    bodies: &mut [RuntimeBodyState],
-    static_surfaces: &[RuntimeBodyState],
-    delta_seconds: f64,
-) {
+fn resolve_static_contacts(bodies: &mut [RuntimeBodyState], static_surfaces: &[RuntimeBodyState]) {
     for body in bodies.iter_mut() {
         if body.is_static {
             continue;
         }
 
         for surface in static_surfaces {
-            resolve_static_contact(body, surface, delta_seconds);
+            resolve_contact_with_surface(body, surface);
         }
     }
 }
 
-fn resolve_dynamic_contacts(
-    bodies: &mut [RuntimeBodyState],
-    static_surfaces: &[RuntimeBodyState],
-    delta_seconds: f64,
-) {
-    // A few extra passes keep simple stacked scenes converging when one dynamic
-    // body is repeatedly re-anchored by a static surface between pair solves.
-    const DYNAMIC_CONTACT_PASSES: usize = 16;
-
+fn resolve_dynamic_contacts(bodies: &mut [RuntimeBodyState], static_surfaces: &[RuntimeBodyState]) {
     for _ in 0..DYNAMIC_CONTACT_PASSES {
         for index_a in 0..bodies.len() {
             for index_b in (index_a + 1)..bodies.len() {
@@ -164,22 +121,51 @@ fn resolve_dynamic_contacts(
                     continue;
                 }
 
-                resolve_dynamic_contact(body_a, body_b, delta_seconds);
+                resolve_contact_pair(body_a, body_b);
             }
         }
 
-        resolve_static_contacts(bodies, static_surfaces, delta_seconds);
+        resolve_static_contacts(bodies, static_surfaces);
     }
 }
 
-fn resolve_dynamic_contact(
-    body_a: &mut RuntimeBodyState,
-    body_b: &mut RuntimeBodyState,
-    delta_seconds: f64,
-) {
-    let Some((normal_x, normal_y, penetration)) =
-        dynamic_contact_normal_and_penetration(body_a, body_b)
-    else {
+fn resolve_contact_with_surface(body: &mut RuntimeBodyState, surface: &RuntimeBodyState) {
+    let Some(contact) = contact_geometry::contact_manifold(body, surface) else {
+        return;
+    };
+
+    let inverse_mass_body = inverse_mass(body);
+
+    if inverse_mass_body <= f64::EPSILON {
+        return;
+    }
+
+    let correction = positional_correction(contact.penetration);
+    body.position = body.position.add(contact.normal.scale(correction));
+
+    let point = contact.point;
+    let normal = contact.normal;
+    let radial_offset = point.sub(body.position);
+    let relative_velocity = angular_dynamics::velocity_at_point(body, point);
+    let normal_velocity = relative_velocity.dot(normal);
+    let inverse_normal_mass =
+        inverse_mass_body + radial_offset.cross(normal).powi(2) * body.inverse_inertia;
+
+    let mut normal_impulse = 0.0;
+
+    if normal_velocity < 0.0 && inverse_normal_mass > f64::EPSILON {
+        let restitution = body
+            .restitution_coefficient
+            .max(surface.restitution_coefficient);
+        normal_impulse = -((1.0 + restitution) * normal_velocity) / inverse_normal_mass;
+        angular_dynamics::apply_impulse(body, normal.scale(normal_impulse), point);
+    }
+
+    apply_friction_impulse_against_surface(body, surface, point, normal, normal_impulse);
+}
+
+fn resolve_contact_pair(body_a: &mut RuntimeBodyState, body_b: &mut RuntimeBodyState) {
+    let Some(contact) = contact_geometry::contact_manifold(body_a, body_b) else {
         return;
     };
 
@@ -191,171 +177,118 @@ fn resolve_dynamic_contact(
         return;
     }
 
-    let position_share_a = inverse_mass_a / total_inverse_mass;
-    let position_share_b = inverse_mass_b / total_inverse_mass;
+    let correction = positional_correction(contact.penetration);
+    let correction_a = correction * (inverse_mass_a / total_inverse_mass);
+    let correction_b = correction * (inverse_mass_b / total_inverse_mass);
 
-    body_a.position = Vector2::new(
-        body_a.position.x + normal_x * penetration * position_share_a,
-        body_a.position.y + normal_y * penetration * position_share_a,
-    );
-    body_b.position = Vector2::new(
-        body_b.position.x - normal_x * penetration * position_share_b,
-        body_b.position.y - normal_y * penetration * position_share_b,
-    );
+    body_a.position = body_a.position.add(contact.normal.scale(correction_a));
+    body_b.position = body_b.position.sub(contact.normal.scale(correction_b));
 
-    let relative_velocity = Vector2::new(
-        body_a.velocity.x - body_b.velocity.x,
-        body_a.velocity.y - body_b.velocity.y,
-    );
-    let normal_velocity = relative_velocity.x * normal_x + relative_velocity.y * normal_y;
+    let point = contact.point;
+    let normal = contact.normal;
+    let radial_offset_a = point.sub(body_a.position);
+    let radial_offset_b = point.sub(body_b.position);
+    let relative_velocity = angular_dynamics::velocity_at_point(body_a, point)
+        .sub(angular_dynamics::velocity_at_point(body_b, point));
+    let normal_velocity = relative_velocity.dot(normal);
+    let inverse_normal_mass = total_inverse_mass
+        + radial_offset_a.cross(normal).powi(2) * body_a.inverse_inertia
+        + radial_offset_b.cross(normal).powi(2) * body_b.inverse_inertia;
 
-    if normal_velocity < 0.0 {
+    let mut normal_impulse = 0.0;
+
+    if normal_velocity < 0.0 && inverse_normal_mass > f64::EPSILON {
         let restitution = body_a
             .restitution_coefficient
             .max(body_b.restitution_coefficient);
-        let impulse = -((1.0 + restitution) * normal_velocity) / total_inverse_mass;
-        let impulse_x = normal_x * impulse;
-        let impulse_y = normal_y * impulse;
-
-        body_a.velocity = Vector2::new(
-            body_a.velocity.x + impulse_x * inverse_mass_a,
-            body_a.velocity.y + impulse_y * inverse_mass_a,
-        );
-        body_b.velocity = Vector2::new(
-            body_b.velocity.x - impulse_x * inverse_mass_b,
-            body_b.velocity.y - impulse_y * inverse_mass_b,
-        );
+        normal_impulse = -((1.0 + restitution) * normal_velocity) / inverse_normal_mass;
+        let impulse = normal.scale(normal_impulse);
+        angular_dynamics::apply_impulse(body_a, impulse, point);
+        angular_dynamics::apply_impulse(body_b, impulse.scale(-1.0), point);
     }
 
-    let tangent_x = -normal_y;
-    let tangent_y = normal_x;
-    let tangential_velocity = relative_velocity.x * tangent_x + relative_velocity.y * tangent_y;
-    let friction = (body_a.friction_coefficient + body_b.friction_coefficient) * 0.5;
-    let friction_delta = friction * 9.81 * delta_seconds;
-    let target_tangential_velocity = reduce_magnitude(tangential_velocity, friction_delta);
-    let tangential_delta = target_tangential_velocity - tangential_velocity;
-
-    body_a.velocity = Vector2::new(
-        body_a.velocity.x + tangent_x * tangential_delta * position_share_a,
-        body_a.velocity.y + tangent_y * tangential_delta * position_share_a,
-    );
-    body_b.velocity = Vector2::new(
-        body_b.velocity.x - tangent_x * tangential_delta * position_share_b,
-        body_b.velocity.y - tangent_y * tangential_delta * position_share_b,
-    );
+    apply_friction_impulse_between_bodies(body_a, body_b, point, normal, normal_impulse);
 }
 
-fn dynamic_contact_normal_and_penetration(
-    body_a: &RuntimeBodyState,
-    body_b: &RuntimeBodyState,
-) -> Option<(f64, f64, f64)> {
-    let delta_x = body_a.position.x - body_b.position.x;
-    let delta_y = body_a.position.y - body_b.position.y;
-    let relative_velocity_x = body_a.velocity.x - body_b.velocity.x;
-    let relative_velocity_y = body_a.velocity.y - body_b.velocity.y;
-    let overlap_x = body_a.half_extents.x + body_b.half_extents.x - delta_x.abs();
-    let overlap_y = body_a.half_extents.y + body_b.half_extents.y - delta_y.abs();
-
-    if overlap_x <= 0.0 || overlap_y <= 0.0 {
-        return None;
-    }
-
-    let overlap_gap = (overlap_x - overlap_y).abs();
-
-    if overlap_gap <= 1e-6 {
-        let relative_speed_x = relative_velocity_x.abs();
-        let relative_speed_y = relative_velocity_y.abs();
-
-        if relative_speed_x >= relative_speed_y {
-            return Some((
-                separation_direction(delta_x, relative_velocity_x),
-                0.0,
-                overlap_x,
-            ));
-        }
-
-        return Some((
-            0.0,
-            separation_direction(delta_y, relative_velocity_y),
-            overlap_y,
-        ));
-    }
-
-    if overlap_y <= overlap_x {
-        Some((
-            0.0,
-            separation_direction(delta_y, relative_velocity_y),
-            overlap_y,
-        ))
-    } else {
-        Some((
-            separation_direction(delta_x, relative_velocity_x),
-            0.0,
-            overlap_x,
-        ))
-    }
-}
-
-fn separation_direction(delta: f64, relative_velocity: f64) -> f64 {
-    if delta > 0.0 {
-        1.0
-    } else if delta < 0.0 {
-        -1.0
-    } else if relative_velocity > 0.0 {
-        -1.0
-    } else if relative_velocity < 0.0 {
-        1.0
-    } else {
-        1.0
-    }
-}
-
-fn static_contact_normal_and_penetration(
-    body: &RuntimeBodyState,
+fn apply_friction_impulse_against_surface(
+    body: &mut RuntimeBodyState,
     surface: &RuntimeBodyState,
-) -> Option<(f64, f64, f64)> {
-    if tilted_contacts::supports_tilted_static_surface(surface) {
-        tilted_contacts::contact_normal_and_penetration(body, surface)
-    } else {
-        axis_aligned_contact_normal_and_penetration(body, surface)
+    point: Vector2,
+    normal: Vector2,
+    normal_impulse: f64,
+) {
+    let relative_velocity = angular_dynamics::velocity_at_point(body, point);
+    let tangent = tangent_direction(relative_velocity, normal);
+    let tangential_speed = relative_velocity.dot(tangent);
+
+    if tangential_speed.abs() <= f64::EPSILON {
+        return;
     }
+
+    let radial_offset = point.sub(body.position);
+    let inverse_tangent_mass =
+        inverse_mass(body) + radial_offset.cross(tangent).powi(2) * body.inverse_inertia;
+
+    if inverse_tangent_mass <= f64::EPSILON {
+        return;
+    }
+
+    let friction = (body.friction_coefficient + surface.friction_coefficient) * 0.5;
+    let max_friction_impulse = friction * normal_impulse.abs();
+    let tangential_impulse =
+        (-tangential_speed / inverse_tangent_mass).clamp(-max_friction_impulse, max_friction_impulse);
+
+    angular_dynamics::apply_impulse(body, tangent.scale(tangential_impulse), point);
 }
 
-fn axis_aligned_contact_normal_and_penetration(
-    body_a: &RuntimeBodyState,
-    body_b: &RuntimeBodyState,
-) -> Option<(f64, f64, f64)> {
-    let delta_x = body_a.position.x - body_b.position.x;
-    let delta_y = body_a.position.y - body_b.position.y;
-    let overlap_x = body_a.half_extents.x + body_b.half_extents.x - delta_x.abs();
-    let overlap_y = body_a.half_extents.y + body_b.half_extents.y - delta_y.abs();
+fn apply_friction_impulse_between_bodies(
+    body_a: &mut RuntimeBodyState,
+    body_b: &mut RuntimeBodyState,
+    point: Vector2,
+    normal: Vector2,
+    normal_impulse: f64,
+) {
+    let relative_velocity = angular_dynamics::velocity_at_point(body_a, point)
+        .sub(angular_dynamics::velocity_at_point(body_b, point));
+    let tangent = tangent_direction(relative_velocity, normal);
+    let tangential_speed = relative_velocity.dot(tangent);
 
-    if overlap_x <= 0.0 || overlap_y <= 0.0 {
-        return None;
+    if tangential_speed.abs() <= f64::EPSILON {
+        return;
     }
 
-    if overlap_y <= overlap_x {
-        Some((0.0, if delta_y >= 0.0 { 1.0 } else { -1.0 }, overlap_y))
-    } else {
-        Some((if delta_x >= 0.0 { 1.0 } else { -1.0 }, 0.0, overlap_x))
+    let radial_offset_a = point.sub(body_a.position);
+    let radial_offset_b = point.sub(body_b.position);
+    let inverse_tangent_mass = inverse_mass(body_a)
+        + inverse_mass(body_b)
+        + radial_offset_a.cross(tangent).powi(2) * body_a.inverse_inertia
+        + radial_offset_b.cross(tangent).powi(2) * body_b.inverse_inertia;
+
+    if inverse_tangent_mass <= f64::EPSILON {
+        return;
     }
+
+    let friction = (body_a.friction_coefficient + body_b.friction_coefficient) * 0.5;
+    let max_friction_impulse = friction * normal_impulse.abs();
+    let tangential_impulse =
+        (-tangential_speed / inverse_tangent_mass).clamp(-max_friction_impulse, max_friction_impulse);
+    let impulse = tangent.scale(tangential_impulse);
+
+    angular_dynamics::apply_impulse(body_a, impulse, point);
+    angular_dynamics::apply_impulse(body_b, impulse.scale(-1.0), point);
 }
 
-fn inverse_mass(body: &RuntimeBodyState) -> f64 {
-    if body.is_static || body.mass <= f64::EPSILON {
-        0.0
-    } else {
-        1.0 / body.mass
-    }
+fn positional_correction(penetration: f64) -> f64 {
+    (penetration - POSITION_CORRECTION_SLOP).max(0.0)
 }
 
-fn reduce_magnitude(value: f64, amount: f64) -> f64 {
-    if value > 0.0 {
-        (value - amount).max(0.0)
-    } else if value < 0.0 {
-        (value + amount).min(0.0)
+fn tangent_direction(relative_velocity: Vector2, normal: Vector2) -> Vector2 {
+    let tangent = relative_velocity.sub(normal.scale(relative_velocity.dot(normal)));
+
+    if tangent.length() > f64::EPSILON {
+        tangent.normalized()
     } else {
-        0.0
+        normal.perp()
     }
 }
 

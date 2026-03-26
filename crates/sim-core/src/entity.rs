@@ -29,8 +29,16 @@ impl Vector2 {
         self.x * other.x + self.y * other.y
     }
 
+    pub fn cross(self, other: Self) -> f64 {
+        self.x * other.y - self.y * other.x
+    }
+
     pub fn length(self) -> f64 {
         self.dot(self).sqrt()
+    }
+
+    pub fn perp(self) -> Self {
+        Self::new(-self.y, self.x)
     }
 
     pub fn normalized(self) -> Self {
@@ -41,6 +49,11 @@ impl Vector2 {
         } else {
             self.scale(1.0 / length)
         }
+    }
+
+    pub fn rotated(self, radians: f64) -> Self {
+        let (sin, cos) = radians.sin_cos();
+        Self::new(self.x * cos - self.y * sin, self.x * sin + self.y * cos)
     }
 }
 
