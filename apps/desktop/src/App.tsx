@@ -39,6 +39,11 @@ import {
   replaceEntityInCollection,
 } from "./state/authoringPlacementGuards";
 import {
+  getDefaultAuthoringSnapDistance,
+  resolveAuthoringPlacement,
+  type AuthoringPlacementPreview,
+} from "./state/authoringContactSnap";
+import {
   createMockRuntimeBridgePort,
 } from "./state/runtimeBridge";
 import { createDesktopRuntimeBridgePort } from "./state/desktopRuntimeBridgePort";
@@ -116,6 +121,7 @@ type DirectManipulationLibraryPanelProps = ComponentProps<typeof ObjectLibraryPa
 };
 
 type DirectManipulationWorkspaceCanvasProps = ComponentProps<typeof WorkspaceCanvas> & {
+  authoringPlacementPreview?: AuthoringPlacementPreview;
   libraryDragBlocked?: boolean;
   libraryDragSession?: LibraryDragSession | null;
   onLibraryDragHoverChange?: (hover: LibraryDragHoverState | null) => void;
@@ -125,6 +131,11 @@ type DirectManipulationWorkspaceCanvasProps = ComponentProps<typeof WorkspaceCan
     velocityX: number;
     velocityY: number;
   } | null;
+};
+
+type PendingEntityDragPlacement = {
+  entityId: string;
+  position: { x: number; y: number };
 };
 
 const DirectManipulationObjectLibraryPanel = ObjectLibraryPanel as unknown as (
@@ -208,6 +219,31 @@ function createScenePhysicsPanelState(
   };
 }
 
+function createAuthoringPlacementPreview(
+  candidate: EditorSceneEntity,
+  resolution: ReturnType<typeof resolveAuthoringPlacement>,
+): AuthoringPlacementPreview {
+  if (resolution.status === "blocked") {
+    return {
+      entity: candidate,
+      status: "blocked",
+    };
+  }
+
+  if (resolution.status === "snap") {
+    return {
+      entity: resolution.entity,
+      status: "snap",
+      contactWithEntityId: resolution.contactWithEntityId,
+    };
+  }
+
+  return {
+    entity: resolution.entity,
+    status: "free",
+  };
+}
+
 export function App() {
   const initialAuthoringState = createInitialAuthoringState();
   const [editorState, setEditorState] = useState(createInitialEditorState);
@@ -218,6 +254,8 @@ export function App() {
   const [constraintPlacement, setConstraintPlacement] = useState<ConstraintPlacementState | null>(null);
   const [libraryDragHover, setLibraryDragHover] = useState<LibraryDragHoverState | null>(null);
   const [libraryDragSession, setLibraryDragSession] = useState<LibraryDragSession | null>(null);
+  const [pendingEntityDragPlacement, setPendingEntityDragPlacement] =
+    useState<PendingEntityDragPlacement | null>(null);
   const [annotationState, setAnnotationState] = useState(createInitialAnnotationLayerState);
   const [displaySettings, setDisplaySettings] = useState(() =>
     createSceneDisplaySettings({
@@ -343,7 +381,7 @@ export function App() {
     }));
   }
 
-  function handleMoveEntity(entityId: string, position: { x: number; y: number }) {
+  function repositionEntityExactly(entityId: string, position: { x: number; y: number }) {
     const nextEntity = findRepositionedAuthoringEntity({
       entities,
       entityId,
@@ -351,11 +389,32 @@ export function App() {
     });
 
     if (!nextEntity) {
-      return;
+      return false;
     }
 
     setEntities((current) => replaceEntityInCollection(current, nextEntity));
     handleSelectEntity(entityId);
+
+    return true;
+  }
+
+  function handleMoveEntity(entityId: string, position: { x: number; y: number }) {
+    setPendingEntityDragPlacement({
+      entityId,
+      position,
+    });
+    repositionEntityExactly(entityId, position);
+  }
+
+  function createPlacedEntityCandidate(
+    kind: LibraryBodyKind,
+    position: { x: number; y: number },
+  ) {
+    return convertLegacyCreatedEntityToSceneUnits(
+      createPlacedBodyEntity(entities, kind, position),
+      sceneSettings,
+      position,
+    );
   }
 
   function updateSelectedEntity(
@@ -377,25 +436,27 @@ export function App() {
       return;
     }
 
-    handleMoveEntity(editorState.selectedEntityId, position);
+    setPendingEntityDragPlacement(null);
+    repositionEntityExactly(editorState.selectedEntityId, position);
   }
 
   function handleCreateEntityFromKind(
     kind: LibraryBodyKind,
     position: { x: number; y: number },
   ) {
-    const nextEntity = convertLegacyCreatedEntityToSceneUnits(
-      createPlacedBodyEntity(entities, kind, position),
-      sceneSettings,
-      position,
-    );
+    const nextEntity = createPlacedEntityCandidate(kind, position);
+    const resolution = resolveAuthoringPlacement({
+      candidate: nextEntity,
+      entities,
+      maxSnapDistance: getDefaultAuthoringSnapDistance(sceneSettings.lengthUnit),
+    });
 
-    if (!canPlaceAuthoringCandidate(nextEntity, entities)) {
+    if (resolution.status === "blocked") {
       return;
     }
 
-    setEntities((current) => [...current, nextEntity]);
-    handleSelectEntity(nextEntity.id);
+    setEntities((current) => [...current, resolution.entity]);
+    handleSelectEntity(resolution.entity.id);
   }
 
   function handleCreateEntity(position: { x: number; y: number }) {
@@ -512,19 +573,52 @@ export function App() {
             : null;
         })()
       : null;
+  const authoringSnapDistance = getDefaultAuthoringSnapDistance(sceneSettings.lengthUnit);
   const authoringLocked = playbackLocked;
   const scenePhysicsState = createScenePhysicsPanelState(sceneSettings, authoringLocked);
-  const libraryDragBlocked =
+  const libraryDragCandidate =
     libraryDragSession && libraryDragHover?.isOverStage && libraryDragHover.authoringPosition
-      ? !canPlaceAuthoringCandidate(
-          convertLegacyCreatedEntityToSceneUnits(
-            createPlacedBodyEntity(entities, libraryDragSession.bodyKind, libraryDragHover.authoringPosition),
-            sceneSettings,
-            libraryDragHover.authoringPosition,
-          ),
-          entities,
-        )
-      : false;
+      ? createPlacedEntityCandidate(libraryDragSession.bodyKind, libraryDragHover.authoringPosition)
+      : null;
+  const libraryDragResolution = libraryDragCandidate
+    ? resolveAuthoringPlacement({
+        candidate: libraryDragCandidate,
+        entities,
+        maxSnapDistance: authoringSnapDistance,
+      })
+    : null;
+  const pendingEntityDragPreview =
+    pendingEntityDragPlacement &&
+    entities.find((entity) => entity.id === pendingEntityDragPlacement.entityId)
+      ? (() => {
+          const currentEntity = entities.find(
+            (entity) => entity.id === pendingEntityDragPlacement.entityId,
+          );
+
+          if (!currentEntity) {
+            return null;
+          }
+
+          const candidate = {
+            ...currentEntity,
+            x: pendingEntityDragPlacement.position.x,
+            y: pendingEntityDragPlacement.position.y,
+          };
+          const resolution = resolveAuthoringPlacement({
+            candidate,
+            entities,
+            ignoreEntityId: currentEntity.id,
+            maxSnapDistance: authoringSnapDistance,
+          });
+
+          return createAuthoringPlacementPreview(candidate, resolution);
+        })()
+      : null;
+  const authoringPlacementPreview =
+    libraryDragCandidate && libraryDragResolution
+      ? createAuthoringPlacementPreview(libraryDragCandidate, libraryDragResolution)
+      : pendingEntityDragPreview;
+  const libraryDragBlocked = authoringPlacementPreview?.status === "blocked";
 
   useEffect(() => {
     if (!libraryDragSession) {
@@ -550,6 +644,47 @@ export function App() {
       window.removeEventListener("pointerup", handlePointerUp);
     };
   }, [authoringLocked, libraryDragHover, libraryDragSession]);
+
+  useEffect(() => {
+    if (!pendingEntityDragPlacement) {
+      return undefined;
+    }
+
+    const currentPlacement = pendingEntityDragPlacement;
+
+    function handleMouseUp() {
+      const currentEntity = entities.find((entity) => entity.id === currentPlacement.entityId);
+
+      if (!currentEntity || authoringLocked) {
+        setPendingEntityDragPlacement(null);
+        return;
+      }
+
+      const candidate = {
+        ...currentEntity,
+        x: currentPlacement.position.x,
+        y: currentPlacement.position.y,
+      };
+      const resolution = resolveAuthoringPlacement({
+        candidate,
+        entities,
+        ignoreEntityId: currentEntity.id,
+        maxSnapDistance: authoringSnapDistance,
+      });
+
+      if (resolution.status === "snap") {
+        setEntities((current) => replaceEntityInCollection(current, resolution.entity));
+      }
+
+      setPendingEntityDragPlacement(null);
+    }
+
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [authoringLocked, authoringSnapDistance, entities, pendingEntityDragPlacement]);
 
   function handleDuplicateSelectedEntity() {
     if (!selectedEntity) {
@@ -611,16 +746,26 @@ export function App() {
   }
 
   function handleUpdateSelectedEntityRotation(rotationDegrees: number) {
-    updateSelectedEntity((entity) => {
-      if (entity.kind === "ball") {
-        return entity;
-      }
+    if (!selectedEntity || selectedEntity.kind === "ball") {
+      return;
+    }
 
-      return {
-        ...entity,
-        rotationDegrees,
-      };
+    const candidate = {
+      ...selectedEntity,
+      rotationDegrees,
+    };
+    const resolution = resolveAuthoringPlacement({
+      candidate,
+      entities,
+      ignoreEntityId: selectedEntity.id,
+      maxSnapDistance: authoringSnapDistance,
     });
+
+    if (resolution.status === "blocked") {
+      return;
+    }
+
+    setEntities((current) => replaceEntityInCollection(current, resolution.entity));
   }
 
   function handleUpdateSelectedEntityPhysics(physics: Partial<EditorEntityPhysics>) {
@@ -772,6 +917,11 @@ export function App() {
     if (libraryDragSession) {
       setLibraryDragHover(null);
       setLibraryDragSession(null);
+      return;
+    }
+
+    if (pendingEntityDragPlacement) {
+      setPendingEntityDragPlacement(null);
       return;
     }
 
@@ -937,6 +1087,7 @@ export function App() {
 
         <DirectManipulationWorkspaceCanvas
           authoringLocked={authoringLocked}
+          authoringPlacementPreview={authoringPlacementPreview}
           constraintPlacement={constraintPlacement}
           constraints={constraints}
           display={displaySettings}
