@@ -37,6 +37,7 @@ import {
   convertLegacyCreatedEntityToSceneUnits,
   findRepositionedAuthoringEntity,
   replaceEntityInCollection,
+  resolveAuthoringPlacementForCommit,
 } from "./state/authoringPlacementGuards";
 import {
   getDefaultAuthoringSnapDistance,
@@ -385,6 +386,7 @@ export function App() {
     const nextEntity = findRepositionedAuthoringEntity({
       entities,
       entityId,
+      lengthUnit: sceneSettings.lengthUnit,
       position,
     });
 
@@ -445,9 +447,10 @@ export function App() {
     position: { x: number; y: number },
   ) {
     const nextEntity = createPlacedEntityCandidate(kind, position);
-    const resolution = resolveAuthoringPlacement({
+    const resolution = resolveAuthoringPlacementForCommit({
       candidate: nextEntity,
       entities,
+      lengthUnit: sceneSettings.lengthUnit,
       maxSnapDistance: getDefaultAuthoringSnapDistance(sceneSettings.lengthUnit),
     });
 
@@ -665,14 +668,15 @@ export function App() {
         x: currentPlacement.position.x,
         y: currentPlacement.position.y,
       };
-      const resolution = resolveAuthoringPlacement({
+      const resolution = resolveAuthoringPlacementForCommit({
         candidate,
         entities,
         ignoreEntityId: currentEntity.id,
+        lengthUnit: sceneSettings.lengthUnit,
         maxSnapDistance: authoringSnapDistance,
       });
 
-      if (resolution.status === "snap") {
+      if (resolution.status !== "blocked") {
         setEntities((current) => replaceEntityInCollection(current, resolution.entity));
       }
 
@@ -754,10 +758,11 @@ export function App() {
       ...selectedEntity,
       rotationDegrees,
     };
-    const resolution = resolveAuthoringPlacement({
+    const resolution = resolveAuthoringPlacementForCommit({
       candidate,
       entities,
       ignoreEntityId: selectedEntity.id,
+      lengthUnit: sceneSettings.lengthUnit,
       maxSnapDistance: authoringSnapDistance,
     });
 

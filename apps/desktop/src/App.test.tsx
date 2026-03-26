@@ -95,6 +95,26 @@ describe("App selection sync", () => {
     expect(screen.getByText("3.4 m, 2.9 m")).toBeDefined();
   });
 
+  it("quantizes and clamps inspector position edits before commit", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Position X"), {
+      target: { value: "0.9441115113329357" },
+    });
+    fireEvent.change(screen.getByLabelText("Position Y"), {
+      target: { value: "-0.004" },
+    });
+
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    expect(ball.style.left).toBe("94px");
+    expect(ball.style.top).toBe("0px");
+    expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("0.94");
+    expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe("0");
+    expect(screen.getByText("0.94 m, 0 m")).toBeDefined();
+  });
+
   it("rejects inspector position edits that would overlap another body", () => {
     render(<App />);
 
@@ -138,10 +158,9 @@ describe("App selection sync", () => {
     fireEvent.change(screen.getByLabelText("Angle"), { target: { value: "15" } });
 
     expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("15");
-    expect(Number((screen.getByLabelText("Position Y") as HTMLInputElement).value)).toBeCloseTo(
-      readExpectedBlockContactTopLeftY(15),
-      4,
-    );
+    expect(readExpectedBlockContactTopLeftY(15)).toBeCloseTo(2.100155286221784, 6);
+    expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe("2.1");
+    expect(screen.getByText("3.36 m, 2.1 m")).toBeDefined();
   });
 
   it("rejects block rotation edits that cannot resolve within the snap distance", () => {

@@ -80,7 +80,7 @@ vi.mock("./workspace/WorkspaceCanvas", () => ({
             (props.onLibraryDragHoverChange as
               | undefined
               | ((hover: unknown) => void))?.({
-              authoringPosition: { x: 2.48, y: 2.04 },
+              authoringPosition: { x: 2.4841115113329357, y: 2.0441115113329357 },
               isOverStage: true,
             })
           }
@@ -138,6 +138,19 @@ vi.mock("./workspace/WorkspaceCanvas", () => ({
           }
         >
           Move ball to occupied area
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            (props.onMoveEntity as
+              | undefined
+              | ((entityId: string, position: { x: number; y: number }) => void))?.("ball-1", {
+              x: -0.004,
+              y: -0.004,
+            })
+          }
+        >
+          Move ball outside first quadrant
         </button>
         <button
           type="button"
@@ -280,6 +293,18 @@ describe("App direct manipulation contracts", () => {
     fireEvent.mouseUp(window);
 
     expect(screen.getByText("3.36 m, 2.2 m")).toBeDefined();
+  });
+
+  it("clamps a drag move and release into the first quadrant", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("scene-tree-item-ball-1"));
+    fireEvent.click(screen.getByRole("button", { name: "Move ball outside first quadrant" }));
+    fireEvent.mouseUp(window);
+
+    expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("0");
+    expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe("0");
+    expect(screen.getByText("0 m, 0 m")).toBeDefined();
   });
 
   it("keeps the last legal block pose when release target cannot resolve to contact", () => {
