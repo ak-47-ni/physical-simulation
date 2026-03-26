@@ -11,9 +11,6 @@ function createBall(
   overrides: Partial<BallSceneEntity> & Pick<BallSceneEntity, "id" | "label">,
 ): BallSceneEntity {
   return {
-    id: overrides.id,
-    kind: "ball",
-    label: overrides.label,
     x: 0,
     y: 0,
     radius: 0.12,
@@ -24,6 +21,9 @@ function createBall(
     velocityX: 0,
     velocityY: 0,
     ...overrides,
+    id: overrides.id,
+    kind: "ball",
+    label: overrides.label,
   };
 }
 
@@ -32,9 +32,6 @@ function createSizedEntity(
   overrides: Partial<SizedSceneEntity> & Pick<SizedSceneEntity, "id" | "label">,
 ): SizedSceneEntity {
   return {
-    id: overrides.id,
-    kind,
-    label: overrides.label,
     x: 0,
     y: 0,
     width: 1.2,
@@ -47,6 +44,9 @@ function createSizedEntity(
     velocityX: 0,
     velocityY: 0,
     ...overrides,
+    id: overrides.id,
+    kind,
+    label: overrides.label,
   };
 }
 
