@@ -1,17 +1,9 @@
 import type { Vector2 } from "../../../../packages/scene-schema/src";
 
+import type { EditorArcTrackConstraint } from "./editorConstraints";
 import type { EditorSceneEntity } from "./editorStore";
 
-export type ArcTrackConstraintDraft = {
-  center: Vector2;
-  endAngleDegrees: number;
-  entityId: string;
-  id: string;
-  kind: "arc-track";
-  radius: number;
-  side: "inside" | "outside";
-  startAngleDegrees: number;
-};
+export type ArcTrackConstraintDraft = Omit<EditorArcTrackConstraint, "label">;
 
 type CreateArcTrackConstraintInput = {
   ball: Extract<EditorSceneEntity, { kind: "ball" }>;

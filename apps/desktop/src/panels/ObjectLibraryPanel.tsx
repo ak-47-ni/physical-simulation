@@ -68,6 +68,7 @@ const bodyItems: BodyLibraryItem[] = [
 const constraintItems: ConstraintLibraryItem[] = [
   { id: "spring", label: "Spring" },
   { id: "track", label: "Track" },
+  { id: "arc-track", label: "Arc track" },
 ];
 
 const chipGroups: Array<{ title: string; items: string[] }> = [

@@ -31,7 +31,7 @@ type ConstraintPlacementState = {
   anchorEntityId: string | null;
   hint: string;
   kind: LibraryConstraintKind;
-  mode: "pick-entity" | "pick-point";
+  mode: "pick-ball" | "pick-center" | "pick-entity" | "pick-point";
 };
 
 type WorkspaceCanvasProps = {
@@ -593,7 +593,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       return;
     }
 
-    if (state.activeTool === "place-constraint" && constraintPlacement?.mode === "pick-point") {
+    if (
+      state.activeTool === "place-constraint" &&
+      (constraintPlacement?.mode === "pick-point" || constraintPlacement?.mode === "pick-center")
+    ) {
       onPlaceConstraintPoint?.(authoringPosition);
     }
   }
@@ -604,7 +607,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       return;
     }
 
-    if (state.activeTool === "place-constraint" && constraintPlacement?.mode === "pick-entity") {
+    if (
+      state.activeTool === "place-constraint" &&
+      (constraintPlacement?.mode === "pick-entity" || constraintPlacement?.mode === "pick-ball")
+    ) {
       onPlaceConstraintEntity?.(entityId);
       return;
     }

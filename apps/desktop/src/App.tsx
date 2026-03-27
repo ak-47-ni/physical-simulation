@@ -1,14 +1,8 @@
 import { useEffect, useRef, useState, type ComponentProps, type ReactElement } from "react";
 
 import { AnalysisPanel } from "./analysis/AnalysisPanel";
-import {
-  AnnotationLayer,
-  createInitialAnnotationLayerState,
-} from "./annotation/AnnotationLayer";
-import {
-  createSceneDisplaySettings,
-  type SceneDisplaySettings,
-} from "./io/sceneFile";
+import { AnnotationLayer, createInitialAnnotationLayerState } from "./annotation/AnnotationLayer";
+import { createSceneDisplaySettings, type SceneDisplaySettings } from "./io/sceneFile";
 import { ShellLayout } from "./layout/ShellLayout";
 import { ObjectLibraryPanel } from "./panels/ObjectLibraryPanel";
 import { PlaybackTransportDeck } from "./panels/PlaybackTransportDeck";
@@ -18,19 +12,34 @@ import {
   createSpringConstraintFromEntities,
   createTrackConstraintFromEntityAndPoint,
   type EditorConstraint,
-  type LibraryConstraintKind,
 } from "./state/editorConstraints";
 import {
   createDuplicatedEntity,
   createPlacedBodyEntity,
   createInitialEditorState,
-  createInitialSceneEntities,
   type EditorEntityPhysics,
   type EditorSceneEntity,
   type LibraryBodyKind,
   type LibraryItemKind,
   isLibraryBodyKind,
 } from "./state/editorStore";
+import {
+  applyConstraintUpdate,
+  createArcTrackConstraint,
+  createAuthoringPlacementPreview,
+  createConstraintPlacementState,
+  createInitialAuthoringState,
+  createScenePhysicsPanelState,
+  createWorkspaceViewport,
+  getEntityCenter,
+  isConstraintEntityPlacementMode,
+  isLengthUnit,
+  isMassUnit,
+  isVelocityUnit,
+  type ConstraintPlacementState,
+  type ConstraintUpdate,
+  type LibraryDragHoverState,
+} from "./state/appEditorHelpers";
 import {
   applySceneDuplicateOffset,
   canPlaceAuthoringCandidate,
@@ -44,78 +53,21 @@ import {
   resolveAuthoringPlacement,
   type AuthoringPlacementPreview,
 } from "./state/authoringContactSnap";
-import {
-  createMockRuntimeBridgePort,
-} from "./state/runtimeBridge";
+import { createMockRuntimeBridgePort } from "./state/runtimeBridge";
 import { createDesktopRuntimeBridgePort } from "./state/desktopRuntimeBridgePort";
-import { convertSceneAuthoringUnits } from "./state/editorSceneDocument";
 import { createRuntimeCompileRequestFromEditorState } from "./state/runtimeCompileRequest";
-import {
-  createRuntimePreviewFrame,
-  createRuntimePreviewTrajectorySamples,
-} from "./state/runtimePreview";
+import { createRuntimePreviewFrame, createRuntimePreviewTrajectorySamples } from "./state/runtimePreview";
 import { runtimeVelocityToAuthoring } from "./state/velocitySemantics";
-import {
-  createSceneAuthoringSettings,
-  type SceneAuthoringSettings,
-} from "./state/sceneAuthoringSettings";
-import {
-  getGravityUnitLabel,
-  type LengthUnit,
-  type MassUnit,
-  type VelocityUnit,
-} from "./state/sceneUnits";
-import {
-  useDualPlaybackController,
-} from "./state/useDualPlaybackController";
+import { createSceneAuthoringSettings, type SceneAuthoringSettings } from "./state/sceneAuthoringSettings";
+import { useDualPlaybackController } from "./state/useDualPlaybackController";
 import { useEditorHotkeys } from "./state/useEditorHotkeys";
 import type { LibraryDragSession } from "./workspace/libraryDragSession";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
 import { projectRuntimeSceneEntities } from "./workspace/runtimeSceneView";
-import {
-  type UnitViewport,
-} from "./workspace/unitViewport";
 import type { EditorTool } from "./workspace/tools";
 
 const PRIMARY_ANALYZER_ID = "traj-primary";
 const AUTHORING_LOCK_REASON = "Authoring is locked while runtime is playing.";
-const SCENE_PHYSICS_LOCK_REASON = "Scene physics is locked while runtime is playing.";
-const LENGTH_UNIT_OPTIONS = ["m", "cm"] as const satisfies readonly LengthUnit[];
-const VELOCITY_UNIT_OPTIONS = ["m/s", "cm/s"] as const satisfies readonly VelocityUnit[];
-const MASS_UNIT_OPTIONS = ["kg", "g"] as const satisfies readonly MassUnit[];
-const INITIAL_SCENE_SETTINGS = createSceneAuthoringSettings({
-  gravity: 9.8,
-  lengthUnit: "m",
-  velocityUnit: "m/s",
-  massUnit: "kg",
-  pixelsPerMeter: 100,
-});
-const LEGACY_SCENE_SETTINGS = createSceneAuthoringSettings({
-  gravity: 980,
-  lengthUnit: "cm",
-  velocityUnit: "cm/s",
-  massUnit: "kg",
-  pixelsPerMeter: 100,
-});
-
-type ConstraintPlacementState = {
-  anchorEntityId: string | null;
-  hint: string;
-  kind: LibraryConstraintKind;
-  mode: "pick-entity" | "pick-point";
-};
-
-type ConstraintUpdate = {
-  axis?: { x: number; y: number };
-  origin?: { x: number; y: number };
-  restLength?: number;
-  stiffness?: number;
-};
-
-type LibraryDragHoverState = {
-  authoringPosition: { x: number; y: number } | null;
-  isOverStage: boolean;
-};
 
 type DirectManipulationLibraryPanelProps = ComponentProps<typeof ObjectLibraryPanel> & {
   onStartBodyDrag?: (session: LibraryDragSession) => void;
@@ -146,104 +98,6 @@ const DirectManipulationObjectLibraryPanel = ObjectLibraryPanel as unknown as (
 const DirectManipulationWorkspaceCanvas = WorkspaceCanvas as unknown as (
   props: DirectManipulationWorkspaceCanvasProps,
 ) => ReactElement;
-
-function getEntityCenter(entity: EditorSceneEntity) {
-  if (entity.kind === "ball") {
-    return {
-      x: entity.x + entity.radius,
-      y: entity.y + entity.radius,
-    };
-  }
-
-  return {
-    x: entity.x + entity.width / 2,
-    y: entity.y + entity.height / 2,
-  };
-}
-
-function isLengthUnit(value: string): value is LengthUnit {
-  return LENGTH_UNIT_OPTIONS.includes(value as LengthUnit);
-}
-
-function isVelocityUnit(value: string): value is VelocityUnit {
-  return VELOCITY_UNIT_OPTIONS.includes(value as VelocityUnit);
-}
-
-function isMassUnit(value: string): value is MassUnit {
-  return MASS_UNIT_OPTIONS.includes(value as MassUnit);
-}
-
-function createInitialAuthoringState() {
-  const converted = convertSceneAuthoringUnits({
-    constraints: [],
-    entities: createInitialSceneEntities(),
-    settings: LEGACY_SCENE_SETTINGS,
-    units: {
-      lengthUnit: INITIAL_SCENE_SETTINGS.lengthUnit,
-      velocityUnit: INITIAL_SCENE_SETTINGS.velocityUnit,
-      massUnit: INITIAL_SCENE_SETTINGS.massUnit,
-    },
-  });
-
-  return {
-    constraints: converted.constraints,
-    entities: converted.entities,
-    settings: createSceneAuthoringSettings({
-      ...converted.settings,
-      pixelsPerMeter: INITIAL_SCENE_SETTINGS.pixelsPerMeter,
-    }),
-  };
-}
-
-function createWorkspaceViewport(settings: SceneAuthoringSettings): UnitViewport {
-  return {
-    lengthUnit: settings.lengthUnit,
-    pixelsPerMeter: settings.pixelsPerMeter,
-  };
-}
-
-function createScenePhysicsPanelState(
-  settings: SceneAuthoringSettings,
-  authoringLocked: boolean,
-) {
-  return {
-    gravity: settings.gravity,
-    gravityUnitLabel: getGravityUnitLabel(settings.lengthUnit),
-    lengthUnit: settings.lengthUnit,
-    lengthUnitOptions: [...LENGTH_UNIT_OPTIONS],
-    lockReason: authoringLocked ? SCENE_PHYSICS_LOCK_REASON : null,
-    massUnit: settings.massUnit,
-    massUnitOptions: [...MASS_UNIT_OPTIONS],
-    pixelsPerMeter: settings.pixelsPerMeter,
-    velocityUnit: settings.velocityUnit,
-    velocityUnitOptions: [...VELOCITY_UNIT_OPTIONS],
-  };
-}
-
-function createAuthoringPlacementPreview(
-  candidate: EditorSceneEntity,
-  resolution: ReturnType<typeof resolveAuthoringPlacement>,
-): AuthoringPlacementPreview {
-  if (resolution.status === "blocked") {
-    return {
-      entity: candidate,
-      status: "blocked",
-    };
-  }
-
-  if (resolution.status === "snap") {
-    return {
-      entity: resolution.entity,
-      status: "snap",
-      contactWithEntityId: resolution.contactWithEntityId,
-    };
-  }
-
-  return {
-    entity: resolution.entity,
-    status: "free",
-  };
-}
 
 export function App() {
   const initialAuthoringState = createInitialAuthoringState();
@@ -362,7 +216,7 @@ export function App() {
   }
 
   function handleSelectEntity(entityId: string) {
-    if (constraintPlacement?.mode === "pick-entity") {
+    if (constraintPlacement && isConstraintEntityPlacementMode(constraintPlacement.mode)) {
       handleConstraintEntityPick(entityId);
       return;
     }
@@ -482,21 +336,7 @@ export function App() {
     }
 
     handleToolChange("place-constraint");
-    setConstraintPlacement(
-      itemId === "spring"
-        ? {
-            anchorEntityId: null,
-            hint: "Select first body for the spring",
-            kind: "spring",
-            mode: "pick-entity",
-          }
-        : {
-            anchorEntityId: null,
-            hint: "Select a body for the track",
-            kind: "track",
-            mode: "pick-entity",
-          },
-    );
+    setConstraintPlacement(createConstraintPlacementState(itemId));
   }
 
   function handleStartBodyDrag(session: LibraryDragSession) {
@@ -872,19 +712,7 @@ export function App() {
           return constraint;
         }
 
-        if (constraint.kind === "spring") {
-          return {
-            ...constraint,
-            restLength: update.restLength ?? constraint.restLength,
-            stiffness: update.stiffness ?? constraint.stiffness,
-          };
-        }
-
-        return {
-          ...constraint,
-          axis: update.axis ?? constraint.axis,
-          origin: update.origin ?? constraint.origin,
-        };
+        return applyConstraintUpdate(constraint, update);
       }),
     );
   }
@@ -979,37 +807,77 @@ export function App() {
       return;
     }
 
+    if (constraintPlacement.kind === "track") {
+      setConstraintPlacement({
+        ...constraintPlacement,
+        anchorEntityId: entityId,
+        hint: "Pick a point to define the track axis",
+        mode: "pick-point",
+      });
+      return;
+    }
+
+    const ballEntity = entities.find(
+      (entity): entity is Extract<EditorSceneEntity, { kind: "ball" }> =>
+        entity.id === entityId && entity.kind === "ball",
+    );
+
+    if (!ballEntity) {
+      return;
+    }
+
     setConstraintPlacement({
       ...constraintPlacement,
-      anchorEntityId: entityId,
-      hint: "Pick a point to define the track axis",
-      mode: "pick-point",
+      anchorEntityId: ballEntity.id,
+      hint: "Pick a center point for the arc track",
+      mode: "pick-center",
     });
   }
 
   function handleConstraintPointPick(position: { x: number; y: number }) {
-    if (!constraintPlacement || constraintPlacement.kind !== "track" || !constraintPlacement.anchorEntityId) {
+    if (!constraintPlacement || !constraintPlacement.anchorEntityId) {
       return;
     }
 
     const anchorEntityId = constraintPlacement.anchorEntityId;
-    const origin = getEntityCenterForConstraint(anchorEntityId);
 
-    if (!origin) {
+    if (constraintPlacement.kind === "track") {
+      const origin = getEntityCenterForConstraint(anchorEntityId);
+
+      if (!origin) {
+        return;
+      }
+
+      setConstraints((current) => [
+        ...current,
+        createTrackConstraintFromEntityAndPoint(
+          current,
+          {
+            id: anchorEntityId,
+            ...origin,
+          },
+          position,
+        ),
+      ]);
+      finishConstraintPlacement();
       return;
     }
 
-    setConstraints((current) => [
-      ...current,
-      createTrackConstraintFromEntityAndPoint(
-        current,
-        {
-          id: anchorEntityId,
-          ...origin,
-        },
-        position,
-      ),
-    ]);
+    const ball = entities.find(
+      (entity): entity is Extract<EditorSceneEntity, { kind: "ball" }> =>
+        entity.id === anchorEntityId && entity.kind === "ball",
+    );
+
+    if (!ball) {
+      return;
+    }
+
+    setConstraints((current) => {
+      return [
+        ...current,
+        createArcTrackConstraint(current, ball, position),
+      ];
+    });
     finishConstraintPlacement();
   }
 
