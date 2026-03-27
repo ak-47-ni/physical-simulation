@@ -1,7 +1,5 @@
 import type { Vector2 } from "../../../../packages/scene-schema/src";
 
-export type LibraryConstraintKind = "spring" | "track";
-
 export type EditorSpringConstraint = {
   id: string;
   kind: "spring";
@@ -21,12 +19,33 @@ export type EditorTrackConstraint = {
   axis: Vector2;
 };
 
-export type EditorConstraint = EditorSpringConstraint | EditorTrackConstraint;
+export type EditorArcTrackConstraint = {
+  id: string;
+  kind: "arc-track";
+  label: string;
+  entityId: string | null;
+  center: Vector2;
+  radius: number;
+  startAngleDegrees: number;
+  endAngleDegrees: number;
+  side: "inside" | "outside";
+};
+
+export type LibraryConstraintKind = "spring" | "track" | "arc-track";
+
+export type EditorConstraint =
+  | EditorSpringConstraint
+  | EditorTrackConstraint
+  | EditorArcTrackConstraint;
 
 const DEFAULT_SPRING_REST_LENGTH = 120;
 const DEFAULT_SPRING_STIFFNESS = 24;
 const DEFAULT_TRACK_ORIGIN: Vector2 = { x: 0, y: 0 };
 const DEFAULT_TRACK_AXIS: Vector2 = { x: 1, y: 0 };
+const DEFAULT_ARC_TRACK_CENTER: Vector2 = { x: 0, y: 0 };
+const DEFAULT_ARC_TRACK_RADIUS = 1;
+const DEFAULT_ARC_TRACK_START_ANGLE_DEGREES = -90;
+const DEFAULT_ARC_TRACK_END_ANGLE_DEGREES = 90;
 
 function roundConstraintLength(value: number): number {
   return Number(value.toFixed(2));
@@ -35,6 +54,7 @@ function roundConstraintLength(value: number): number {
 const CONSTRAINT_LABELS: Record<LibraryConstraintKind, string> = {
   spring: "Spring",
   track: "Track",
+  "arc-track": "Arc track",
 };
 
 export function createDefaultEditorConstraint(
@@ -59,12 +79,25 @@ export function createDefaultEditorConstraint(
     };
   }
 
+  if (kind === "track") {
+    return {
+      ...baseConstraint,
+      kind: "track",
+      entityId: null,
+      origin: { ...DEFAULT_TRACK_ORIGIN },
+      axis: { ...DEFAULT_TRACK_AXIS },
+    };
+  }
+
   return {
     ...baseConstraint,
-    kind: "track",
+    kind: "arc-track",
     entityId: null,
-    origin: { ...DEFAULT_TRACK_ORIGIN },
-    axis: { ...DEFAULT_TRACK_AXIS },
+    center: { ...DEFAULT_ARC_TRACK_CENTER },
+    radius: DEFAULT_ARC_TRACK_RADIUS,
+    startAngleDegrees: DEFAULT_ARC_TRACK_START_ANGLE_DEGREES,
+    endAngleDegrees: DEFAULT_ARC_TRACK_END_ANGLE_DEGREES,
+    side: "inside",
   };
 }
 

@@ -45,9 +45,21 @@ export type PersistedTrackConstraint = {
   origin: Vector2;
 };
 
+export type PersistedArcTrackConstraint = {
+  center: Vector2;
+  endAngleDegrees: number;
+  entityId: string;
+  id: string;
+  kind: "arc-track";
+  radius: number;
+  side: "inside" | "outside";
+  startAngleDegrees: number;
+};
+
 export type PersistedSceneConstraint =
   | PersistedSpringConstraint
-  | PersistedTrackConstraint;
+  | PersistedTrackConstraint
+  | PersistedArcTrackConstraint;
 
 export type PersistedGravityForceSource = {
   acceleration: Vector2;
@@ -202,6 +214,22 @@ export function isPersistedTrackConstraint(
   );
 }
 
+export function isPersistedArcTrackConstraint(
+  value: { id: string; kind: string },
+): value is PersistedArcTrackConstraint {
+  const side = readString(value, "side");
+
+  return (
+    value.kind === "arc-track" &&
+    typeof readString(value, "entityId") === "string" &&
+    readVector(value, "center") !== undefined &&
+    typeof readNumber(value, "radius") === "number" &&
+    typeof readNumber(value, "startAngleDegrees") === "number" &&
+    typeof readNumber(value, "endAngleDegrees") === "number" &&
+    (side === "inside" || side === "outside")
+  );
+}
+
 export function isPersistedGravityForceSource(
   value: { id: string; kind: string },
 ): value is PersistedGravityForceSource {
@@ -274,16 +302,35 @@ function mapEditorConstraintToSceneConstraint(
     return [sceneConstraint];
   }
 
+  if (constraint.kind === "track") {
+    if (!constraint.entityId) {
+      return [];
+    }
+
+    const sceneConstraint: PersistedTrackConstraint = {
+      axis: cloneVector(constraint.axis),
+      entityId: constraint.entityId,
+      id: constraint.id,
+      kind: "track",
+      origin: cloneVector(constraint.origin),
+    };
+
+    return [sceneConstraint];
+  }
+
   if (!constraint.entityId) {
     return [];
   }
 
-  const sceneConstraint: PersistedTrackConstraint = {
-    axis: cloneVector(constraint.axis),
+  const sceneConstraint: PersistedArcTrackConstraint = {
+    center: cloneVector(constraint.center),
+    endAngleDegrees: constraint.endAngleDegrees,
     entityId: constraint.entityId,
     id: constraint.id,
-    kind: "track",
-    origin: cloneVector(constraint.origin),
+    kind: "arc-track",
+    radius: constraint.radius,
+    side: constraint.side,
+    startAngleDegrees: constraint.startAngleDegrees,
   };
 
   return [sceneConstraint];
@@ -362,6 +409,22 @@ function mapSceneConstraintToEditorConstraint(
     ];
   }
 
+  if (isPersistedArcTrackConstraint(constraint)) {
+    return [
+      {
+        center: cloneVector(constraint.center),
+        endAngleDegrees: constraint.endAngleDegrees,
+        entityId: constraint.entityId,
+        id: constraint.id,
+        kind: "arc-track",
+        label: `Arc track ${constraint.id.split("-").at(-1) ?? constraint.id}`,
+        radius: constraint.radius,
+        side: constraint.side,
+        startAngleDegrees: constraint.startAngleDegrees,
+      },
+    ];
+  }
+
   return [];
 }
 
@@ -435,16 +498,31 @@ function convertEditorConstraintUnits(
     };
   }
 
+  if (constraint.kind === "track") {
+    return {
+      ...constraint,
+      origin: {
+        x: convertLengthValue(constraint.origin.x, fromSettings.lengthUnit, toSettings.lengthUnit),
+        y: convertLengthValue(constraint.origin.y, fromSettings.lengthUnit, toSettings.lengthUnit),
+      },
+      axis: {
+        x: convertLengthValue(constraint.axis.x, fromSettings.lengthUnit, toSettings.lengthUnit),
+        y: convertLengthValue(constraint.axis.y, fromSettings.lengthUnit, toSettings.lengthUnit),
+      },
+    };
+  }
+
   return {
     ...constraint,
-    origin: {
-      x: convertLengthValue(constraint.origin.x, fromSettings.lengthUnit, toSettings.lengthUnit),
-      y: convertLengthValue(constraint.origin.y, fromSettings.lengthUnit, toSettings.lengthUnit),
+    center: {
+      x: convertLengthValue(constraint.center.x, fromSettings.lengthUnit, toSettings.lengthUnit),
+      y: convertLengthValue(constraint.center.y, fromSettings.lengthUnit, toSettings.lengthUnit),
     },
-    axis: {
-      x: convertLengthValue(constraint.axis.x, fromSettings.lengthUnit, toSettings.lengthUnit),
-      y: convertLengthValue(constraint.axis.y, fromSettings.lengthUnit, toSettings.lengthUnit),
-    },
+    radius: convertLengthValue(
+      constraint.radius,
+      fromSettings.lengthUnit,
+      toSettings.lengthUnit,
+    ),
   };
 }
 
