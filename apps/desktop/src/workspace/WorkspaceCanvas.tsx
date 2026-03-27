@@ -5,6 +5,10 @@ import type { EditorConstraint, LibraryConstraintKind } from "../state/editorCon
 import type { EditorSceneEntity } from "../state/editorStore";
 import type { LibraryDragSession } from "./libraryDragSession";
 import {
+  isArcTrackConstraint,
+  renderArcTrackConstraintOverlay,
+} from "./arcTrackConstraintOverlay";
+import {
   projectAuthoringEntityToScreen,
   type WorkspaceSceneEntity,
 } from "./runtimeSceneView";
@@ -641,6 +645,21 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
 
   function renderConstraint(constraint: EditorConstraint) {
     const isSelected = state.selectedConstraintId === constraint.id;
+
+    if (isArcTrackConstraint(constraint)) {
+      return renderArcTrackConstraintOverlay({
+        constraint,
+        constraintSelectionEnabled,
+        getEntityCenter: (entityId) => {
+          const entity = getEntityById(entityId);
+
+          return entity ? getEntityCenter(entity) : null;
+        },
+        isSelected,
+        onConstraintClick: handleConstraintClick,
+        viewport,
+      });
+    }
 
     if (constraint.kind === "spring") {
       const entityA = getEntityById(constraint.entityAId);
