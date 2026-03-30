@@ -1,5 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArcTrackSide {
+    Inside,
+    Outside,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ConstraintDefinition {
     Spring {
@@ -15,6 +22,15 @@ pub enum ConstraintDefinition {
         origin: crate::entity::Vector2,
         axis: crate::entity::Vector2,
     },
+    ArcTrack {
+        id: String,
+        entity_id: String,
+        center: crate::entity::Vector2,
+        radius: f64,
+        start_angle_degrees: f64,
+        end_angle_degrees: f64,
+        side: ArcTrackSide,
+    },
 }
 
 impl ConstraintDefinition {
@@ -22,6 +38,7 @@ impl ConstraintDefinition {
         match self {
             Self::Spring { id, .. } => id,
             Self::Track { id, .. } => id,
+            Self::ArcTrack { id, .. } => id,
         }
     }
 
@@ -31,15 +48,33 @@ impl ConstraintDefinition {
                 entity_a, entity_b, ..
             } => vec![entity_a, entity_b],
             Self::Track { entity_id, .. } => vec![entity_id],
+            Self::ArcTrack { entity_id, .. } => vec![entity_id],
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConstraintCompileError {
-    InvalidSpringRestLength { constraint_id: String, value: f64 },
-    InvalidSpringStiffness { constraint_id: String, value: f64 },
-    InvalidTrackAxis { constraint_id: String },
+    InvalidSpringRestLength {
+        constraint_id: String,
+        value: f64,
+    },
+    InvalidSpringStiffness {
+        constraint_id: String,
+        value: f64,
+    },
+    InvalidTrackAxis {
+        constraint_id: String,
+    },
+    InvalidArcTrackRadius {
+        constraint_id: String,
+        value: f64,
+    },
+    InvalidArcTrackSpan {
+        constraint_id: String,
+        start_angle_degrees: f64,
+        end_angle_degrees: f64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -56,6 +91,16 @@ pub enum CompiledConstraint {
         entity_id: String,
         origin: crate::entity::Vector2,
         axis: crate::entity::Vector2,
+    },
+    ArcTrack {
+        id: String,
+        entity_id: String,
+        center: crate::entity::Vector2,
+        radius: f64,
+        start_angle_radians: f64,
+        end_angle_radians: f64,
+        span_radians: f64,
+        side: ArcTrackSide,
     },
 }
 
@@ -109,6 +154,43 @@ pub fn compile_constraint(
                 entity_id: entity_id.clone(),
                 origin: *origin,
                 axis: *axis,
+            })
+        }
+        ConstraintDefinition::ArcTrack {
+            id,
+            entity_id,
+            center,
+            radius,
+            start_angle_degrees,
+            end_angle_degrees,
+            side,
+        } => {
+            if !radius.is_finite() || *radius <= 0.0 {
+                return Err(ConstraintCompileError::InvalidArcTrackRadius {
+                    constraint_id: id.clone(),
+                    value: *radius,
+                });
+            }
+
+            let Some((start_angle_radians, end_angle_radians, span_radians)) =
+                crate::arc_track::validated_arc_angles(*start_angle_degrees, *end_angle_degrees)
+            else {
+                return Err(ConstraintCompileError::InvalidArcTrackSpan {
+                    constraint_id: id.clone(),
+                    start_angle_degrees: *start_angle_degrees,
+                    end_angle_degrees: *end_angle_degrees,
+                });
+            };
+
+            Ok(CompiledConstraint::ArcTrack {
+                id: id.clone(),
+                entity_id: entity_id.clone(),
+                center: *center,
+                radius: *radius,
+                start_angle_radians,
+                end_angle_radians,
+                span_radians,
+                side: *side,
             })
         }
     }

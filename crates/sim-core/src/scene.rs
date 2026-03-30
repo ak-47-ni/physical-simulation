@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::analyzer::{AnalyzerDefinition, CompiledAnalyzer};
 use crate::constraint::{
@@ -46,6 +46,19 @@ pub enum SceneCompileError {
     InvalidTrackAxis {
         constraint_id: String,
     },
+    InvalidArcTrackRadius {
+        constraint_id: String,
+        value: f64,
+    },
+    InvalidArcTrackSpan {
+        constraint_id: String,
+        start_angle_degrees: f64,
+        end_angle_degrees: f64,
+    },
+    ArcTrackRequiresBall {
+        constraint_id: String,
+        entity_id: String,
+    },
     MissingGravity,
     NonConvexPolygon {
         entity_id: String,
@@ -84,6 +97,22 @@ impl From<ConstraintCompileError> for SceneCompileError {
             ConstraintCompileError::InvalidTrackAxis { constraint_id } => {
                 Self::InvalidTrackAxis { constraint_id }
             }
+            ConstraintCompileError::InvalidArcTrackRadius {
+                constraint_id,
+                value,
+            } => Self::InvalidArcTrackRadius {
+                constraint_id,
+                value,
+            },
+            ConstraintCompileError::InvalidArcTrackSpan {
+                constraint_id,
+                start_angle_degrees,
+                end_angle_degrees,
+            } => Self::InvalidArcTrackSpan {
+                constraint_id,
+                start_angle_degrees,
+                end_angle_degrees,
+            },
         }
     }
 }
@@ -109,6 +138,10 @@ pub fn compile_scene(request: &CompileSceneRequest) -> Result<CompiledScene, Sce
             ForceSourceDefinition::Gravity { .. } => Some(force.as_gravity()),
         })
         .ok_or(SceneCompileError::MissingGravity)?;
+    let compiled_entity_shapes = compiled_entities
+        .iter()
+        .map(|entity| (entity.id.as_str(), &entity.shape))
+        .collect::<HashMap<_, _>>();
 
     let mut compiled_constraints = Vec::with_capacity(request.constraints.len());
 
@@ -122,6 +155,7 @@ pub fn compile_scene(request: &CompileSceneRequest) -> Result<CompiledScene, Sce
             }
         }
 
+        validate_constraint_bindings(constraint, &compiled_entity_shapes)?;
         compiled_constraints.push(compile_constraint(constraint).map_err(SceneCompileError::from)?);
     }
 
@@ -144,6 +178,28 @@ pub fn compile_scene(request: &CompileSceneRequest) -> Result<CompiledScene, Sce
         gravity,
         analyzers: compiled_analyzers,
     })
+}
+
+fn validate_constraint_bindings(
+    constraint: &ConstraintDefinition,
+    compiled_entity_shapes: &HashMap<&str, &CompiledShape>,
+) -> Result<(), SceneCompileError> {
+    let ConstraintDefinition::ArcTrack { id, entity_id, .. } = constraint else {
+        return Ok(());
+    };
+
+    let Some(shape) = compiled_entity_shapes.get(entity_id.as_str()) else {
+        return Ok(());
+    };
+
+    if matches!(shape, CompiledShape::Ball { .. }) {
+        Ok(())
+    } else {
+        Err(SceneCompileError::ArcTrackRequiresBall {
+            constraint_id: id.clone(),
+            entity_id: entity_id.clone(),
+        })
+    }
 }
 
 fn compile_entity(entity: &EntityDefinition) -> Result<CompiledEntity, SceneCompileError> {

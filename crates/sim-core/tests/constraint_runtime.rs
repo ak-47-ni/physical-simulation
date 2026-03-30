@@ -1,4 +1,4 @@
-use sim_core::constraint::ConstraintDefinition;
+use sim_core::constraint::{ArcTrackSide, ConstraintDefinition};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::runtime::{RuntimeFramePayload, RuntimeScene};
@@ -20,6 +20,20 @@ fn body(id: &str, position: Vector2, velocity: Vector2, is_static: bool) -> Enti
         initial_velocity: velocity,
         mass: if is_static { 0.0 } else { 1.0 },
         is_static,
+        friction_coefficient: 0.2,
+        restitution_coefficient: 0.0,
+    }
+}
+
+fn ball(id: &str, position: Vector2, velocity: Vector2) -> EntityDefinition {
+    EntityDefinition {
+        id: id.to_string(),
+        shape: ShapeDefinition::Ball { radius: 0.5 },
+        position,
+        rotation_radians: 0.0,
+        initial_velocity: velocity,
+        mass: 1.0,
+        is_static: false,
         friction_coefficient: 0.2,
         restitution_coefficient: 0.0,
     }
@@ -184,4 +198,98 @@ fn constraint_runtime_same_time_scale_replays_deterministically_after_reset() {
     let second_run_frame = runtime.current_frame();
 
     assert_eq!(first_run_frame, second_run_frame);
+}
+
+#[test]
+fn constraint_runtime_arc_track_projection_applies_to_initial_and_reset_state() {
+    let mut runtime = runtime_for_scene(
+        vec![ball("slider", vector2(3.0, 0.5), vector2(1.0, 4.0))],
+        vec![ConstraintDefinition::ArcTrack {
+            id: "arc-track".to_string(),
+            entity_id: "slider".to_string(),
+            center: vector2(0.0, 0.0),
+            radius: 2.0,
+            start_angle_degrees: -90.0,
+            end_angle_degrees: 90.0,
+            side: ArcTrackSide::Inside,
+        }],
+        vector2(0.0, -9.81),
+        0.05,
+    );
+
+    let initial_frame = runtime.current_frame();
+    let initial_slider = payload_frame(&initial_frame, "slider");
+    let initial_radius = initial_slider.position.length();
+
+    assert!((initial_radius - 2.0).abs() < 1e-6);
+    assert!(initial_slider.position.dot(initial_slider.velocity).abs() < 1e-6);
+
+    runtime.step();
+    let reset_frame = runtime.reset();
+    let reset_slider = payload_frame(&reset_frame, "slider");
+
+    assert!((reset_slider.position.length() - 2.0).abs() < 1e-6);
+    assert!(reset_slider.position.dot(reset_slider.velocity).abs() < 1e-6);
+}
+
+#[test]
+fn constraint_runtime_arc_track_stays_on_circular_path_across_many_steps() {
+    let center = vector2(4.0, 4.0);
+    let mut runtime = runtime_for_scene(
+        vec![ball("slider", vector2(4.0, 2.0), vector2(1.0, 0.0))],
+        vec![ConstraintDefinition::ArcTrack {
+            id: "arc-track".to_string(),
+            entity_id: "slider".to_string(),
+            center,
+            radius: 2.0,
+            start_angle_degrees: 180.0,
+            end_angle_degrees: 350.0,
+            side: ArcTrackSide::Inside,
+        }],
+        Vector2::ZERO,
+        0.02,
+    );
+
+    for _ in 0..40 {
+        runtime.step();
+    }
+
+    let frame = runtime.current_frame();
+    let slider = payload_frame(&frame, "slider");
+    let radial = slider.position.sub(center);
+
+    assert!((radial.length() - 2.0).abs() < 1e-3);
+    assert!(radial.dot(slider.velocity).abs() < 1e-3);
+}
+
+#[test]
+fn constraint_runtime_arc_track_replays_deterministically_after_reset() {
+    let center = vector2(4.0, 4.0);
+    let mut runtime = runtime_for_scene(
+        vec![ball("slider", vector2(4.0, 2.0), vector2(1.0, 0.0))],
+        vec![ConstraintDefinition::ArcTrack {
+            id: "arc-track".to_string(),
+            entity_id: "slider".to_string(),
+            center,
+            radius: 2.0,
+            start_angle_degrees: 180.0,
+            end_angle_degrees: 350.0,
+            side: ArcTrackSide::Inside,
+        }],
+        vector2(0.0, -9.81),
+        0.02,
+    );
+
+    for _ in 0..16 {
+        runtime.step();
+    }
+    let first_run = runtime.current_frame();
+
+    runtime.reset();
+    for _ in 0..16 {
+        runtime.step();
+    }
+    let second_run = runtime.current_frame();
+
+    assert_eq!(first_run, second_run);
 }

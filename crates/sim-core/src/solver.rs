@@ -4,9 +4,9 @@ mod angular_dynamics;
 #[path = "contact_geometry.rs"]
 mod contact_geometry;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use crate::constraint::CompiledConstraint;
+use crate::constraint::{ArcTrackSide, CompiledConstraint};
 use crate::entity::Vector2;
 
 pub use angular_dynamics::inverse_inertia_for_body;
@@ -47,6 +47,7 @@ pub struct RuntimeBodyState {
 pub fn step_bodies(
     bodies: &mut [RuntimeBodyState],
     constraints: &[CompiledConstraint],
+    detached_arc_track_ids: &mut HashSet<String>,
     gravity: Vector2,
     delta_seconds: f64,
 ) {
@@ -85,17 +86,34 @@ pub fn step_bodies(
 
     resolve_static_contacts(bodies, &static_surfaces);
     resolve_dynamic_contacts(bodies, &static_surfaces);
-    enforce_track_bindings(bodies, constraints, &index_by_id);
+    enforce_track_bindings(
+        bodies,
+        constraints,
+        &index_by_id,
+        detached_arc_track_ids,
+        true,
+    );
 }
 
-pub fn project_track_bindings(bodies: &mut [RuntimeBodyState], constraints: &[CompiledConstraint]) {
+pub fn project_track_bindings(
+    bodies: &mut [RuntimeBodyState],
+    constraints: &[CompiledConstraint],
+    detached_arc_track_ids: &HashSet<String>,
+) {
     let index_by_id = bodies
         .iter()
         .enumerate()
         .map(|(index, body)| (body.entity_id.clone(), index))
         .collect::<HashMap<_, _>>();
 
-    enforce_track_bindings(bodies, constraints, &index_by_id);
+    let mut detached_arc_track_ids = detached_arc_track_ids.clone();
+    enforce_track_bindings(
+        bodies,
+        constraints,
+        &index_by_id,
+        &mut detached_arc_track_ids,
+        false,
+    );
 }
 
 pub fn inverse_mass(body: &RuntimeBodyState) -> f64 {
@@ -428,35 +446,125 @@ fn enforce_track_bindings(
     bodies: &mut [RuntimeBodyState],
     constraints: &[CompiledConstraint],
     index_by_id: &HashMap<String, usize>,
+    detached_arc_track_ids: &mut HashSet<String>,
+    allow_detach: bool,
 ) {
     for constraint in constraints {
-        if let CompiledConstraint::Track {
-            entity_id,
-            origin,
-            axis,
-            ..
-        } = constraint
-        {
-            let Some(&index) = index_by_id.get(entity_id) else {
-                continue;
-            };
-            let body = &mut bodies[index];
-            let direction = axis.normalized();
+        match constraint {
+            CompiledConstraint::Track {
+                entity_id,
+                origin,
+                axis,
+                ..
+            } => {
+                let Some(&index) = index_by_id.get(entity_id) else {
+                    continue;
+                };
+                let body = &mut bodies[index];
+                let direction = axis.normalized();
 
-            if direction.length() <= f64::EPSILON {
-                continue;
+                if direction.length() <= f64::EPSILON {
+                    continue;
+                }
+
+                let relative = body.position.sub(*origin);
+                let projected_distance = relative.dot(direction);
+                let projected_velocity = body.velocity.dot(direction);
+                let projected_acceleration = body.acceleration.dot(direction);
+
+                body.position = origin.add(direction.scale(projected_distance));
+                body.velocity = direction.scale(projected_velocity);
+                body.acceleration = direction.scale(projected_acceleration);
             }
-
-            let relative = body.position.sub(*origin);
-            let projected_distance = relative.dot(direction);
-            let projected_velocity = body.velocity.dot(direction);
-            let projected_acceleration = body.acceleration.dot(direction);
-
-            body.position = origin.add(direction.scale(projected_distance));
-            body.velocity = direction.scale(projected_velocity);
-            body.acceleration = direction.scale(projected_acceleration);
+            CompiledConstraint::ArcTrack {
+                id,
+                entity_id,
+                center,
+                radius,
+                start_angle_radians,
+                end_angle_radians,
+                span_radians,
+                side,
+            } => {
+                let Some(&index) = index_by_id.get(entity_id) else {
+                    continue;
+                };
+                let body = &mut bodies[index];
+                enforce_arc_track_binding(
+                    body,
+                    id,
+                    *center,
+                    *radius,
+                    *start_angle_radians,
+                    *end_angle_radians,
+                    *span_radians,
+                    *side,
+                    detached_arc_track_ids,
+                    allow_detach,
+                );
+            }
+            CompiledConstraint::Spring { .. } => {}
         }
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn enforce_arc_track_binding(
+    body: &mut RuntimeBodyState,
+    constraint_id: &str,
+    center: Vector2,
+    radius: f64,
+    start_angle_radians: f64,
+    end_angle_radians: f64,
+    span_radians: f64,
+    side: ArcTrackSide,
+    detached_arc_track_ids: &mut HashSet<String>,
+    allow_detach: bool,
+) {
+    if detached_arc_track_ids.contains(constraint_id) {
+        return;
+    }
+
+    let projection = crate::arc_track::project_point_to_arc(
+        center,
+        radius,
+        start_angle_radians,
+        end_angle_radians,
+        span_radians,
+        body.position,
+    );
+    let current_angle = crate::arc_track::angle_radians_for_position(body.position.sub(center))
+        .unwrap_or(projection.angle_radians);
+
+    if allow_detach
+        && !crate::arc_track::angle_is_within_arc(current_angle, start_angle_radians, span_radians)
+    {
+        detached_arc_track_ids.insert(constraint_id.to_string());
+        return;
+    }
+
+    let radial = crate::arc_track::radial_for_angle(projection.angle_radians);
+    let tangent = radial.perp();
+    let tangential_speed = body.velocity.dot(tangent);
+    let tangential_acceleration = body.acceleration.dot(tangent);
+    let support_direction = match side {
+        ArcTrackSide::Inside => radial.scale(-1.0),
+        ArcTrackSide::Outside => radial,
+    };
+    let required_support = radial
+        .scale(-((tangential_speed * tangential_speed) / radius + body.acceleration.dot(radial)))
+        .dot(support_direction);
+
+    if allow_detach && required_support < -crate::arc_track::ARC_TRACK_EPSILON {
+        detached_arc_track_ids.insert(constraint_id.to_string());
+        return;
+    }
+
+    body.position = projection.position;
+    body.velocity = tangent.scale(tangential_speed);
+    body.acceleration = tangent
+        .scale(tangential_acceleration)
+        .sub(radial.scale((tangential_speed * tangential_speed) / radius));
 }
 
 fn get_body_pair_mut(

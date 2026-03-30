@@ -68,6 +68,95 @@ fn runtime_compile_validation_rejects_invalid_spring_constraints() {
 }
 
 #[test]
+fn runtime_compile_validation_rejects_arc_tracks_without_ball_binding() {
+    let request = compile_request(
+        json!([
+            {
+                "id": "arc-track-1",
+                "kind": "arc-track",
+                "entityId": "poly-1",
+                "center": { "x": 0.0, "y": 2.0 },
+                "radius": 3.0,
+                "startAngleDegrees": 180.0,
+                "endAngleDegrees": 315.0,
+                "side": "inside"
+            }
+        ]),
+        json!([
+            {
+                "id": "gravity-1",
+                "kind": "gravity",
+                "acceleration": { "x": 0.0, "y": -9.81 }
+            }
+        ]),
+        json!([]),
+    );
+
+    assert_eq!(
+        SimulationBridge::new(1.0 / 60.0).compile_runtime_request(request),
+        Err(BridgeError::SceneCompile(
+            SceneCompileError::ArcTrackRequiresBall {
+                constraint_id: "arc-track-1".to_string(),
+                entity_id: "poly-1".to_string(),
+            }
+        ))
+    );
+}
+
+#[test]
+fn runtime_compile_validation_rejects_invalid_arc_track_spans() {
+    let request: RuntimeCompileRequest = serde_json::from_value(json!({
+        "scene": {
+            "schemaVersion": 1,
+            "entities": [
+                {
+                    "id": "ball-1",
+                    "kind": "ball",
+                    "x": 0.0,
+                    "y": -2.0,
+                    "radius": 0.5
+                }
+            ],
+            "constraints": [
+                {
+                    "id": "arc-track-1",
+                    "kind": "arc-track",
+                    "entityId": "ball-1",
+                    "center": { "x": 0.0, "y": 0.0 },
+                    "radius": 2.0,
+                    "startAngleDegrees": 0.0,
+                    "endAngleDegrees": 360.0,
+                    "side": "inside"
+                }
+            ],
+            "forceSources": [
+                {
+                    "id": "gravity-1",
+                    "kind": "gravity",
+                    "acceleration": { "x": 0.0, "y": -9.81 }
+                }
+            ],
+            "analyzers": [],
+            "annotations": []
+        },
+        "dirtyScopes": [],
+        "rebuildRequired": false
+    }))
+    .expect("arc-track payload should deserialize");
+
+    assert_eq!(
+        SimulationBridge::new(1.0 / 60.0).compile_runtime_request(request),
+        Err(BridgeError::SceneCompile(
+            SceneCompileError::InvalidArcTrackSpan {
+                constraint_id: "arc-track-1".to_string(),
+                start_angle_degrees: 0.0,
+                end_angle_degrees: 360.0,
+            }
+        ))
+    );
+}
+
+#[test]
 fn runtime_compile_validation_requires_explicit_gravity_force_sources() {
     let request = compile_request(json!([]), json!([]), json!([]));
 

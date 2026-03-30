@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::analyzer::{AnalyzerDefinition, TrajectorySample};
-use crate::constraint::ConstraintDefinition;
+use crate::constraint::{ArcTrackSide, ConstraintDefinition};
 use crate::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use crate::force::ForceSourceDefinition;
 use crate::playback::{
@@ -694,6 +694,18 @@ pub enum SceneConstraintPayload {
         origin: Vector2,
         axis: Vector2,
     },
+    ArcTrack {
+        id: String,
+        #[serde(rename = "entityId")]
+        entity_id: String,
+        center: Vector2,
+        radius: f64,
+        #[serde(rename = "startAngleDegrees")]
+        start_angle_degrees: f64,
+        #[serde(rename = "endAngleDegrees")]
+        end_angle_degrees: f64,
+        side: ArcTrackSide,
+    },
 }
 
 impl SceneConstraintPayload {
@@ -722,6 +734,23 @@ impl SceneConstraintPayload {
                 entity_id,
                 origin,
                 axis,
+            },
+            Self::ArcTrack {
+                id,
+                entity_id,
+                center,
+                radius,
+                start_angle_degrees,
+                end_angle_degrees,
+                side,
+            } => ConstraintDefinition::ArcTrack {
+                id,
+                entity_id,
+                center,
+                radius,
+                start_angle_degrees,
+                end_angle_degrees,
+                side,
             },
         }
     }
