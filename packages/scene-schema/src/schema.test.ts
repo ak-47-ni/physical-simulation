@@ -16,9 +16,32 @@ import {
   requiresRuntimeRebuild,
 } from "./index";
 
+type ExpectedArcTrackConstraint = {
+  id: string;
+  kind: "arc-track";
+  center: { x: number; y: number };
+  radius: number;
+  startAngleDegrees: number;
+  endAngleDegrees: number;
+  side: "inside" | "outside";
+  entryEndpoint: "start" | "end";
+};
+
+type Assert<T extends true> = T;
+type _AssertArcTrackConstraintExtendsExpected = Assert<
+  ArcTrackConstraint extends ExpectedArcTrackConstraint ? true : false
+>;
+type _AssertExpectedExtendsArcTrackConstraint = Assert<
+  ExpectedArcTrackConstraint extends ArcTrackConstraint ? true : false
+>;
+
 describe("scene schema", () => {
   it("publishes a schema version", () => {
     expect(SCENE_SCHEMA_VERSION).toBe(1);
+  });
+
+  it("types arc-track constraints as free-entry rail segments", () => {
+    expect(true).toBe(true);
   });
 
   it("creates an empty scene document with all top-level collections", () => {
@@ -334,12 +357,12 @@ describe("scene schema", () => {
     const arcTrack: ArcTrackConstraint = {
       id: "arc-track-1",
       kind: "arc-track",
-      entityId: "ball-1",
       center: { x: 2.4, y: 1.8 },
       radius: 0.75,
       startAngleDegrees: -30,
       endAngleDegrees: 120,
       side: "inside",
+      entryEndpoint: "start",
     };
 
     scene.constraints.push(arcTrack);
@@ -358,6 +381,8 @@ describe("scene schema", () => {
     expect(clonedConstraint).toEqual(originalConstraint);
     expect(clonedConstraint).not.toBe(originalConstraint);
     expect(clonedConstraint.center).not.toBe(originalConstraint.center);
+    expect(clonedConstraint).toHaveProperty("entryEndpoint", "start");
+    expect(clonedConstraint).not.toHaveProperty("entityId");
   });
 
   it("creates runtime compile requests that preserve typed arc-track constraints", () => {
@@ -365,12 +390,12 @@ describe("scene schema", () => {
     const arcTrack: RuntimeCompileConstraint = {
       id: "arc-track-1",
       kind: "arc-track",
-      entityId: "ball-1",
       center: { x: 3.2, y: 2.1 },
       radius: 0.9,
       startAngleDegrees: -90,
       endAngleDegrees: 45,
       side: "outside",
+      entryEndpoint: "end",
     };
 
     scene.constraints.push(arcTrack);
@@ -384,5 +409,7 @@ describe("scene schema", () => {
 
     expect(compiledConstraint).toEqual(arcTrack);
     expect(compiledConstraint.center).not.toBe(arcTrack.center);
+    expect(compiledConstraint).toHaveProperty("entryEndpoint", "end");
+    expect(compiledConstraint).not.toHaveProperty("entityId");
   });
 });

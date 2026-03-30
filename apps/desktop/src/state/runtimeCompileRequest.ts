@@ -13,6 +13,7 @@ import {
 import type { EditorConstraint } from "./editorConstraints";
 import {
   createSceneDocumentFromEditorState,
+  isPersistedArcTrackConstraint,
   isPersistedGravityForceSource,
   isPersistedSpringConstraint,
   isPersistedTrackConstraint,
@@ -253,6 +254,19 @@ function cloneRuntimeSceneConstraint(
     };
   }
 
+  if (isPersistedArcTrackConstraint(constraint)) {
+    return {
+      center: { ...constraint.center },
+      entryEndpoint: constraint.entryEndpoint,
+      endAngleDegrees: constraint.endAngleDegrees,
+      id: constraint.id,
+      kind: "arc-track",
+      radius: constraint.radius,
+      side: constraint.side,
+      startAngleDegrees: constraint.startAngleDegrees,
+    };
+  }
+
   return {
     id: constraint.id,
     kind: constraint.kind,
@@ -378,6 +392,17 @@ function normalizeRuntimeSceneConstraintToSi(
         x: normalizeLengthToSi(constraint.axis.x, settings.lengthUnit),
         y: normalizeLengthToSi(constraint.axis.y, settings.lengthUnit),
       },
+    };
+  }
+
+  if (isPersistedArcTrackConstraint(constraint)) {
+    return {
+      ...constraint,
+      center: {
+        x: normalizeLengthToSi(constraint.center.x, settings.lengthUnit),
+        y: normalizeLengthToSi(constraint.center.y, settings.lengthUnit),
+      },
+      radius: normalizeLengthToSi(constraint.radius, settings.lengthUnit),
     };
   }
 

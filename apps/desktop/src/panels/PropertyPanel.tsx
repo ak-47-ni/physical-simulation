@@ -13,6 +13,7 @@ import { ScenePhysicsCard } from "./property/ScenePhysicsCard";
 type ConstraintPanelUpdate = {
   axis?: { x: number; y: number };
   center?: { x: number; y: number };
+  entryEndpoint?: "start" | "end";
   endAngleDegrees?: number;
   origin?: { x: number; y: number };
   restLength?: number;
@@ -435,10 +436,6 @@ export function PropertyPanel(props: PropertyPanelProps) {
               </>
             ) : (
               <>
-                <ReadonlyField
-                  label="Attached entity"
-                  value={selectedConstraint.entityId ?? "Unassigned"}
-                />
                 <div
                   style={{
                     display: "grid",
@@ -486,6 +483,20 @@ export function PropertyPanel(props: PropertyPanelProps) {
                     onChange={(side) =>
                       onUpdateSelectedConstraint({
                         side: side as "inside" | "outside",
+                      })
+                    }
+                  />
+                  <SelectInput
+                    disabled={authoringLocked}
+                    label="Entry endpoint"
+                    options={[
+                      { label: "Start", value: "start" },
+                      { label: "End", value: "end" },
+                    ]}
+                    value={selectedConstraint.entryEndpoint}
+                    onChange={(entryEndpoint) =>
+                      onUpdateSelectedConstraint({
+                        entryEndpoint: entryEndpoint as "start" | "end",
                       })
                     }
                   />
