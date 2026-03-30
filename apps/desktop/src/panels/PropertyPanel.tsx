@@ -12,8 +12,13 @@ import { ScenePhysicsCard } from "./property/ScenePhysicsCard";
 
 type ConstraintPanelUpdate = {
   axis?: { x: number; y: number };
+  center?: { x: number; y: number };
+  endAngleDegrees?: number;
   origin?: { x: number; y: number };
   restLength?: number;
+  radius?: number;
+  side?: "inside" | "outside";
+  startAngleDegrees?: number;
   stiffness?: number;
 };
 
@@ -196,6 +201,39 @@ function TextInput(props: {
   );
 }
 
+function SelectInput(props: {
+  disabled?: boolean;
+  label: string;
+  options: Array<{ label: string; value: string }>;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label style={{ display: "grid", gap: "4px" }}>
+      <span style={{ color: "#6a7890", fontSize: "12px" }}>{props.label}</span>
+      <select
+        aria-label={props.label}
+        disabled={props.disabled}
+        style={inputStyle}
+        value={props.value}
+        onChange={(event) => {
+          if (props.disabled) {
+            return;
+          }
+
+          props.onChange(event.target.value);
+        }}
+      >
+        {props.options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function CheckboxInput(props: {
   disabled?: boolean;
   label: string;
@@ -336,7 +374,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   />
                 </div>
               </>
-            ) : (
+            ) : selectedConstraint.kind === "track" ? (
               <>
                 <ReadonlyField
                   label="Attached entity"
@@ -391,6 +429,80 @@ export function PropertyPanel(props: PropertyPanelProps) {
                       onUpdateSelectedConstraint({
                         axis: { x: selectedConstraint.axis.x, y },
                       })
+                    }
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <ReadonlyField
+                  label="Attached entity"
+                  value={selectedConstraint.entityId ?? "Unassigned"}
+                />
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "10px",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  }}
+                >
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Center X"
+                    suffix={lengthUnitLabel ?? undefined}
+                    value={selectedConstraint.center.x}
+                    onChange={(x) =>
+                      onUpdateSelectedConstraint({
+                        center: { x, y: selectedConstraint.center.y },
+                      })
+                    }
+                  />
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Center Y"
+                    suffix={lengthUnitLabel ?? undefined}
+                    value={selectedConstraint.center.y}
+                    onChange={(y) =>
+                      onUpdateSelectedConstraint({
+                        center: { x: selectedConstraint.center.x, y },
+                      })
+                    }
+                  />
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Radius"
+                    suffix={lengthUnitLabel ?? undefined}
+                    value={selectedConstraint.radius}
+                    onChange={(radius) => onUpdateSelectedConstraint({ radius })}
+                  />
+                  <SelectInput
+                    disabled={authoringLocked}
+                    label="Side"
+                    options={[
+                      { label: "Inside", value: "inside" },
+                      { label: "Outside", value: "outside" },
+                    ]}
+                    value={selectedConstraint.side}
+                    onChange={(side) =>
+                      onUpdateSelectedConstraint({
+                        side: side as "inside" | "outside",
+                      })
+                    }
+                  />
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Start angle"
+                    value={selectedConstraint.startAngleDegrees}
+                    onChange={(startAngleDegrees) =>
+                      onUpdateSelectedConstraint({ startAngleDegrees })
+                    }
+                  />
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="End angle"
+                    value={selectedConstraint.endAngleDegrees}
+                    onChange={(endAngleDegrees) =>
+                      onUpdateSelectedConstraint({ endAngleDegrees })
                     }
                   />
                 </div>

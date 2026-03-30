@@ -55,6 +55,12 @@ vi.mock("./panels/ObjectLibraryPanel", () => ({
         >
           Select track
         </button>
+        <button
+          type="button"
+          onClick={() => (props.onSelectItem as (itemId: string) => void)("arc-track")}
+        >
+          Select arc track
+        </button>
       </div>
     );
   },
@@ -180,6 +186,35 @@ vi.mock("./workspace/WorkspaceCanvas", () => ({
         </button>
         <button type="button" onClick={() => (props.onCancelPlacement as () => void)?.()}>
           Cancel placement
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            (props.onPlaceConstraintEntity as undefined | ((entityId: string) => void))?.("board-1")
+          }
+        >
+          Pick board for constraint
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            (props.onPlaceConstraintEntity as undefined | ((entityId: string) => void))?.("ball-1")
+          }
+        >
+          Pick ball for constraint
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            (props.onPlaceConstraintPoint as
+              | undefined
+              | ((position: { x: number; y: number }) => void))?.({
+              x: 1.56,
+              y: 3,
+            })
+          }
+        >
+          Pick constraint point
         </button>
         {(props.constraintPlacement as { hint: string } | null)?.hint ? (
           <span>{(props.constraintPlacement as { hint: string }).hint}</span>
@@ -343,5 +378,47 @@ describe("App direct manipulation contracts", () => {
 
     expect(screen.queryByText("Select a body for the track")).toBeNull();
     expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-tool")).toBe("select");
+  });
+
+  it("creates an arc-track only after selecting a ball and then a center point", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select arc track" }));
+
+    expect(screen.getByText("Select a ball for the arc track")).toBeDefined();
+    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-tool")).toBe(
+      "place-constraint",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Pick board for constraint" }));
+
+    expect(screen.queryByTestId("scene-tree-constraint-arc-track-1")).toBeNull();
+    expect(screen.getByText("Select a ball for the arc track")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pick ball for constraint" }));
+
+    expect(screen.getByText("Pick a center point for the arc track")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pick constraint point" }));
+
+    expect(screen.queryByText("Pick a center point for the arc track")).toBeNull();
+    expect(screen.getByTestId("scene-tree-constraint-arc-track-1")).toBeDefined();
+    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-tool")).toBe("select");
+  });
+
+  it("deletes arc-tracks when their attached ball is deleted", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select arc track" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pick ball for constraint" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pick constraint point" }));
+
+    expect(screen.getByTestId("scene-tree-constraint-arc-track-1")).toBeDefined();
+
+    fireEvent.click(screen.getByTestId("scene-tree-item-ball-1"));
+    fireEvent.click(screen.getByRole("button", { name: /delete entity/i }));
+
+    expect(screen.queryByTestId("scene-tree-item-ball-1")).toBeNull();
+    expect(screen.queryByTestId("scene-tree-constraint-arc-track-1")).toBeNull();
   });
 });

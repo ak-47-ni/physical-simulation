@@ -1,4 +1,5 @@
 import {
+  type ArcTrackConstraint,
   cloneSceneDocument,
   requiresRuntimeRebuild,
   type DirtyEditScope,
@@ -28,6 +29,8 @@ export type RuntimeCompileRequest = {
 };
 
 export type RuntimeCompileConstraint = SceneConstraint;
+
+export type RuntimeCompileArcTrackConstraint = ArcTrackConstraint;
 
 export type RuntimeCompileForceSource = ForceSource;
 

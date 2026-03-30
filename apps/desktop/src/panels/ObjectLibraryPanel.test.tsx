@@ -70,7 +70,7 @@ describe("ObjectLibraryPanel", () => {
     expect(screen.getByTestId("library-item-polygon").getAttribute("data-selected")).toBe("false");
   });
 
-  it("keeps spring and track on the existing selection callback path", () => {
+  it("keeps spring, track, and arc-track on the existing selection callback path", () => {
     const selections: string[] = [];
     const { rerender } = render(
       <DragAwareObjectLibraryPanel
@@ -102,12 +102,25 @@ describe("ObjectLibraryPanel", () => {
           selections.push(itemId);
         }}
         onStartBodyDrag={() => undefined}
-        selectedItemId={"spring" as never}
+        selectedItemId="track"
       />,
     );
 
-    expect(selections).toEqual(["spring", "track"]);
-    expect(screen.getByTestId("library-item-spring").getAttribute("data-selected")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Arc track" }));
+
+    rerender(
+      <DragAwareObjectLibraryPanel
+        onSelectItem={(itemId: string) => {
+          selections.push(itemId);
+        }}
+        onStartBodyDrag={() => undefined}
+        selectedItemId="arc-track"
+      />,
+    );
+
+    expect(selections).toEqual(["spring", "track", "arc-track"]);
+    expect(screen.getByTestId("library-item-spring").getAttribute("data-selected")).toBe("false");
     expect(screen.getByTestId("library-item-track").getAttribute("data-selected")).toBe("false");
+    expect(screen.getByTestId("library-item-arc-track").getAttribute("data-selected")).toBe("true");
   });
 });

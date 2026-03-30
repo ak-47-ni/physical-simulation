@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import type {
+  ArcTrackConstraint,
+  RuntimeCompileConstraint,
+  SceneConstraint,
+} from "./index";
 
 import {
   SCENE_SCHEMA_VERSION,
@@ -322,5 +327,62 @@ describe("scene schema", () => {
     expect(clonedTrack.origin).toEqual({ x: 4, y: 8 });
     expect(clonedTrack.axis).toEqual({ x: 0, y: 1 });
     expect(clonedGravity.acceleration).toEqual({ x: 0, y: 12 });
+  });
+
+  it("deep-clones arc-track center vectors by value", () => {
+    const scene = createEmptySceneDocument();
+    const arcTrack: ArcTrackConstraint = {
+      id: "arc-track-1",
+      kind: "arc-track",
+      entityId: "ball-1",
+      center: { x: 2.4, y: 1.8 },
+      radius: 0.75,
+      startAngleDegrees: -30,
+      endAngleDegrees: 120,
+      side: "inside",
+    };
+
+    scene.constraints.push(arcTrack);
+
+    const clone = cloneSceneDocument(scene);
+    const originalConstraint = scene.constraints[0] as SceneConstraint;
+    const clonedConstraint = clone.constraints[0] as SceneConstraint;
+
+    if (
+      originalConstraint.kind !== "arc-track" ||
+      clonedConstraint.kind !== "arc-track"
+    ) {
+      throw new Error("expected arc-track constraints");
+    }
+
+    expect(clonedConstraint).toEqual(originalConstraint);
+    expect(clonedConstraint).not.toBe(originalConstraint);
+    expect(clonedConstraint.center).not.toBe(originalConstraint.center);
+  });
+
+  it("creates runtime compile requests that preserve typed arc-track constraints", () => {
+    const scene = createEmptySceneDocument();
+    const arcTrack: RuntimeCompileConstraint = {
+      id: "arc-track-1",
+      kind: "arc-track",
+      entityId: "ball-1",
+      center: { x: 3.2, y: 2.1 },
+      radius: 0.9,
+      startAngleDegrees: -90,
+      endAngleDegrees: 45,
+      side: "outside",
+    };
+
+    scene.constraints.push(arcTrack);
+
+    const request = createRuntimeCompileRequest(scene, ["structure"]);
+    const compiledConstraint = request.scene.constraints[0];
+
+    if (!compiledConstraint || compiledConstraint.kind !== "arc-track") {
+      throw new Error("expected compiled arc-track constraint");
+    }
+
+    expect(compiledConstraint).toEqual(arcTrack);
+    expect(compiledConstraint.center).not.toBe(arcTrack.center);
   });
 });

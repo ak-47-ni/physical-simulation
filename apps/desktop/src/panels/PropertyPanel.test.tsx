@@ -432,6 +432,57 @@ describe("PropertyPanel", () => {
     ]);
   });
 
+  it("edits selected arc-track constraints", () => {
+    const constraintUpdates: Array<Record<string, unknown>> = [];
+
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings()}
+        onDeleteSelectedConstraint={() => undefined}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedConstraint={(constraint) => {
+          constraintUpdates.push(constraint);
+        }}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        scenePhysics={TEST_SCENE_PHYSICS}
+        selectedConstraint={{
+          center: { x: 2.4, y: 1.8 },
+          endAngleDegrees: 105,
+          entityId: "ball-1",
+          id: "arc-track-1",
+          kind: "arc-track",
+          label: "Arc track 1",
+          radius: 0.9,
+          side: "inside",
+          startAngleDegrees: -45,
+        }}
+        selectedEntity={null}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Center X"), { target: { value: "2.8" } });
+    fireEvent.change(screen.getByLabelText("Center Y"), { target: { value: "2.1" } });
+    fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "1.2" } });
+    fireEvent.change(screen.getByLabelText("Start angle"), { target: { value: "-30" } });
+    fireEvent.change(screen.getByLabelText("End angle"), { target: { value: "120" } });
+    fireEvent.change(screen.getByLabelText("Side"), { target: { value: "outside" } });
+
+    expect(constraintUpdates).toEqual([
+      { center: { x: 2.8, y: 1.8 } },
+      { center: { x: 2.4, y: 2.1 } },
+      { radius: 1.2 },
+      { startAngleDegrees: -30 },
+      { endAngleDegrees: 120 },
+      { side: "outside" },
+    ]);
+  });
+
   it("renders scene physics controls and unit-aware readouts for the selected entity", () => {
     render(
       <PropertyPanel
@@ -539,5 +590,46 @@ describe("PropertyPanel", () => {
     expect((screen.getByLabelText("Pixels per meter") as HTMLInputElement).disabled).toBe(true);
     expect(screen.getByRole("button", { name: /duplicate entity/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /delete entity/i })).toBeDefined();
+  });
+
+  it("disables arc-track inspector inputs while authoring is locked", () => {
+    render(
+      <PropertyPanel
+        authoringLocked
+        authoringLockReason="Authoring is locked while runtime is playing."
+        display={createSceneDisplaySettings()}
+        onDeleteSelectedConstraint={() => undefined}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedConstraint={() => undefined}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        scenePhysics={TEST_SCENE_PHYSICS}
+        selectedConstraint={{
+          center: { x: 2.4, y: 1.8 },
+          endAngleDegrees: 105,
+          entityId: "ball-1",
+          id: "arc-track-1",
+          kind: "arc-track",
+          label: "Arc track 1",
+          radius: 0.9,
+          side: "inside",
+          startAngleDegrees: -45,
+        }}
+        selectedEntity={null}
+      />,
+    );
+
+    expect((screen.getByLabelText("Center X") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Center Y") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Radius") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Start angle") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("End angle") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Side") as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /delete constraint/i })).toBeDefined();
   });
 });

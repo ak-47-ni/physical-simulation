@@ -5,6 +5,10 @@ import type { EditorConstraint, LibraryConstraintKind } from "../state/editorCon
 import type { EditorSceneEntity } from "../state/editorStore";
 import type { LibraryDragSession } from "./libraryDragSession";
 import {
+  isArcTrackConstraint,
+  renderArcTrackConstraintOverlay,
+} from "./arcTrackConstraintOverlay";
+import {
   projectAuthoringEntityToScreen,
   type WorkspaceSceneEntity,
 } from "./runtimeSceneView";
@@ -27,7 +31,7 @@ type ConstraintPlacementState = {
   anchorEntityId: string | null;
   hint: string;
   kind: LibraryConstraintKind;
-  mode: "pick-entity" | "pick-point";
+  mode: "pick-ball" | "pick-center" | "pick-entity" | "pick-point";
 };
 
 type WorkspaceCanvasProps = {
@@ -589,7 +593,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       return;
     }
 
-    if (state.activeTool === "place-constraint" && constraintPlacement?.mode === "pick-point") {
+    if (
+      state.activeTool === "place-constraint" &&
+      (constraintPlacement?.mode === "pick-point" || constraintPlacement?.mode === "pick-center")
+    ) {
       onPlaceConstraintPoint?.(authoringPosition);
     }
   }
@@ -600,7 +607,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       return;
     }
 
-    if (state.activeTool === "place-constraint" && constraintPlacement?.mode === "pick-entity") {
+    if (
+      state.activeTool === "place-constraint" &&
+      (constraintPlacement?.mode === "pick-entity" || constraintPlacement?.mode === "pick-ball")
+    ) {
       onPlaceConstraintEntity?.(entityId);
       return;
     }
@@ -641,6 +651,21 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
 
   function renderConstraint(constraint: EditorConstraint) {
     const isSelected = state.selectedConstraintId === constraint.id;
+
+    if (isArcTrackConstraint(constraint)) {
+      return renderArcTrackConstraintOverlay({
+        constraint,
+        constraintSelectionEnabled,
+        getEntityCenter: (entityId) => {
+          const entity = getEntityById(entityId);
+
+          return entity ? getEntityCenter(entity) : null;
+        },
+        isSelected,
+        onConstraintClick: handleConstraintClick,
+        viewport,
+      });
+    }
 
     if (constraint.kind === "spring") {
       const entityA = getEntityById(constraint.entityAId);

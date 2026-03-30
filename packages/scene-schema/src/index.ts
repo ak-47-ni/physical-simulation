@@ -9,6 +9,7 @@ export {
 } from "./schema";
 export type {
   Analyzer,
+  ArcTrackConstraint,
   AnnotationStroke,
   BallSceneEntity,
   DirtyEditScope,
@@ -30,6 +31,7 @@ export {
   createRuntimeFramePayload,
 } from "./runtime-contract";
 export type {
+  RuntimeCompileArcTrackConstraint,
   RuntimeCompileConstraint,
   RuntimeCompileForceSource,
   RuntimeCompileRequest,

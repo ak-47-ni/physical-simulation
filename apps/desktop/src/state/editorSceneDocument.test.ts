@@ -30,6 +30,17 @@ const TEST_CONSTRAINTS = [
     label: "Track 1",
     origin: { x: 156, y: 200 },
   },
+  {
+    center: { x: 240, y: 180 },
+    endAngleDegrees: 105,
+    entityId: "ball-1",
+    id: "arc-track-1",
+    kind: "arc-track" as const,
+    label: "Arc track 1",
+    radius: 90,
+    side: "inside" as const,
+    startAngleDegrees: -45,
+  },
 ];
 
 describe("editorSceneDocument", () => {
@@ -55,6 +66,16 @@ describe("editorSceneDocument", () => {
         id: "track-1",
         kind: "track",
         origin: { x: 156, y: 200 },
+      },
+      {
+        center: { x: 240, y: 180 },
+        endAngleDegrees: 105,
+        entityId: "ball-1",
+        id: "arc-track-1",
+        kind: "arc-track",
+        radius: 90,
+        side: "inside",
+        startAngleDegrees: -45,
       },
     ]);
     expect(scene.forceSources).toEqual([
@@ -211,6 +232,17 @@ describe("editorSceneDocument", () => {
         label: "Track 1",
         origin: { x: 15600, y: 20000 },
       },
+      {
+        center: { x: 24000, y: 18000 },
+        endAngleDegrees: 105,
+        entityId: "ball-1",
+        id: "arc-track-1",
+        kind: "arc-track",
+        label: "Arc track 1",
+        radius: 9000,
+        side: "inside",
+        startAngleDegrees: -45,
+      },
     ]);
   });
 
@@ -249,5 +281,37 @@ describe("editorSceneDocument", () => {
     expect(roundTrip.settings).toEqual(createDefaultSceneAuthoringSettings());
     expect(roundTrip.entities).toEqual(entities);
     expect(roundTrip.constraints).toEqual(TEST_CONSTRAINTS);
+  });
+
+  it("round-trips arc-track constraints through persisted scene documents", () => {
+    const scene = createSceneDocumentFromEditorState({
+      constraints: TEST_CONSTRAINTS,
+      entities: createInitialSceneEntities(),
+    });
+
+    expect(scene.constraints).toContainEqual({
+      center: { x: 240, y: 180 },
+      endAngleDegrees: 105,
+      entityId: "ball-1",
+      id: "arc-track-1",
+      kind: "arc-track",
+      radius: 90,
+      side: "inside",
+      startAngleDegrees: -45,
+    });
+
+    const restored = createEditorSceneStateFromSceneDocument({ scene });
+
+    expect(restored.constraints).toContainEqual({
+      center: { x: 240, y: 180 },
+      endAngleDegrees: 105,
+      entityId: "ball-1",
+      id: "arc-track-1",
+      kind: "arc-track",
+      label: "Arc track 1",
+      radius: 90,
+      side: "inside",
+      startAngleDegrees: -45,
+    });
   });
 });

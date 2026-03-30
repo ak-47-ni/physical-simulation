@@ -64,7 +64,17 @@ export type TrackConstraint = BaseSceneConstraint & {
   axis: Vector2;
 };
 
-export type SceneConstraint = SpringConstraint | TrackConstraint;
+export type ArcTrackConstraint = BaseSceneConstraint & {
+  kind: "arc-track";
+  entityId: string;
+  center: Vector2;
+  radius: number;
+  startAngleDegrees: number;
+  endAngleDegrees: number;
+  side: "inside" | "outside";
+};
+
+export type SceneConstraint = SpringConstraint | TrackConstraint | ArcTrackConstraint;
 
 type BaseForceSource = {
   id: string;
@@ -202,6 +212,13 @@ function cloneSceneConstraint(constraint: SceneConstraint): SceneConstraint {
       ...constraint,
       origin: cloneVector2(constraint.origin),
       axis: cloneVector2(constraint.axis),
+    };
+  }
+
+  if (constraint.kind === "arc-track") {
+    return {
+      ...constraint,
+      center: cloneVector2(constraint.center),
     };
   }
 
