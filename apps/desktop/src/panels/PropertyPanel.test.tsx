@@ -390,7 +390,7 @@ describe("PropertyPanel", () => {
   });
 
   it("edits selected track constraints", () => {
-    const constraintUpdates: Array<Record<string, number | { x: number; y: number }>> = [];
+    const constraintUpdates: Array<Record<string, unknown>> = [];
 
     render(
       <PropertyPanel
@@ -453,8 +453,8 @@ describe("PropertyPanel", () => {
         scenePhysics={TEST_SCENE_PHYSICS}
         selectedConstraint={{
           center: { x: 2.4, y: 1.8 },
+          entryEndpoint: "start",
           endAngleDegrees: 105,
-          entityId: "ball-1",
           id: "arc-track-1",
           kind: "arc-track",
           label: "Arc track 1",
@@ -472,6 +472,9 @@ describe("PropertyPanel", () => {
     fireEvent.change(screen.getByLabelText("Start angle"), { target: { value: "-30" } });
     fireEvent.change(screen.getByLabelText("End angle"), { target: { value: "120" } });
     fireEvent.change(screen.getByLabelText("Side"), { target: { value: "outside" } });
+    fireEvent.change(screen.getByLabelText("Entry endpoint"), { target: { value: "end" } });
+
+    expect(screen.queryByLabelText("Attached entity")).toBeNull();
 
     expect(constraintUpdates).toEqual([
       { center: { x: 2.8, y: 1.8 } },
@@ -480,6 +483,7 @@ describe("PropertyPanel", () => {
       { startAngleDegrees: -30 },
       { endAngleDegrees: 120 },
       { side: "outside" },
+      { entryEndpoint: "end" },
     ]);
   });
 
@@ -611,8 +615,8 @@ describe("PropertyPanel", () => {
         scenePhysics={TEST_SCENE_PHYSICS}
         selectedConstraint={{
           center: { x: 2.4, y: 1.8 },
+          entryEndpoint: "start",
           endAngleDegrees: 105,
-          entityId: "ball-1",
           id: "arc-track-1",
           kind: "arc-track",
           label: "Arc track 1",
@@ -630,6 +634,8 @@ describe("PropertyPanel", () => {
     expect((screen.getByLabelText("Start angle") as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByLabelText("End angle") as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByLabelText("Side") as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Entry endpoint") as HTMLSelectElement).disabled).toBe(true);
+    expect(screen.queryByLabelText("Attached entity")).toBeNull();
     expect(screen.getByRole("button", { name: /delete constraint/i })).toBeDefined();
   });
 });

@@ -48,7 +48,7 @@ export type PersistedTrackConstraint = {
 export type PersistedArcTrackConstraint = {
   center: Vector2;
   endAngleDegrees: number;
-  entityId: string;
+  entryEndpoint: "start" | "end";
   id: string;
   kind: "arc-track";
   radius: number;
@@ -217,16 +217,17 @@ export function isPersistedTrackConstraint(
 export function isPersistedArcTrackConstraint(
   value: { id: string; kind: string },
 ): value is PersistedArcTrackConstraint {
+  const entryEndpoint = readString(value, "entryEndpoint");
   const side = readString(value, "side");
 
   return (
     value.kind === "arc-track" &&
-    typeof readString(value, "entityId") === "string" &&
     readVector(value, "center") !== undefined &&
     typeof readNumber(value, "radius") === "number" &&
     typeof readNumber(value, "startAngleDegrees") === "number" &&
     typeof readNumber(value, "endAngleDegrees") === "number" &&
-    (side === "inside" || side === "outside")
+    (side === "inside" || side === "outside") &&
+    (entryEndpoint === "start" || entryEndpoint === "end")
   );
 }
 
@@ -318,14 +319,10 @@ function mapEditorConstraintToSceneConstraint(
     return [sceneConstraint];
   }
 
-  if (!constraint.entityId) {
-    return [];
-  }
-
   const sceneConstraint: PersistedArcTrackConstraint = {
     center: cloneVector(constraint.center),
     endAngleDegrees: constraint.endAngleDegrees,
-    entityId: constraint.entityId,
+    entryEndpoint: constraint.entryEndpoint,
     id: constraint.id,
     kind: "arc-track",
     radius: constraint.radius,
@@ -414,7 +411,7 @@ function mapSceneConstraintToEditorConstraint(
       {
         center: cloneVector(constraint.center),
         endAngleDegrees: constraint.endAngleDegrees,
-        entityId: constraint.entityId,
+        entryEndpoint: constraint.entryEndpoint,
         id: constraint.id,
         kind: "arc-track",
         label: `Arc track ${constraint.id.split("-").at(-1) ?? constraint.id}`,

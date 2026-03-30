@@ -23,12 +23,12 @@ export type EditorArcTrackConstraint = {
   id: string;
   kind: "arc-track";
   label: string;
-  entityId: string | null;
   center: Vector2;
   radius: number;
   startAngleDegrees: number;
   endAngleDegrees: number;
   side: "inside" | "outside";
+  entryEndpoint: "start" | "end";
 };
 
 export type LibraryConstraintKind = "spring" | "track" | "arc-track";
@@ -92,12 +92,12 @@ export function createDefaultEditorConstraint(
   return {
     ...baseConstraint,
     kind: "arc-track",
-    entityId: null,
     center: { ...DEFAULT_ARC_TRACK_CENTER },
     radius: DEFAULT_ARC_TRACK_RADIUS,
     startAngleDegrees: DEFAULT_ARC_TRACK_START_ANGLE_DEGREES,
     endAngleDegrees: DEFAULT_ARC_TRACK_END_ANGLE_DEGREES,
     side: "inside",
+    entryEndpoint: "start",
   };
 }
 

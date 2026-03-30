@@ -66,12 +66,12 @@ export type TrackConstraint = BaseSceneConstraint & {
 
 export type ArcTrackConstraint = BaseSceneConstraint & {
   kind: "arc-track";
-  entityId: string;
   center: Vector2;
   radius: number;
   startAngleDegrees: number;
   endAngleDegrees: number;
   side: "inside" | "outside";
+  entryEndpoint: "start" | "end";
 };
 
 export type SceneConstraint = SpringConstraint | TrackConstraint | ArcTrackConstraint;
