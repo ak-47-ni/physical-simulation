@@ -206,6 +206,26 @@ vi.mock("./workspace/WorkspaceCanvas", () => ({
         <button
           type="button"
           onClick={() =>
+            (props.onPlaceConstraintBoardEndpoint as
+              | undefined
+              | ((endpointKey: "start" | "end") => void))?.("start")
+          }
+        >
+          Pick board endpoint start
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            (props.onPlaceConstraintBoardEndpoint as
+              | undefined
+              | ((endpointKey: "start" | "end") => void))?.("end")
+          }
+        >
+          Pick board endpoint end
+        </button>
+        <button
+          type="button"
+          onClick={() =>
             (props.onPlaceConstraintPoint as
               | undefined
               | ((position: { x: number; y: number }) => void))?.({
@@ -380,45 +400,65 @@ describe("App direct manipulation contracts", () => {
     expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-tool")).toBe("select");
   });
 
-  it("creates an arc-track only after selecting a ball and then a center point", () => {
+  it("keeps arc-track placement on the locked-board flow and ignores balls or unlocked boards", () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "Select arc track" }));
 
-    expect(screen.getByText("Select a ball for the arc track")).toBeDefined();
+    expect(screen.getByText("Select a locked board for the arc track")).toBeDefined();
     expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-tool")).toBe(
       "place-constraint",
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Pick ball for constraint" }));
+
+    expect(screen.queryByTestId("scene-tree-constraint-arc-track-1")).toBeNull();
+    expect(screen.getByText("Select a locked board for the arc track")).toBeDefined();
+
     fireEvent.click(screen.getByRole("button", { name: "Pick board for constraint" }));
 
     expect(screen.queryByTestId("scene-tree-constraint-arc-track-1")).toBeNull();
-    expect(screen.getByText("Select a ball for the arc track")).toBeDefined();
+    expect(screen.getByText("Select a locked board for the arc track")).toBeDefined();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "Pick ball for constraint" }));
+  it("creates a board-anchored arc after a locked board, endpoint, and center pick", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("scene-tree-item-board-1"));
+    fireEvent.click(screen.getByLabelText("Locked in simulation"));
+    fireEvent.click(screen.getByRole("button", { name: "Select arc track" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pick board for constraint" }));
+
+    expect(screen.getByText("Select the board endpoint for the arc junction")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Pick board endpoint start" }));
 
     expect(screen.getByText("Pick a center point for the arc track")).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Pick constraint point" }));
 
+    expect(screen.queryByText("Select the board endpoint for the arc junction")).toBeNull();
     expect(screen.queryByText("Pick a center point for the arc track")).toBeNull();
     expect(screen.getByTestId("scene-tree-constraint-arc-track-1")).toBeDefined();
     expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-tool")).toBe("select");
   });
 
-  it("deletes arc-tracks when their attached ball is deleted", () => {
+  it("keeps a created arc-track after deleting the source board", () => {
     render(<App />);
 
+    fireEvent.click(screen.getByTestId("scene-tree-item-board-1"));
+    fireEvent.click(screen.getByLabelText("Locked in simulation"));
     fireEvent.click(screen.getByRole("button", { name: "Select arc track" }));
-    fireEvent.click(screen.getByRole("button", { name: "Pick ball for constraint" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pick board for constraint" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pick board endpoint start" }));
     fireEvent.click(screen.getByRole("button", { name: "Pick constraint point" }));
 
     expect(screen.getByTestId("scene-tree-constraint-arc-track-1")).toBeDefined();
 
-    fireEvent.click(screen.getByTestId("scene-tree-item-ball-1"));
+    fireEvent.click(screen.getByTestId("scene-tree-item-board-1"));
     fireEvent.click(screen.getByRole("button", { name: /delete entity/i }));
 
-    expect(screen.queryByTestId("scene-tree-item-ball-1")).toBeNull();
-    expect(screen.queryByTestId("scene-tree-constraint-arc-track-1")).toBeNull();
+    expect(screen.queryByTestId("scene-tree-item-board-1")).toBeNull();
+    expect(screen.getByTestId("scene-tree-constraint-arc-track-1")).toBeDefined();
   });
 });

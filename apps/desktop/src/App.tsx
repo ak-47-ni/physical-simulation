@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentProps, type ReactElement } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { AnalysisPanel } from "./analysis/AnalysisPanel";
 import { AnnotationLayer, createInitialAnnotationLayerState } from "./annotation/AnnotationLayer";
@@ -56,6 +56,7 @@ import {
 } from "./state/authoringContactSnap";
 import { createMockRuntimeBridgePort } from "./state/runtimeBridge";
 import { createDesktopRuntimeBridgePort } from "./state/desktopRuntimeBridgePort";
+import { convertSceneAuthoringUnits } from "./state/editorSceneDocument";
 import { createRuntimeCompileRequestFromEditorState } from "./state/runtimeCompileRequest";
 import { createRuntimePreviewFrame, createRuntimePreviewTrajectorySamples } from "./state/runtimePreview";
 import { runtimeVelocityToAuthoring } from "./state/velocitySemantics";
@@ -70,35 +71,10 @@ import type { EditorTool } from "./workspace/tools";
 const PRIMARY_ANALYZER_ID = "traj-primary";
 const AUTHORING_LOCK_REASON = "Authoring is locked while runtime is playing.";
 
-type DirectManipulationLibraryPanelProps = ComponentProps<typeof ObjectLibraryPanel> & {
-  onStartBodyDrag?: (session: LibraryDragSession) => void;
-};
-
-type DirectManipulationWorkspaceCanvasProps = ComponentProps<typeof WorkspaceCanvas> & {
-  authoringPlacementPreview?: AuthoringPlacementPreview;
-  libraryDragBlocked?: boolean;
-  libraryDragSession?: LibraryDragSession | null;
-  onLibraryDragHoverChange?: (hover: LibraryDragHoverState | null) => void;
-  onSelectConstraint?: (constraintId: string) => void;
-  selectedRuntimeVelocityVector?: {
-    entityId: string;
-    velocityX: number;
-    velocityY: number;
-  } | null;
-};
-
 type PendingEntityDragPlacement = {
   entityId: string;
   position: { x: number; y: number };
 };
-
-const DirectManipulationObjectLibraryPanel = ObjectLibraryPanel as unknown as (
-  props: DirectManipulationLibraryPanelProps,
-) => ReactElement;
-
-const DirectManipulationWorkspaceCanvas = WorkspaceCanvas as unknown as (
-  props: DirectManipulationWorkspaceCanvasProps,
-) => ReactElement;
 
 export function App() {
   const initialAuthoringState = createInitialAuthoringState();
@@ -373,7 +349,9 @@ export function App() {
         .filter((constraint) =>
           constraint.kind === "spring"
             ? constraint.entityAId === deletedEntityId || constraint.entityBId === deletedEntityId
-            : constraint.entityId === deletedEntityId,
+            : constraint.kind === "track"
+              ? constraint.entityId === deletedEntityId
+              : false,
         )
         .map((constraint) => constraint.id),
     );
@@ -812,24 +790,43 @@ export function App() {
       setConstraintPlacement({
         ...constraintPlacement,
         anchorEntityId: entityId,
+        boardEndpointKey: null,
         hint: "Pick a point to define the track axis",
         mode: "pick-point",
       });
       return;
     }
 
-    const ballEntity = entities.find(
-      (entity): entity is Extract<EditorSceneEntity, { kind: "ball" }> =>
-        entity.id === entityId && entity.kind === "ball",
+    const boardEntity = entities.find(
+      (entity): entity is Extract<EditorSceneEntity, { kind: "board" }> =>
+        entity.id === entityId && entity.kind === "board" && entity.locked,
     );
 
-    if (!ballEntity) {
+    if (!boardEntity) {
       return;
     }
 
     setConstraintPlacement({
       ...constraintPlacement,
-      anchorEntityId: ballEntity.id,
+      anchorEntityId: boardEntity.id,
+      boardEndpointKey: null,
+      hint: "Select the board endpoint for the arc junction",
+      mode: "pick-board-endpoint",
+    });
+  }
+
+  function handleConstraintBoardEndpointPick(endpointKey: "start" | "end") {
+    if (
+      !constraintPlacement ||
+      constraintPlacement.kind !== "arc-track" ||
+      constraintPlacement.mode !== "pick-board-endpoint"
+    ) {
+      return;
+    }
+
+    setConstraintPlacement({
+      ...constraintPlacement,
+      boardEndpointKey: endpointKey,
       hint: "Pick a center point for the arc track",
       mode: "pick-center",
     });
@@ -864,19 +861,23 @@ export function App() {
       return;
     }
 
-    const ball = entities.find(
-      (entity): entity is Extract<EditorSceneEntity, { kind: "ball" }> =>
-        entity.id === anchorEntityId && entity.kind === "ball",
+    if (!constraintPlacement.boardEndpointKey) {
+      return;
+    }
+
+    const board = entities.find(
+      (entity): entity is Extract<EditorSceneEntity, { kind: "board" }> =>
+        entity.id === anchorEntityId && entity.kind === "board" && entity.locked,
     );
 
-    if (!ball) {
+    if (!board) {
       return;
     }
 
     setConstraints((current) => {
       return [
         ...current,
-        createArcTrackConstraint(current, ball, position),
+        createArcTrackConstraint(current, board, position, constraintPlacement.boardEndpointKey),
       ];
     });
     finishConstraintPlacement();
@@ -899,7 +900,7 @@ export function App() {
         />
       }
       leftPane={
-        <DirectManipulationObjectLibraryPanel
+        <ObjectLibraryPanel
           onStartBodyDrag={handleStartBodyDrag}
           onSelectItem={handleSelectLibraryItem}
           selectedItemId={selectedLibraryItem}
@@ -959,7 +960,7 @@ export function App() {
           timelineMaxSeconds={timelineMaxSeconds}
         />
 
-        <DirectManipulationWorkspaceCanvas
+        <WorkspaceCanvas
           authoringLocked={authoringLocked}
           authoringPlacementPreview={authoringPlacementPreview}
           constraintPlacement={constraintPlacement}
@@ -973,6 +974,7 @@ export function App() {
           onGridVisibleChange={handleGridVisibleChange}
           onLibraryDragHoverChange={handleLibraryDragHoverChange}
           onMoveEntity={handleMoveEntity}
+          onPlaceConstraintBoardEndpoint={handleConstraintBoardEndpointPick}
           onPlaceConstraintEntity={handleConstraintEntityPick}
           onPlaceConstraintPoint={handleConstraintPointPick}
           onSelectConstraint={handleSelectConstraint}

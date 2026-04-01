@@ -375,6 +375,45 @@ describe("WorkspaceCanvas", () => {
     expect(selectedEntityIds).toEqual([]);
   });
 
+  it("renders locked-board endpoint affordances and reports the selected endpoint", () => {
+    const endpointPicks: Array<"start" | "end"> = [];
+
+    render(
+      <WorkspaceCanvas
+        constraintPlacement={{
+          anchorEntityId: "board-1",
+          boardEndpointKey: null,
+          hint: "Select the board endpoint for the arc junction",
+          kind: "arc-track",
+          mode: "pick-board-endpoint",
+        }}
+        display={createDisplaySettings()}
+        displayEntities={[createBoardEntityPx({ locked: true })]}
+        entities={[{ ...authoredBoardInMeters, locked: true }]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onPlaceConstraintBoardEndpoint={(endpointKey) => {
+          endpointPicks.push(endpointKey);
+        }}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-constraint" as never,
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+        viewport={meterViewport}
+      />,
+    );
+
+    expect(screen.getByTestId("scene-constraint-arc-endpoint-start-board-1")).toBeDefined();
+    expect(screen.getByTestId("scene-constraint-arc-endpoint-end-board-1")).toBeDefined();
+
+    fireEvent.click(screen.getByTestId("scene-constraint-arc-endpoint-start-board-1"));
+
+    expect(endpointPicks).toEqual(["start"]);
+  });
+
   it("selects spring overlays directly in the stage without selecting entities", () => {
     const selectedConstraintIds: string[] = [];
     const selectedEntityIds: string[] = [];

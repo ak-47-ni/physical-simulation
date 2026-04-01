@@ -3,7 +3,8 @@ import {
   resolveAuthoringPlacement,
   type AuthoringPlacementPreview,
 } from "./authoringContactSnap";
-import { createArcTrackConstraintFromBallAndCenter } from "./createArcTrackConstraint";
+import type { BoardArcEndpointKey } from "./boardArcPlacement";
+import { createBoardAnchoredArcTrackConstraint } from "./createBoardAnchoredArcTrackConstraint";
 import {
   createDefaultEditorConstraint,
   type EditorConstraint,
@@ -47,9 +48,10 @@ const LEGACY_SCENE_SETTINGS = createSceneAuthoringSettings({
 
 export type ConstraintPlacementState = {
   anchorEntityId: string | null;
+  boardEndpointKey?: BoardArcEndpointKey | null;
   hint: string;
   kind: LibraryConstraintKind;
-  mode: "pick-ball" | "pick-center" | "pick-entity" | "pick-point";
+  mode: "pick-board" | "pick-board-endpoint" | "pick-center" | "pick-entity" | "pick-point";
 };
 
 export type ConstraintUpdate = {
@@ -86,7 +88,7 @@ export function getEntityCenter(entity: EditorSceneEntity) {
 export function isConstraintEntityPlacementMode(
   mode: ConstraintPlacementState["mode"],
 ): boolean {
-  return mode === "pick-entity" || mode === "pick-ball";
+  return mode === "pick-entity" || mode === "pick-board";
 }
 
 export function isConstraintPointPlacementMode(
@@ -185,6 +187,7 @@ export function createConstraintPlacementState(
   if (kind === "spring") {
     return {
       anchorEntityId: null,
+      boardEndpointKey: null,
       hint: "Select first body for the spring",
       kind: "spring",
       mode: "pick-entity",
@@ -194,6 +197,7 @@ export function createConstraintPlacementState(
   if (kind === "track") {
     return {
       anchorEntityId: null,
+      boardEndpointKey: null,
       hint: "Select a body for the track",
       kind: "track",
       mode: "pick-entity",
@@ -202,9 +206,10 @@ export function createConstraintPlacementState(
 
   return {
     anchorEntityId: null,
-    hint: "Select a ball for the arc track",
+    boardEndpointKey: null,
+    hint: "Select a locked board for the arc track",
     kind: "arc-track",
-    mode: "pick-ball",
+    mode: "pick-board",
   };
 }
 
@@ -240,8 +245,9 @@ export function applyConstraintUpdate(
 
 export function createArcTrackConstraint(
   constraints: EditorConstraint[],
-  ball: Extract<EditorSceneEntity, { kind: "ball" }>,
+  board: Extract<EditorSceneEntity, { kind: "board" }>,
   center: { x: number; y: number },
+  endpointKey: BoardArcEndpointKey,
 ) {
   const baseConstraint = createDefaultEditorConstraint(constraints, "arc-track");
 
@@ -251,9 +257,10 @@ export function createArcTrackConstraint(
 
   return {
     ...baseConstraint,
-    ...createArcTrackConstraintFromBallAndCenter({
-      ball,
+    ...createBoardAnchoredArcTrackConstraint({
+      board,
       center,
+      endpointKey,
       id: baseConstraint.id,
       side: baseConstraint.side,
     }),
