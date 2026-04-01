@@ -1,4 +1,4 @@
-use sim_core::constraint::{ArcTrackSide, ConstraintDefinition};
+use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::scene::{CompileSceneRequest, SceneCompileError, compile_scene};
@@ -71,12 +71,12 @@ fn constraint_compile_accepts_valid_typed_spring_track_and_arc_track_constraints
         },
         ConstraintDefinition::ArcTrack {
             id: "arc-track-1".to_string(),
-            entity_id: "slider".to_string(),
             center: vector2(2.0, 2.0),
             radius: 3.0,
             start_angle_degrees: 180.0,
             end_angle_degrees: 315.0,
             side: ArcTrackSide::Inside,
+            entry_endpoint: ArcTrackEntryEndpoint::Start,
         },
     ]);
 
@@ -170,12 +170,12 @@ fn constraint_compile_rejects_unknown_constraint_entity_ids() {
 fn constraint_compile_rejects_non_positive_arc_track_radius() {
     let request = compile_request(vec![ConstraintDefinition::ArcTrack {
         id: "arc-track-1".to_string(),
-        entity_id: "slider".to_string(),
         center: vector2(2.0, 2.0),
         radius: 0.0,
         start_angle_degrees: 180.0,
         end_angle_degrees: 315.0,
         side: ArcTrackSide::Inside,
+        entry_endpoint: ArcTrackEntryEndpoint::Start,
     }]);
 
     let error = compile_scene(&request).expect_err("arc-track radius must be positive");
@@ -193,21 +193,21 @@ fn constraint_compile_rejects_non_positive_arc_track_radius() {
 fn constraint_compile_rejects_zero_and_full_circle_arc_track_spans() {
     let zero_span_request = compile_request(vec![ConstraintDefinition::ArcTrack {
         id: "arc-track-zero".to_string(),
-        entity_id: "slider".to_string(),
         center: vector2(2.0, 2.0),
         radius: 3.0,
         start_angle_degrees: 90.0,
         end_angle_degrees: 90.0,
         side: ArcTrackSide::Inside,
+        entry_endpoint: ArcTrackEntryEndpoint::Start,
     }]);
     let full_circle_request = compile_request(vec![ConstraintDefinition::ArcTrack {
         id: "arc-track-full".to_string(),
-        entity_id: "slider".to_string(),
         center: vector2(2.0, 2.0),
         radius: 3.0,
         start_angle_degrees: 0.0,
         end_angle_degrees: 360.0,
         side: ArcTrackSide::Inside,
+        entry_endpoint: ArcTrackEntryEndpoint::End,
     }]);
 
     assert_eq!(
@@ -229,7 +229,7 @@ fn constraint_compile_rejects_zero_and_full_circle_arc_track_spans() {
 }
 
 #[test]
-fn constraint_compile_rejects_arc_track_bindings_for_non_ball_entities() {
+fn constraint_compile_accepts_arc_track_scene_segments_without_ball_entities() {
     let request = CompileSceneRequest {
         entities: vec![
             dynamic_block("anchor", vector2(0.0, 0.0)),
@@ -237,12 +237,12 @@ fn constraint_compile_rejects_arc_track_bindings_for_non_ball_entities() {
         ],
         constraints: vec![ConstraintDefinition::ArcTrack {
             id: "arc-track-1".to_string(),
-            entity_id: "slider".to_string(),
             center: vector2(2.0, 2.0),
             radius: 3.0,
             start_angle_degrees: 180.0,
             end_angle_degrees: 315.0,
             side: ArcTrackSide::Inside,
+            entry_endpoint: ArcTrackEntryEndpoint::End,
         }],
         force_sources: vec![ForceSourceDefinition::Gravity {
             id: "gravity".to_string(),
@@ -251,13 +251,8 @@ fn constraint_compile_rejects_arc_track_bindings_for_non_ball_entities() {
         analyzers: vec![],
     };
 
-    let error = compile_scene(&request).expect_err("arc-track only supports balls");
+    let compiled =
+        compile_scene(&request).expect("arc-track should compile without any ball binding");
 
-    assert_eq!(
-        error,
-        SceneCompileError::ArcTrackRequiresBall {
-            constraint_id: "arc-track-1".to_string(),
-            entity_id: "slider".to_string(),
-        }
-    );
+    assert_eq!(compiled.constraints.len(), 1);
 }

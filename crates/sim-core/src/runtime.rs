@@ -4,7 +4,7 @@ mod contact_budget;
 #[path = "contact_substeps.rs"]
 mod contact_substeps;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySample};
 use crate::entity::{CompiledShape, Vector2};
@@ -37,7 +37,7 @@ pub struct RuntimeScene {
     baseline: Vec<RuntimeBodyState>,
     bodies: Vec<RuntimeBodyState>,
     constraints: Vec<crate::constraint::CompiledConstraint>,
-    detached_arc_track_ids: HashSet<String>,
+    attached_arc_track_by_body_id: HashMap<String, String>,
     analyzer_blueprints: Vec<CompiledAnalyzer>,
     analyzers: Vec<TrajectoryAnalyzerState>,
     frame_number: u64,
@@ -78,7 +78,7 @@ impl RuntimeScene {
             })
             .collect::<Vec<_>>();
         let constraints = compiled.constraints;
-        project_track_bindings(&mut baseline, &constraints, &HashSet::new());
+        project_track_bindings(&mut baseline, &constraints, &HashMap::new());
         let analyzer_blueprints = compiled.analyzers;
         let mut analyzers = analyzer_blueprints
             .iter()
@@ -91,7 +91,7 @@ impl RuntimeScene {
             baseline: baseline.clone(),
             bodies: baseline,
             constraints,
-            detached_arc_track_ids: HashSet::new(),
+            attached_arc_track_by_body_id: HashMap::new(),
             analyzer_blueprints,
             analyzers,
             frame_number: 0,
@@ -127,7 +127,7 @@ impl RuntimeScene {
             step_bodies(
                 &mut self.bodies,
                 &self.constraints,
-                &mut self.detached_arc_track_ids,
+                &mut self.attached_arc_track_by_body_id,
                 self.gravity,
                 substep_delta_seconds,
             );
@@ -145,7 +145,7 @@ impl RuntimeScene {
 
     pub fn reset(&mut self) -> RuntimeFramePayload {
         self.bodies = self.baseline.clone();
-        self.detached_arc_track_ids.clear();
+        self.attached_arc_track_by_body_id.clear();
         self.frame_number = 0;
         self.elapsed_time_seconds = 0.0;
         self.analyzers = self

@@ -190,12 +190,12 @@ fn bridge_contract_accepts_typed_constraint_runtime_payloads() {
                 {
                     "id": "arc-track-1",
                     "kind": "arc-track",
-                    "entityId": "payload",
                     "center": { "x": 96.0, "y": 72.0 },
                     "radius": 48.0,
                     "startAngleDegrees": 210.0,
                     "endAngleDegrees": 330.0,
-                    "side": "inside"
+                    "side": "inside",
+                    "entryEndpoint": "start"
                 }
             ],
             "forceSources": [

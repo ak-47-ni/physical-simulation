@@ -7,6 +7,13 @@ pub enum ArcTrackSide {
     Outside,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ArcTrackEntryEndpoint {
+    Start,
+    End,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ConstraintDefinition {
     Spring {
@@ -24,12 +31,12 @@ pub enum ConstraintDefinition {
     },
     ArcTrack {
         id: String,
-        entity_id: String,
         center: crate::entity::Vector2,
         radius: f64,
         start_angle_degrees: f64,
         end_angle_degrees: f64,
         side: ArcTrackSide,
+        entry_endpoint: ArcTrackEntryEndpoint,
     },
 }
 
@@ -48,7 +55,7 @@ impl ConstraintDefinition {
                 entity_a, entity_b, ..
             } => vec![entity_a, entity_b],
             Self::Track { entity_id, .. } => vec![entity_id],
-            Self::ArcTrack { entity_id, .. } => vec![entity_id],
+            Self::ArcTrack { .. } => vec![],
         }
     }
 }
@@ -94,13 +101,13 @@ pub enum CompiledConstraint {
     },
     ArcTrack {
         id: String,
-        entity_id: String,
         center: crate::entity::Vector2,
         radius: f64,
         start_angle_radians: f64,
         end_angle_radians: f64,
         span_radians: f64,
         side: ArcTrackSide,
+        entry_endpoint: ArcTrackEntryEndpoint,
     },
 }
 
@@ -158,12 +165,12 @@ pub fn compile_constraint(
         }
         ConstraintDefinition::ArcTrack {
             id,
-            entity_id,
             center,
             radius,
             start_angle_degrees,
             end_angle_degrees,
             side,
+            entry_endpoint,
         } => {
             if !radius.is_finite() || *radius <= 0.0 {
                 return Err(ConstraintCompileError::InvalidArcTrackRadius {
@@ -184,13 +191,13 @@ pub fn compile_constraint(
 
             Ok(CompiledConstraint::ArcTrack {
                 id: id.clone(),
-                entity_id: entity_id.clone(),
                 center: *center,
                 radius: *radius,
                 start_angle_radians,
                 end_angle_radians,
                 span_radians,
                 side: *side,
+                entry_endpoint: *entry_endpoint,
             })
         }
     }
