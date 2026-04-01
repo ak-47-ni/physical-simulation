@@ -1,5 +1,6 @@
 use std::f64::consts::PI;
 
+use crate::constraint::{ArcTrackEntryEndpoint, ArcTrackSide};
 use crate::entity::Vector2;
 
 pub const ARC_TRACK_EPSILON: f64 = 1e-6;
@@ -9,6 +10,14 @@ const TWO_PI: f64 = PI * 2.0;
 pub struct ArcTrackProjection {
     pub position: Vector2,
     pub angle_radians: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ArcTrackEndpointGeometry {
+    pub angle_radians: f64,
+    pub position: Vector2,
+    pub tangent: Vector2,
+    pub support_direction: Vector2,
 }
 
 pub fn validated_arc_angles(
@@ -51,6 +60,32 @@ pub fn project_point_to_arc(
     }
 }
 
+pub fn endpoint_geometry(
+    center: Vector2,
+    radius: f64,
+    start_angle_radians: f64,
+    end_angle_radians: f64,
+    side: ArcTrackSide,
+    entry_endpoint: ArcTrackEntryEndpoint,
+) -> ArcTrackEndpointGeometry {
+    let angle_radians = match entry_endpoint {
+        ArcTrackEntryEndpoint::Start => start_angle_radians,
+        ArcTrackEntryEndpoint::End => end_angle_radians,
+    };
+    let radial = radial_for_angle(angle_radians);
+    let tangent = match entry_endpoint {
+        ArcTrackEntryEndpoint::Start => radial.perp(),
+        ArcTrackEntryEndpoint::End => radial.perp().scale(-1.0),
+    };
+
+    ArcTrackEndpointGeometry {
+        angle_radians,
+        position: center.add(radial.scale(radius)),
+        tangent,
+        support_direction: support_direction(radial, side),
+    }
+}
+
 pub fn angle_radians_for_position(relative: Vector2) -> Option<f64> {
     if relative.length() <= ARC_TRACK_EPSILON {
         None
@@ -61,6 +96,13 @@ pub fn angle_radians_for_position(relative: Vector2) -> Option<f64> {
 
 pub fn radial_for_angle(angle_radians: f64) -> Vector2 {
     Vector2::new(angle_radians.cos(), angle_radians.sin())
+}
+
+pub fn support_direction(radial: Vector2, side: ArcTrackSide) -> Vector2 {
+    match side {
+        ArcTrackSide::Inside => radial.scale(-1.0),
+        ArcTrackSide::Outside => radial,
+    }
 }
 
 pub fn angle_is_within_arc(

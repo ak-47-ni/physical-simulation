@@ -1,4 +1,4 @@
-use sim_core::constraint::{ArcTrackSide, ConstraintDefinition};
+use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::runtime::{RuntimeFramePayload, RuntimeScene};
@@ -201,17 +201,19 @@ fn constraint_runtime_same_time_scale_replays_deterministically_after_reset() {
 }
 
 #[test]
-fn constraint_runtime_arc_track_projection_applies_to_initial_and_reset_state() {
+fn constraint_runtime_arc_track_leaves_free_balls_unprojected_in_initial_and_reset_state() {
+    let authored_position = vector2(1.5, 6.5);
+    let authored_velocity = vector2(1.0, 4.0);
     let mut runtime = runtime_for_scene(
-        vec![ball("slider", vector2(3.0, 0.5), vector2(1.0, 4.0))],
+        vec![ball("slider", authored_position, authored_velocity)],
         vec![ConstraintDefinition::ArcTrack {
             id: "arc-track".to_string(),
-            entity_id: "slider".to_string(),
-            center: vector2(0.0, 0.0),
+            center: vector2(4.0, 4.0),
             radius: 2.0,
-            start_angle_degrees: -90.0,
-            end_angle_degrees: 90.0,
+            start_angle_degrees: 270.0,
+            end_angle_degrees: 330.0,
             side: ArcTrackSide::Inside,
+            entry_endpoint: ArcTrackEntryEndpoint::Start,
         }],
         vector2(0.0, -9.81),
         0.05,
@@ -219,32 +221,31 @@ fn constraint_runtime_arc_track_projection_applies_to_initial_and_reset_state() 
 
     let initial_frame = runtime.current_frame();
     let initial_slider = payload_frame(&initial_frame, "slider");
-    let initial_radius = initial_slider.position.length();
 
-    assert!((initial_radius - 2.0).abs() < 1e-6);
-    assert!(initial_slider.position.dot(initial_slider.velocity).abs() < 1e-6);
+    assert_eq!(initial_slider.position, authored_position);
+    assert_eq!(initial_slider.velocity, authored_velocity);
 
     runtime.step();
     let reset_frame = runtime.reset();
     let reset_slider = payload_frame(&reset_frame, "slider");
 
-    assert!((reset_slider.position.length() - 2.0).abs() < 1e-6);
-    assert!(reset_slider.position.dot(reset_slider.velocity).abs() < 1e-6);
+    assert_eq!(reset_slider.position, authored_position);
+    assert_eq!(reset_slider.velocity, authored_velocity);
 }
 
 #[test]
-fn constraint_runtime_arc_track_stays_on_circular_path_across_many_steps() {
+fn constraint_runtime_arc_track_does_not_capture_distant_free_balls_across_many_steps() {
     let center = vector2(4.0, 4.0);
     let mut runtime = runtime_for_scene(
-        vec![ball("slider", vector2(4.0, 2.0), vector2(1.0, 0.0))],
+        vec![ball("slider", vector2(0.5, 6.0), Vector2::ZERO)],
         vec![ConstraintDefinition::ArcTrack {
             id: "arc-track".to_string(),
-            entity_id: "slider".to_string(),
             center,
             radius: 2.0,
-            start_angle_degrees: 180.0,
-            end_angle_degrees: 350.0,
+            start_angle_degrees: 270.0,
+            end_angle_degrees: 330.0,
             side: ArcTrackSide::Inside,
+            entry_endpoint: ArcTrackEntryEndpoint::Start,
         }],
         Vector2::ZERO,
         0.02,
@@ -258,23 +259,24 @@ fn constraint_runtime_arc_track_stays_on_circular_path_across_many_steps() {
     let slider = payload_frame(&frame, "slider");
     let radial = slider.position.sub(center);
 
-    assert!((radial.length() - 2.0).abs() < 1e-3);
-    assert!(radial.dot(slider.velocity).abs() < 1e-3);
+    assert!((slider.position.x - 0.5).abs() < 1e-6);
+    assert!((slider.position.y - 6.0).abs() < 1e-6);
+    assert!((radial.length() - 2.0).abs() > 0.5);
 }
 
 #[test]
-fn constraint_runtime_arc_track_replays_deterministically_after_reset() {
+fn constraint_runtime_arc_track_free_state_replays_deterministically_after_reset() {
     let center = vector2(4.0, 4.0);
     let mut runtime = runtime_for_scene(
-        vec![ball("slider", vector2(4.0, 2.0), vector2(1.0, 0.0))],
+        vec![ball("slider", vector2(0.5, 6.0), vector2(1.0, -0.5))],
         vec![ConstraintDefinition::ArcTrack {
             id: "arc-track".to_string(),
-            entity_id: "slider".to_string(),
             center,
             radius: 2.0,
-            start_angle_degrees: 180.0,
-            end_angle_degrees: 350.0,
+            start_angle_degrees: 270.0,
+            end_angle_degrees: 330.0,
             side: ArcTrackSide::Inside,
+            entry_endpoint: ArcTrackEntryEndpoint::Start,
         }],
         vector2(0.0, -9.81),
         0.02,

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::analyzer::{AnalyzerDefinition, TrajectorySample};
-use crate::constraint::{ArcTrackSide, ConstraintDefinition};
+use crate::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use crate::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use crate::force::ForceSourceDefinition;
 use crate::playback::{
@@ -675,7 +675,7 @@ pub struct SceneDocumentPayload {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "kebab-case")]
+#[serde(deny_unknown_fields, tag = "kind", rename_all = "kebab-case")]
 pub enum SceneConstraintPayload {
     Spring {
         id: String,
@@ -696,8 +696,6 @@ pub enum SceneConstraintPayload {
     },
     ArcTrack {
         id: String,
-        #[serde(rename = "entityId")]
-        entity_id: String,
         center: Vector2,
         radius: f64,
         #[serde(rename = "startAngleDegrees")]
@@ -705,6 +703,8 @@ pub enum SceneConstraintPayload {
         #[serde(rename = "endAngleDegrees")]
         end_angle_degrees: f64,
         side: ArcTrackSide,
+        #[serde(rename = "entryEndpoint")]
+        entry_endpoint: ArcTrackEntryEndpoint,
     },
 }
 
@@ -737,20 +737,20 @@ impl SceneConstraintPayload {
             },
             Self::ArcTrack {
                 id,
-                entity_id,
                 center,
                 radius,
                 start_angle_degrees,
                 end_angle_degrees,
                 side,
+                entry_endpoint,
             } => ConstraintDefinition::ArcTrack {
                 id,
-                entity_id,
                 center,
                 radius,
                 start_angle_degrees,
                 end_angle_degrees,
                 side,
+                entry_endpoint,
             },
         }
     }
