@@ -195,6 +195,19 @@ fn format_scene_compile_error(error: SceneCompileError) -> String {
         SceneCompileError::InvalidTrackAxis { constraint_id } => {
             format!("invalid track axis: {constraint_id} must use a non-zero axis")
         }
+        SceneCompileError::InvalidArcTrackRadius {
+            constraint_id,
+            value,
+        } => format!(
+            "invalid arc track radius: {constraint_id} must be positive (received {value})"
+        ),
+        SceneCompileError::InvalidArcTrackSpan {
+            constraint_id,
+            start_angle_degrees,
+            end_angle_degrees,
+        } => format!(
+            "invalid arc track span: {constraint_id} must define a non-zero partial sweep (received {start_angle_degrees}deg -> {end_angle_degrees}deg)"
+        ),
         SceneCompileError::MissingGravity => {
             "missing gravity force source in runtime compile request".to_string()
         }
@@ -341,6 +354,32 @@ mod tests {
         assert_eq!(
             message,
             "invalid track axis: track-1 must use a non-zero axis"
+        );
+    }
+
+    #[test]
+    fn format_bridge_error_reports_arc_track_validation_without_debug_dump() {
+        let radius_message = format_bridge_error(BridgeError::SceneCompile(
+            SceneCompileError::InvalidArcTrackRadius {
+                constraint_id: "arc-track-1".to_string(),
+                value: 0.0,
+            },
+        ));
+        let span_message = format_bridge_error(BridgeError::SceneCompile(
+            SceneCompileError::InvalidArcTrackSpan {
+                constraint_id: "arc-track-1".to_string(),
+                start_angle_degrees: 45.0,
+                end_angle_degrees: 45.0,
+            },
+        ));
+
+        assert_eq!(
+            radius_message,
+            "invalid arc track radius: arc-track-1 must be positive (received 0)"
+        );
+        assert_eq!(
+            span_message,
+            "invalid arc track span: arc-track-1 must define a non-zero partial sweep (received 45deg -> 45deg)"
         );
     }
 

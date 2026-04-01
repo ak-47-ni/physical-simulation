@@ -48,6 +48,7 @@ import {
   replaceEntityInCollection,
   resolveAuthoringPlacementForCommit,
 } from "./state/authoringPlacementGuards";
+import { convertSceneAuthoringUnits } from "./state/editorSceneDocument";
 import {
   getDefaultAuthoringSnapDistance,
   resolveAuthoringPlacement,

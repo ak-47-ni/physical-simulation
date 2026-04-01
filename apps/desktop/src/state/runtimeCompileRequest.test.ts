@@ -32,17 +32,6 @@ describe("runtimeCompileRequest", () => {
         label: "Track 1",
         origin: { x: 156, y: 200 },
       },
-      {
-        center: { x: 240, y: 180 },
-        entryEndpoint: "start" as const,
-        endAngleDegrees: 105,
-        id: "arc-track-1",
-        kind: "arc-track" as const,
-        label: "Arc track 1",
-        radius: 90,
-        side: "inside" as const,
-        startAngleDegrees: -45,
-      },
     ];
     const annotations = [
       {
@@ -90,16 +79,6 @@ describe("runtimeCompileRequest", () => {
             id: "track-1",
             kind: "track",
             origin: { x: 156, y: 200 },
-          },
-          {
-            center: { x: 240, y: 180 },
-            entryEndpoint: "start",
-            endAngleDegrees: 105,
-            id: "arc-track-1",
-            kind: "arc-track",
-            radius: 90,
-            side: "inside",
-            startAngleDegrees: -45,
           },
         ],
         forceSources: [
@@ -159,11 +138,6 @@ describe("runtimeCompileRequest", () => {
     }
 
     expect(compiledBoard.rotationRadians).toBeCloseTo(Math.PI / 6);
-    const compiledArcTrack = request.scene.constraints.find(
-      (constraint) => constraint.id === "arc-track-1",
-    );
-
-    expect(compiledArcTrack).not.toHaveProperty("entityId");
   });
 
   it("respects an explicit analyzer target and omits analyzers when no entity matches", () => {
@@ -229,17 +203,6 @@ describe("runtimeCompileRequest", () => {
         label: "Track 1",
         origin: { x: 156, y: 200 },
       },
-      {
-        center: { x: 240, y: 180 },
-        entryEndpoint: "end" as const,
-        endAngleDegrees: 105,
-        id: "arc-track-1",
-        kind: "arc-track" as const,
-        label: "Arc track 1",
-        radius: 90,
-        side: "inside" as const,
-        startAngleDegrees: -45,
-      },
     ];
 
     const request = createRuntimeCompileRequestFromEditorState({
@@ -280,16 +243,6 @@ describe("runtimeCompileRequest", () => {
           kind: "track",
           origin: { x: 1.56, y: 2 },
         },
-        {
-          center: { x: 2.4, y: 1.8 },
-          entryEndpoint: "end",
-          endAngleDegrees: 105,
-          id: "arc-track-1",
-          kind: "arc-track",
-          radius: 0.9,
-          side: "inside",
-          startAngleDegrees: -45,
-        },
       ],
       entities: [
         {
@@ -316,6 +269,77 @@ describe("runtimeCompileRequest", () => {
     expect(request.scene).not.toHaveProperty("pixelsPerMeter");
   });
 
+  it("preserves arc-track payload fields when building a runtime compile request", () => {
+    const request = createRuntimeCompileRequestFromEditorState({
+      constraints: [
+        {
+          center: { x: 1.56, y: 2 },
+          endAngleDegrees: 150,
+          entryEndpoint: "start",
+          id: "arc-track-1",
+          kind: "arc-track" as const,
+          label: "Arc track 1",
+          radius: 1.2,
+          side: "inside" as const,
+          startAngleDegrees: 30,
+        },
+      ],
+      entities: createInitialSceneEntities(),
+    });
+
+    expect(request.scene.constraints).toEqual([
+      {
+        center: { x: 1.56, y: 2 },
+        endAngleDegrees: 150,
+        entryEndpoint: "start",
+        id: "arc-track-1",
+        kind: "arc-track",
+        radius: 1.2,
+        side: "inside",
+        startAngleDegrees: 30,
+      },
+    ]);
+  });
+
+  it("normalizes arc-track center and radius to SI when authored units are non-SI", () => {
+    const request = createRuntimeCompileRequestFromEditorState({
+      constraints: [
+        {
+          center: { x: 156, y: 200 },
+          endAngleDegrees: 150,
+          entryEndpoint: "start",
+          id: "arc-track-1",
+          kind: "arc-track" as const,
+          label: "Arc track 1",
+          radius: 120,
+          side: "inside" as const,
+          startAngleDegrees: 30,
+        },
+      ],
+      entities: createInitialSceneEntities(),
+      settings: createSceneAuthoringSettings({
+        gravity: 980,
+        lengthUnit: "cm",
+        velocityUnit: "cm/s",
+        massUnit: "g",
+        pixelsPerMeter: 1,
+      }),
+    });
+
+    expect(request.scene.constraints).toEqual([
+      {
+        center: { x: 1.56, y: 2 },
+        endAngleDegrees: 150,
+        entryEndpoint: "start",
+        id: "arc-track-1",
+        kind: "arc-track",
+        radius: 1.2,
+        side: "inside",
+        startAngleDegrees: 30,
+      },
+    ]);
+  });
+
   it("keeps compile-request cloning stable when the source scene mutates later", () => {
     const request = createRuntimeCompileRequestFromEditorState({
       entities: createInitialSceneEntities(),
@@ -332,14 +356,9 @@ describe("runtimeCompileRequest", () => {
       throw new Error("expected gravity force source");
     }
 
-    const gravityForceSource = mutableForceSource as {
-      acceleration: { x: number; y: number };
-      kind: "gravity";
-    };
-
     mutableEntity.x = 999;
     mutableEntity.y = 999;
-    gravityForceSource.acceleration = { x: 1, y: 1 };
+    mutableForceSource.acceleration = { x: 1, y: 1 };
 
     expect(clonedRequest.scene.entities[0]).toMatchObject({
       x: 132,

@@ -257,8 +257,8 @@ function cloneRuntimeSceneConstraint(
   if (isPersistedArcTrackConstraint(constraint)) {
     return {
       center: { ...constraint.center },
-      entryEndpoint: constraint.entryEndpoint,
       endAngleDegrees: constraint.endAngleDegrees,
+      entryEndpoint: constraint.entryEndpoint,
       id: constraint.id,
       kind: "arc-track",
       radius: constraint.radius,
