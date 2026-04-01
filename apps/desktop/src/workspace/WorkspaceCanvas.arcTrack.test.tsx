@@ -3,9 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { EditorConstraint } from "../state/editorConstraints";
 import { createInitialEditorState } from "../state/editorStore";
-import { createArcTrackConstraintFromBallAndCenter } from "../state/createArcTrackConstraint";
+import { createBoardAnchoredArcTrackConstraint } from "../state/createBoardAnchoredArcTrackConstraint";
 import { WorkspaceCanvas } from "./WorkspaceCanvas";
 import {
+  authoredBoardInMeters,
   authoredBallInMeters,
   createDisplaySettings,
   meterViewport,
@@ -17,11 +18,18 @@ afterEach(() => {
 });
 
 function createArcTrackConstraint(): EditorConstraint {
-  return createArcTrackConstraintFromBallAndCenter({
-    ball: authoredBallInMeters,
-    center: { x: 1.2, y: 2.04 },
-    id: "arc-track-1",
-  }) as unknown as EditorConstraint;
+  return {
+    ...createBoardAnchoredArcTrackConstraint({
+      board: {
+        ...authoredBoardInMeters,
+        locked: true,
+      },
+      center: { x: 1.2, y: 2.04 },
+      endpointKey: "start",
+      id: "arc-track-1",
+    }),
+    label: "Arc track 1",
+  };
 }
 
 describe("WorkspaceCanvas arc-track overlays", () => {
@@ -57,6 +65,30 @@ describe("WorkspaceCanvas arc-track overlays", () => {
         "d",
       ),
     ).not.toBe("");
+  });
+
+  it("renders free-entry arc-track overlays even when the source board is absent", () => {
+    render(
+      <WorkspaceCanvas
+        constraints={[createArcTrackConstraint()]}
+        display={createDisplaySettings()}
+        displayEntities={projectRuntimeSceneEntities({
+          editorEntities: [],
+          runtimeFrame: null,
+          viewport: meterViewport,
+        })}
+        entities={[]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+        state={createInitialEditorState()}
+        viewport={meterViewport}
+      />,
+    );
+
+    expect(screen.getByTestId("scene-constraint-arc-track-arc-track-1")).toBeDefined();
   });
 
   it("selects a curved arc-track overlay without selecting the ball", () => {

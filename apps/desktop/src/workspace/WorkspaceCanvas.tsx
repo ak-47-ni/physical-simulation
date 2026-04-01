@@ -3,6 +3,7 @@ import { useEffect, useState, type CSSProperties, type MouseEvent } from "react"
 import type { SceneDisplaySettings } from "../io/sceneFile";
 import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
 import type { EditorSceneEntity } from "../state/editorStore";
+import { renderArcTrackPlacementAffordances } from "./arcTrackPlacementAffordances";
 import type { LibraryDragSession } from "./libraryDragSession";
 import {
   isArcTrackConstraint,
@@ -29,9 +30,10 @@ import {
 
 type ConstraintPlacementState = {
   anchorEntityId: string | null;
+  boardEndpointKey?: "start" | "end" | null;
   hint: string;
   kind: LibraryConstraintKind;
-  mode: "pick-ball" | "pick-center" | "pick-entity" | "pick-point";
+  mode: "pick-board" | "pick-board-endpoint" | "pick-center" | "pick-entity" | "pick-point";
 };
 
 type WorkspaceCanvasProps = {
@@ -47,6 +49,7 @@ type WorkspaceCanvasProps = {
   onCancelPlacement?: () => void;
   onCreateEntity: (position: { x: number; y: number }) => void;
   onLibraryDragHoverChange?: (hover: WorkspaceCanvasLibraryDragHover | null) => void;
+  onPlaceConstraintBoardEndpoint?: (endpointKey: "start" | "end") => void;
   onPlaceConstraintEntity?: (entityId: string) => void;
   onPlaceConstraintPoint?: (position: { x: number; y: number }) => void;
   onGridVisibleChange: (visible: boolean) => void;
@@ -398,6 +401,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     libraryDragSession = null,
     onCancelPlacement,
     onLibraryDragHoverChange,
+    onPlaceConstraintBoardEndpoint,
     onPlaceConstraintEntity,
     onPlaceConstraintPoint,
     onMoveEntity,
@@ -609,7 +613,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
 
     if (
       state.activeTool === "place-constraint" &&
-      (constraintPlacement?.mode === "pick-entity" || constraintPlacement?.mode === "pick-ball")
+      (constraintPlacement?.mode === "pick-entity" || constraintPlacement?.mode === "pick-board")
     ) {
       onPlaceConstraintEntity?.(entityId);
       return;
@@ -634,6 +638,17 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           selectedRuntimeVelocityVector.velocityY,
         )
       : null;
+  const arcPlacementBoard =
+    constraintPlacement?.kind === "arc-track" &&
+    (constraintPlacement.mode === "pick-board-endpoint" ||
+      (constraintPlacement.mode === "pick-center" && constraintPlacement.boardEndpointKey))
+      ? entities.find(
+          (entity): entity is Extract<EditorSceneEntity, { kind: "board" }> =>
+            entity.id === constraintPlacement.anchorEntityId &&
+            entity.kind === "board" &&
+            entity.locked,
+        ) ?? null
+      : null;
 
   function handleConstraintClick(
     event: MouseEvent<HTMLButtonElement>,
@@ -656,11 +671,6 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       return renderArcTrackConstraintOverlay({
         constraint,
         constraintSelectionEnabled,
-        getEntityCenter: (entityId) => {
-          const entity = getEntityById(entityId);
-
-          return entity ? getEntityCenter(entity) : null;
-        },
         isSelected,
         onConstraintClick: handleConstraintClick,
         viewport,
@@ -879,6 +889,15 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           : null}
 
         {constraints.map(renderConstraint)}
+
+        {arcPlacementBoard
+          ? renderArcTrackPlacementAffordances({
+              board: arcPlacementBoard,
+              onSelectEndpoint: onPlaceConstraintBoardEndpoint,
+              selectedEndpointKey: constraintPlacement?.boardEndpointKey,
+              viewport,
+            })
+          : null}
 
         {projectedPlacementPreview ? (
           <div

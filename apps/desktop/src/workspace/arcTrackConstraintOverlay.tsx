@@ -1,10 +1,8 @@
 import type { CSSProperties, MouseEvent, ReactElement } from "react";
 
-import type { ArcTrackConstraintDraft } from "../state/createArcTrackConstraint";
 import type { EditorConstraint } from "../state/editorConstraints";
 import {
   createArcOverlayGeometry,
-  type OverlayPoint,
 } from "./constraintOverlayGeometry";
 import {
   authoringLengthToScreenPixels,
@@ -12,14 +10,11 @@ import {
   type UnitViewport,
 } from "./unitViewport";
 
-type ArcTrackConstraintRenderable = ArcTrackConstraintDraft & {
-  label?: string;
-};
+type ArcTrackConstraintRenderable = Extract<EditorConstraint, { kind: "arc-track" }>;
 
 type RenderArcTrackConstraintOverlayInput = {
   constraint: ArcTrackConstraintRenderable;
   constraintSelectionEnabled: boolean;
-  getEntityCenter: (entityId: string) => OverlayPoint | null;
   isSelected: boolean;
   onConstraintClick: (event: MouseEvent<HTMLButtonElement>, constraintId: string) => void;
   viewport: UnitViewport;
@@ -56,10 +51,10 @@ export function isArcTrackConstraint(
 
   return (
     candidate.kind === "arc-track" &&
-    typeof candidate.entityId === "string" &&
     typeof candidate.radius === "number" &&
     typeof candidate.startAngleDegrees === "number" &&
     typeof candidate.endAngleDegrees === "number" &&
+    (candidate.entryEndpoint === "start" || candidate.entryEndpoint === "end") &&
     candidate.side !== undefined &&
     candidate.center !== undefined &&
     typeof candidate.center.x === "number" &&
@@ -70,10 +65,6 @@ export function isArcTrackConstraint(
 export function renderArcTrackConstraintOverlay(
   input: RenderArcTrackConstraintOverlayInput,
 ): ReactElement | null {
-  if (!input.getEntityCenter(input.constraint.entityId)) {
-    return null;
-  }
-
   const arc = createArcOverlayGeometry({
     center: projectAuthoringPointToScreen(input.constraint.center, input.viewport),
     endAngleDegrees: input.constraint.endAngleDegrees,
