@@ -32,8 +32,8 @@ const TEST_CONSTRAINTS = [
   },
   {
     center: { x: 240, y: 180 },
+    entryEndpoint: "start" as const,
     endAngleDegrees: 105,
-    entityId: "ball-1",
     id: "arc-track-1",
     kind: "arc-track" as const,
     label: "Arc track 1",
@@ -69,8 +69,8 @@ describe("editorSceneDocument", () => {
       },
       {
         center: { x: 240, y: 180 },
+        entryEndpoint: "start",
         endAngleDegrees: 105,
-        entityId: "ball-1",
         id: "arc-track-1",
         kind: "arc-track",
         radius: 90,
@@ -234,8 +234,8 @@ describe("editorSceneDocument", () => {
       },
       {
         center: { x: 24000, y: 18000 },
+        entryEndpoint: "start",
         endAngleDegrees: 105,
-        entityId: "ball-1",
         id: "arc-track-1",
         kind: "arc-track",
         label: "Arc track 1",
@@ -291,21 +291,24 @@ describe("editorSceneDocument", () => {
 
     expect(scene.constraints).toContainEqual({
       center: { x: 240, y: 180 },
+      entryEndpoint: "start",
       endAngleDegrees: 105,
-      entityId: "ball-1",
       id: "arc-track-1",
       kind: "arc-track",
       radius: 90,
       side: "inside",
       startAngleDegrees: -45,
     });
+    const sceneArcTrack = scene.constraints.find((constraint) => constraint.id === "arc-track-1");
+
+    expect(sceneArcTrack).not.toHaveProperty("entityId");
 
     const restored = createEditorSceneStateFromSceneDocument({ scene });
 
     expect(restored.constraints).toContainEqual({
       center: { x: 240, y: 180 },
+      entryEndpoint: "start",
       endAngleDegrees: 105,
-      entityId: "ball-1",
       id: "arc-track-1",
       kind: "arc-track",
       label: "Arc track 1",
@@ -313,5 +316,10 @@ describe("editorSceneDocument", () => {
       side: "inside",
       startAngleDegrees: -45,
     });
+    const restoredArcTrack = restored.constraints.find(
+      (constraint) => constraint.id === "arc-track-1",
+    );
+
+    expect(restoredArcTrack).not.toHaveProperty("entityId");
   });
 });
