@@ -73,9 +73,10 @@ pub fn endpoint_geometry(
         ArcTrackEntryEndpoint::End => end_angle_radians,
     };
     let radial = radial_for_angle(angle_radians);
+    let increasing_tangent = tangent_for_increasing_angle(radial);
     let tangent = match entry_endpoint {
-        ArcTrackEntryEndpoint::Start => radial.perp(),
-        ArcTrackEntryEndpoint::End => radial.perp().scale(-1.0),
+        ArcTrackEntryEndpoint::Start => increasing_tangent,
+        ArcTrackEntryEndpoint::End => increasing_tangent.scale(-1.0),
     };
 
     ArcTrackEndpointGeometry {
@@ -90,12 +91,12 @@ pub fn angle_radians_for_position(relative: Vector2) -> Option<f64> {
     if relative.length() <= ARC_TRACK_EPSILON {
         None
     } else {
-        Some(normalize_angle_radians(relative.y.atan2(relative.x)))
+        Some(normalize_angle_radians((-relative.y).atan2(relative.x)))
     }
 }
 
 pub fn radial_for_angle(angle_radians: f64) -> Vector2 {
-    Vector2::new(angle_radians.cos(), angle_radians.sin())
+    Vector2::new(angle_radians.cos(), -angle_radians.sin())
 }
 
 pub fn support_direction(radial: Vector2, side: ArcTrackSide) -> Vector2 {
@@ -112,6 +113,10 @@ pub fn angle_is_within_arc(
 ) -> bool {
     ccw_span_radians(start_angle_radians, normalize_angle_radians(angle_radians))
         <= span_radians + ARC_TRACK_EPSILON
+}
+
+pub fn tangent_for_increasing_angle(radial: Vector2) -> Vector2 {
+    radial.perp().scale(-1.0)
 }
 
 fn clamp_angle_to_arc(angle_radians: f64, start_angle_radians: f64, end_angle_radians: f64) -> f64 {
