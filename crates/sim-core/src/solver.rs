@@ -646,7 +646,7 @@ fn enforce_arc_track_attachment(
     }
 
     let radial = crate::arc_track::radial_for_angle(projection.angle_radians);
-    let tangent = radial.perp();
+    let tangent = crate::arc_track::tangent_for_increasing_angle(radial);
     let tangential_speed = body.velocity.dot(tangent);
     let tangential_acceleration = body.acceleration.dot(tangent);
     let required_support = radial

@@ -62,10 +62,10 @@ fn entry_arc() -> ConstraintDefinition {
         id: "arc-track".to_string(),
         center: vector2(4.0, 4.0),
         radius: 2.0,
-        start_angle_degrees: 270.0,
-        end_angle_degrees: 330.0,
+        start_angle_degrees: 30.0,
+        end_angle_degrees: 90.0,
         side: ArcTrackSide::Inside,
-        entry_endpoint: ArcTrackEntryEndpoint::Start,
+        entry_endpoint: ArcTrackEntryEndpoint::End,
     }
 }
 
@@ -121,4 +121,36 @@ fn arc_entry_capture_regression_distant_ball_does_not_enter() {
     assert!(frame.position.x < 2.0);
     assert!((frame.position.y - 2.0).abs() < 1e-6);
     assert!((frame.position.sub(center).length() - 2.0).abs() > 0.5);
+}
+
+#[test]
+fn arc_entry_capture_regression_frontend_board_anchored_payload_enters_from_junction() {
+    let center = vector2(8.0, 5.5);
+    let mut runtime = runtime_for_scene(
+        ball("ball", vector2(8.4, 4.5), vector2(-2.0, 0.0)),
+        ConstraintDefinition::ArcTrack {
+            id: "arc-track".to_string(),
+            center,
+            radius: 1.0,
+            start_angle_degrees: 90.0,
+            end_angle_degrees: 270.0,
+            side: ArcTrackSide::Inside,
+            entry_endpoint: ArcTrackEntryEndpoint::Start,
+        },
+        Vector2::ZERO,
+        0.05,
+    );
+
+    run_steps(&mut runtime, 12);
+    let frame = runtime_entity(&runtime, "ball");
+    let radial_distance = frame.position.sub(center).length();
+
+    assert!(
+        (radial_distance - 1.0).abs() < 5e-2,
+        "expected board-anchored payload to stay on the arc, got position=({:.3}, {:.3}) distance={:.3}",
+        frame.position.x,
+        frame.position.y,
+        radial_distance,
+    );
+    assert!(frame.position.x < 8.0);
 }
