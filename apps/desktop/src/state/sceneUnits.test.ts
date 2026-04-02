@@ -5,6 +5,7 @@ import {
   convertMassValue,
   convertVelocityValue,
   getGravityUnitLabel,
+  quantizeArcTrackRadiusForLengthUnit,
 } from "./sceneUnits";
 
 describe("sceneUnits", () => {
@@ -22,5 +23,12 @@ describe("sceneUnits", () => {
   it("derives gravity display labels from the selected length unit", () => {
     expect(getGravityUnitLabel("m")).toBe("m/s²");
     expect(getGravityUnitLabel("cm")).toBe("cm/s²");
+  });
+
+  it("quantizes arc-track radius with physical 0.1 m steps in authored units", () => {
+    expect(quantizeArcTrackRadiusForLengthUnit(1.24, "m")).toBe(1.2);
+    expect(quantizeArcTrackRadiusForLengthUnit(1.25, "m")).toBe(1.3);
+    expect(quantizeArcTrackRadiusForLengthUnit(124, "cm")).toBe(120);
+    expect(quantizeArcTrackRadiusForLengthUnit(125, "cm")).toBe(130);
   });
 });

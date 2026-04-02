@@ -1,6 +1,11 @@
 import type { CSSProperties } from "react";
 
 import type { SceneDisplaySettings } from "../io/sceneFile";
+import type { ConstraintPlacementState } from "../state/appEditorHelpers";
+import {
+  ARC_TRACK_SPAN_PRESETS,
+  type ArcTrackSpanPresetDegrees,
+} from "../state/createBoardAnchoredArcTrackConstraint";
 import type { EditorConstraint } from "../state/editorConstraints";
 import type { EditorEntityPhysics, EditorSceneEntity } from "../state/editorStore";
 import {
@@ -48,6 +53,7 @@ type PropertyPanelProps = {
   authoringLocked?: boolean;
   authoringLockReason?: string | null;
   display: SceneDisplaySettings;
+  onApplyPendingArcSpanPreset?: (spanDegrees: ArcTrackSpanPresetDegrees) => void;
   onDeleteSelectedConstraint?: () => void;
   onDeleteSelectedEntity: () => void;
   onDuplicateSelectedEntity: () => void;
@@ -60,6 +66,7 @@ type PropertyPanelProps = {
   onUpdateSelectedEntityRadius: (radius: number) => void;
   onUpdateSelectedEntityRotation?: (rotationDegrees: number) => void;
   onUpdateSelectedEntitySize: (size: { width: number; height: number }) => void;
+  pendingConstraintPlacement?: ConstraintPlacementState | null;
   scenePhysics?: ScenePhysicsPanelState | null;
   selectedConstraint?: EditorConstraint | null;
   selectedEntity: EditorSceneEntity | null;
@@ -269,11 +276,29 @@ function CheckboxInput(props: {
   );
 }
 
+function createArcTrackSpanPresetUpdate(
+  constraint: Extract<EditorConstraint, { kind: "arc-track" }>,
+  spanDegrees: ArcTrackSpanPresetDegrees,
+) {
+  if (constraint.entryEndpoint === "start") {
+    return {
+      endAngleDegrees: constraint.startAngleDegrees + spanDegrees,
+      startAngleDegrees: constraint.startAngleDegrees,
+    };
+  }
+
+  return {
+    endAngleDegrees: constraint.endAngleDegrees,
+    startAngleDegrees: constraint.endAngleDegrees - spanDegrees,
+  };
+}
+
 export function PropertyPanel(props: PropertyPanelProps) {
   const {
     authoringLocked = false,
     authoringLockReason = null,
     display,
+    onApplyPendingArcSpanPreset = () => undefined,
     onDeleteSelectedConstraint = () => undefined,
     onDeleteSelectedEntity,
     onDuplicateSelectedEntity,
@@ -286,6 +311,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
     onUpdateSelectedEntityRadius,
     onUpdateSelectedEntityRotation = () => undefined,
     onUpdateSelectedEntitySize,
+    pendingConstraintPlacement = null,
     scenePhysics = null,
     selectedConstraint = null,
     selectedEntity,
@@ -323,6 +349,36 @@ export function PropertyPanel(props: PropertyPanelProps) {
           onPixelsPerMeterChange={(pixelsPerMeter) => onScenePhysicsChange({ pixelsPerMeter })}
           onVelocityUnitChange={(velocityUnit) => onScenePhysicsChange({ velocityUnit })}
         />
+      ) : null}
+
+      {pendingConstraintPlacement?.kind === "arc-track" &&
+      pendingConstraintPlacement.stage === "pick-span" ? (
+        <section style={cardStyle}>
+          <h2 style={sectionLabelStyle}>Pending arc track</h2>
+          <span style={{ color: "#55657f", fontSize: "14px" }}>
+            {pendingConstraintPlacement.hint}
+          </span>
+          {pendingConstraintPlacement.draftRadius !== null &&
+          pendingConstraintPlacement.draftRadius !== undefined &&
+          lengthUnitLabel ? (
+            <strong style={{ color: "#17304f" }}>
+              Radius {pendingConstraintPlacement.draftRadius} {lengthUnitLabel}
+            </strong>
+          ) : null}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+            {ARC_TRACK_SPAN_PRESETS.map((spanDegrees) => (
+              <button
+                key={spanDegrees}
+                disabled={authoringLocked}
+                style={actionButtonStyle}
+                type="button"
+                onClick={() => onApplyPendingArcSpanPreset(spanDegrees)}
+              >
+                {`Create ${spanDegrees}° arc`}
+              </button>
+            ))}
+          </div>
+        </section>
       ) : null}
 
       <section style={cardStyle}>
@@ -516,6 +572,23 @@ export function PropertyPanel(props: PropertyPanelProps) {
                       onUpdateSelectedConstraint({ endAngleDegrees })
                     }
                   />
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                  {ARC_TRACK_SPAN_PRESETS.map((spanDegrees) => (
+                    <button
+                      key={spanDegrees}
+                      disabled={authoringLocked}
+                      style={actionButtonStyle}
+                      type="button"
+                      onClick={() =>
+                        onUpdateSelectedConstraint(
+                          createArcTrackSpanPresetUpdate(selectedConstraint, spanDegrees),
+                        )
+                      }
+                    >
+                      {`Apply ${spanDegrees}° span`}
+                    </button>
+                  ))}
                 </div>
               </>
             )}

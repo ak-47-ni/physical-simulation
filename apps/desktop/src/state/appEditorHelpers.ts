@@ -3,8 +3,11 @@ import {
   resolveAuthoringPlacement,
   type AuthoringPlacementPreview,
 } from "./authoringContactSnap";
-import type { BoardArcEndpointKey } from "./boardArcPlacement";
-import { createBoardAnchoredArcTrackConstraint } from "./createBoardAnchoredArcTrackConstraint";
+import { getBoardArcEndpoint, type BoardArcEndpointKey } from "./boardArcPlacement";
+import {
+  createBoardAnchoredArcTrackConstraint,
+  type ArcTrackSpanPresetDegrees,
+} from "./createBoardAnchoredArcTrackConstraint";
 import {
   createDefaultEditorConstraint,
   type EditorConstraint,
@@ -21,6 +24,7 @@ import {
 } from "./sceneAuthoringSettings";
 import {
   getGravityUnitLabel,
+  quantizeArcTrackRadiusForLengthUnit,
   type LengthUnit,
   type MassUnit,
   type VelocityUnit,
@@ -49,14 +53,25 @@ const LEGACY_SCENE_SETTINGS = createSceneAuthoringSettings({
 export type ConstraintPlacementState = {
   anchorEntityId: string | null;
   boardEndpointKey?: BoardArcEndpointKey | null;
+  draftCenter?: { x: number; y: number } | null;
+  draftRadius?: number | null;
+  draftSpanDegrees?: ArcTrackSpanPresetDegrees | null;
   hint: string;
   kind: LibraryConstraintKind;
   mode: "pick-board" | "pick-board-endpoint" | "pick-center" | "pick-entity" | "pick-point";
+  stage:
+    | "pick-board"
+    | "pick-board-endpoint"
+    | "pick-entity"
+    | "pick-point"
+    | "pick-radius"
+    | "pick-span";
 };
 
 export type ConstraintUpdate = {
   axis?: { x: number; y: number };
   center?: { x: number; y: number };
+  entryEndpoint?: "start" | "end";
   endAngleDegrees?: number;
   origin?: { x: number; y: number };
   radius?: number;
@@ -188,9 +203,13 @@ export function createConstraintPlacementState(
     return {
       anchorEntityId: null,
       boardEndpointKey: null,
+      draftCenter: null,
+      draftRadius: null,
+      draftSpanDegrees: null,
       hint: "Select first body for the spring",
       kind: "spring",
       mode: "pick-entity",
+      stage: "pick-entity",
     };
   }
 
@@ -198,18 +217,26 @@ export function createConstraintPlacementState(
     return {
       anchorEntityId: null,
       boardEndpointKey: null,
+      draftCenter: null,
+      draftRadius: null,
+      draftSpanDegrees: null,
       hint: "Select a body for the track",
       kind: "track",
       mode: "pick-entity",
+      stage: "pick-entity",
     };
   }
 
   return {
     anchorEntityId: null,
     boardEndpointKey: null,
+    draftCenter: null,
+    draftRadius: null,
+    draftSpanDegrees: null,
     hint: "Select a locked board for the arc track",
     kind: "arc-track",
     mode: "pick-board",
+    stage: "pick-board",
   };
 }
 
@@ -236,10 +263,41 @@ export function applyConstraintUpdate(
   return {
     ...constraint,
     center: update.center ?? constraint.center,
+    entryEndpoint: update.entryEndpoint ?? constraint.entryEndpoint,
     endAngleDegrees: update.endAngleDegrees ?? constraint.endAngleDegrees,
     radius: update.radius ?? constraint.radius,
     side: update.side ?? constraint.side,
     startAngleDegrees: update.startAngleDegrees ?? constraint.startAngleDegrees,
+  };
+}
+
+export function createArcTrackRadiusDraft(input: {
+  board: Extract<EditorSceneEntity, { kind: "board" }>;
+  endpointKey: BoardArcEndpointKey;
+  point: { x: number; y: number };
+  lengthUnit: LengthUnit;
+}) {
+  const endpoint = getBoardArcEndpoint(input.board, input.endpointKey);
+  const deltaX = input.point.x - endpoint.point.x;
+  const deltaY = input.point.y - endpoint.point.y;
+  const rawRadius = Math.hypot(deltaX, deltaY);
+
+  if (rawRadius <= Number.EPSILON) {
+    return null;
+  }
+
+  const quantizedRadius = quantizeArcTrackRadiusForLengthUnit(rawRadius, input.lengthUnit);
+
+  if (quantizedRadius <= 0) {
+    return null;
+  }
+
+  return {
+    center: {
+      x: Number((endpoint.point.x + (deltaX / rawRadius) * quantizedRadius).toFixed(6)),
+      y: Number((endpoint.point.y + (deltaY / rawRadius) * quantizedRadius).toFixed(6)),
+    },
+    radius: quantizedRadius,
   };
 }
 
@@ -248,6 +306,7 @@ export function createArcTrackConstraint(
   board: Extract<EditorSceneEntity, { kind: "board" }>,
   center: { x: number; y: number },
   endpointKey: BoardArcEndpointKey,
+  spanDegrees?: ArcTrackSpanPresetDegrees,
 ) {
   const baseConstraint = createDefaultEditorConstraint(constraints, "arc-track");
 
@@ -263,6 +322,7 @@ export function createArcTrackConstraint(
       endpointKey,
       id: baseConstraint.id,
       side: baseConstraint.side,
+      spanDegrees,
     }),
     label: baseConstraint.label,
   };

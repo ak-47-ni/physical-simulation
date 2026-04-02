@@ -25,6 +25,7 @@ import {
 } from "./state/editorStore";
 import {
   applyConstraintUpdate,
+  createArcTrackRadiusDraft,
   createArcTrackConstraint,
   createAuthoringPlacementPreview,
   createConstraintPlacementState,
@@ -56,7 +57,6 @@ import {
 } from "./state/authoringContactSnap";
 import { createMockRuntimeBridgePort } from "./state/runtimeBridge";
 import { createDesktopRuntimeBridgePort } from "./state/desktopRuntimeBridgePort";
-import { convertSceneAuthoringUnits } from "./state/editorSceneDocument";
 import { createRuntimeCompileRequestFromEditorState } from "./state/runtimeCompileRequest";
 import { createRuntimePreviewFrame, createRuntimePreviewTrajectorySamples } from "./state/runtimePreview";
 import { runtimeVelocityToAuthoring } from "./state/velocitySemantics";
@@ -753,6 +753,7 @@ export function App() {
           ...constraintPlacement,
           anchorEntityId: entityId,
           hint: "Select second body for the spring",
+          stage: "pick-entity",
         });
         return;
       }
@@ -791,8 +792,12 @@ export function App() {
         ...constraintPlacement,
         anchorEntityId: entityId,
         boardEndpointKey: null,
+        draftCenter: null,
+        draftRadius: null,
+        draftSpanDegrees: null,
         hint: "Pick a point to define the track axis",
         mode: "pick-point",
+        stage: "pick-point",
       });
       return;
     }
@@ -810,8 +815,12 @@ export function App() {
       ...constraintPlacement,
       anchorEntityId: boardEntity.id,
       boardEndpointKey: null,
+      draftCenter: null,
+      draftRadius: null,
+      draftSpanDegrees: null,
       hint: "Select the board endpoint for the arc junction",
       mode: "pick-board-endpoint",
+      stage: "pick-board-endpoint",
     });
   }
 
@@ -827,9 +836,49 @@ export function App() {
     setConstraintPlacement({
       ...constraintPlacement,
       boardEndpointKey: endpointKey,
-      hint: "Pick a center point for the arc track",
+      draftCenter: null,
+      draftRadius: null,
+      draftSpanDegrees: null,
+      hint: "Pick a point to set the arc radius",
       mode: "pick-center",
+      stage: "pick-radius",
     });
+  }
+
+  function handlePendingArcSpanPresetApply(spanDegrees: 90 | 180 | 270) {
+    if (
+      !constraintPlacement ||
+      constraintPlacement.kind !== "arc-track" ||
+      constraintPlacement.stage !== "pick-span" ||
+      !constraintPlacement.anchorEntityId ||
+      !constraintPlacement.boardEndpointKey ||
+      !constraintPlacement.draftCenter
+    ) {
+      return;
+    }
+
+    const board = entities.find(
+      (entity): entity is Extract<EditorSceneEntity, { kind: "board" }> =>
+        entity.id === constraintPlacement.anchorEntityId &&
+        entity.kind === "board" &&
+        entity.locked,
+    );
+
+    if (!board) {
+      return;
+    }
+
+    setConstraints((current) => [
+      ...current,
+      createArcTrackConstraint(
+        current,
+        board,
+        constraintPlacement.draftCenter,
+        constraintPlacement.boardEndpointKey,
+        spanDegrees,
+      ),
+    ]);
+    finishConstraintPlacement();
   }
 
   function handleConstraintPointPick(position: { x: number; y: number }) {
@@ -874,13 +923,30 @@ export function App() {
       return;
     }
 
-    setConstraints((current) => {
-      return [
-        ...current,
-        createArcTrackConstraint(current, board, position, constraintPlacement.boardEndpointKey),
-      ];
+    if (constraintPlacement.stage !== "pick-radius") {
+      return;
+    }
+
+    const draft = createArcTrackRadiusDraft({
+      board,
+      endpointKey: constraintPlacement.boardEndpointKey,
+      lengthUnit: sceneSettings.lengthUnit,
+      point: position,
     });
-    finishConstraintPlacement();
+
+    if (!draft) {
+      return;
+    }
+
+    setConstraintPlacement({
+      ...constraintPlacement,
+      draftCenter: draft.center,
+      draftRadius: draft.radius,
+      draftSpanDegrees: null,
+      hint: "Choose an arc span preset to create the arc track",
+      mode: "pick-center",
+      stage: "pick-span",
+    });
   }
 
   return (
@@ -912,6 +978,7 @@ export function App() {
             authoringLocked={authoringLocked}
             authoringLockReason={AUTHORING_LOCK_REASON}
             display={displaySettings}
+            onApplyPendingArcSpanPreset={handlePendingArcSpanPresetApply}
             onDeleteSelectedConstraint={handleDeleteSelectedConstraint}
             onDeleteSelectedEntity={handleDeleteSelectedEntity}
             onDuplicateSelectedEntity={handleDuplicateSelectedEntity}
@@ -924,6 +991,7 @@ export function App() {
             onUpdateSelectedEntityRadius={handleUpdateSelectedEntityRadius}
             onUpdateSelectedEntityRotation={handleUpdateSelectedEntityRotation}
             onUpdateSelectedEntitySize={handleUpdateSelectedEntitySize}
+            pendingConstraintPlacement={constraintPlacement}
             scenePhysics={scenePhysicsState}
             selectedConstraint={selectedConstraint}
             selectedEntity={selectedEntity}

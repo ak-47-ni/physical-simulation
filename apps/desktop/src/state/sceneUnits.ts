@@ -2,6 +2,7 @@ export type LengthUnit = "m" | "cm";
 export type VelocityUnit = "m/s" | "cm/s";
 export type MassUnit = "kg" | "g";
 
+const ARC_TRACK_RADIUS_STEP_METERS = 0.1;
 const LENGTH_TO_METERS: Record<LengthUnit, number> = {
   m: 1,
   cm: 0.01,
@@ -79,4 +80,15 @@ export function denormalizeGravityFromSi(value: number, unit: LengthUnit): numbe
 
 export function getGravityUnitLabel(lengthUnit: LengthUnit): `${LengthUnit}/s²` {
   return `${lengthUnit}/s²`;
+}
+
+export function quantizeArcTrackRadiusForLengthUnit(
+  value: number,
+  unit: LengthUnit,
+): number {
+  const quantizedMeters =
+    Math.round(normalizeLengthToSi(value, unit) / ARC_TRACK_RADIUS_STEP_METERS) *
+    ARC_TRACK_RADIUS_STEP_METERS;
+
+  return Number(denormalizeLengthFromSi(quantizedMeters, unit).toFixed(6));
 }

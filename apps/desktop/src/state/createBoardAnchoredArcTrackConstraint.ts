@@ -4,6 +4,9 @@ import type { BoardArcEndpointKey } from "./boardArcPlacement";
 import { getBoardArcEndpoint } from "./boardArcPlacement";
 import type { EditorSceneEntity } from "./editorStore";
 
+export const ARC_TRACK_SPAN_PRESETS = [90, 180, 270] as const;
+export type ArcTrackSpanPresetDegrees = (typeof ARC_TRACK_SPAN_PRESETS)[number];
+
 export type BoardAnchoredArcTrackConstraintDraft = {
   center: Vector2;
   endAngleDegrees: number;
@@ -21,6 +24,7 @@ type CreateBoardAnchoredArcTrackConstraintInput = {
   endpointKey: BoardArcEndpointKey;
   id: string;
   side?: BoardAnchoredArcTrackConstraintDraft["side"];
+  spanDegrees?: ArcTrackSpanPresetDegrees;
 };
 
 function roundArcValue(value: number): number {
@@ -63,12 +67,13 @@ export function createBoardAnchoredArcTrackConstraint(
   const boardTravelTangent = toCartesian(endpoint.tangent);
   const entryEndpoint =
     dot(increasingArcTangent, boardTravelTangent) >= 0 ? "start" : "end";
+  const spanDegrees = input.spanDegrees ?? 180;
 
   return {
     center: { ...input.center },
     endAngleDegrees:
       entryEndpoint === "start"
-        ? roundArcValue(entryAngleDegrees + 180)
+        ? roundArcValue(entryAngleDegrees + spanDegrees)
         : roundArcValue(entryAngleDegrees),
     entryEndpoint,
     id: input.id,
@@ -78,6 +83,6 @@ export function createBoardAnchoredArcTrackConstraint(
     startAngleDegrees:
       entryEndpoint === "start"
         ? roundArcValue(entryAngleDegrees)
-        : roundArcValue(entryAngleDegrees - 180),
+        : roundArcValue(entryAngleDegrees - spanDegrees),
   };
 }

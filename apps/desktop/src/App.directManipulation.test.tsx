@@ -72,6 +72,13 @@ vi.mock("./workspace/WorkspaceCanvas", () => ({
 
     return (
       <div
+        data-constraint-stage={String(
+          (props.constraintPlacement as { stage?: string } | null)?.stage ?? "none",
+        )}
+        data-draft-radius={String(
+          (props.constraintPlacement as { draftRadius?: number | null } | null)?.draftRadius ??
+            "none",
+        )}
         data-library-drag-blocked={String(Boolean(props.libraryDragBlocked))}
         data-library-drag-active={String(Boolean(props.libraryDragSession))}
         data-placement-preview-status={String(
@@ -433,14 +440,42 @@ describe("App direct manipulation contracts", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Pick board endpoint start" }));
 
-    expect(screen.getByText("Pick a center point for the arc track")).toBeDefined();
+    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-constraint-stage")).toBe(
+      "pick-radius",
+    );
+    expect(screen.getByText("Pick a point to set the arc radius")).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Pick constraint point" }));
 
+    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-constraint-stage")).toBe(
+      "pick-span",
+    );
+    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-draft-radius")).toBe(
+      "1.6",
+    );
+    expect(screen.getAllByText("Choose an arc span preset to create the arc track")).not.toHaveLength(
+      0,
+    );
+    expect(screen.getByText("Radius 1.6 m")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create 90° arc" }));
+
     expect(screen.queryByText("Select the board endpoint for the arc junction")).toBeNull();
-    expect(screen.queryByText("Pick a center point for the arc track")).toBeNull();
+    expect(screen.queryByText("Pick a point to set the arc radius")).toBeNull();
+    expect(screen.queryAllByText("Choose an arc span preset to create the arc track")).toHaveLength(
+      0,
+    );
     expect(screen.getByTestId("scene-tree-constraint-arc-track-1")).toBeDefined();
     expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-tool")).toBe("select");
+
+    fireEvent.click(screen.getByTestId("scene-tree-constraint-arc-track-1"));
+
+    const startAngleDegrees = Number(
+      (screen.getByLabelText("Start angle") as HTMLInputElement).value,
+    );
+    const endAngleDegrees = Number((screen.getByLabelText("End angle") as HTMLInputElement).value);
+
+    expect(endAngleDegrees - startAngleDegrees).toBeCloseTo(90, 5);
   });
 
   it("keeps a created arc-track after deleting the source board", () => {
@@ -452,6 +487,7 @@ describe("App direct manipulation contracts", () => {
     fireEvent.click(screen.getByRole("button", { name: "Pick board for constraint" }));
     fireEvent.click(screen.getByRole("button", { name: "Pick board endpoint start" }));
     fireEvent.click(screen.getByRole("button", { name: "Pick constraint point" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create 180° arc" }));
 
     expect(screen.getByTestId("scene-tree-constraint-arc-track-1")).toBeDefined();
 

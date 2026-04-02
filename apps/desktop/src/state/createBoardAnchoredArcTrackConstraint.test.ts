@@ -78,4 +78,28 @@ describe("createBoardAnchoredArcTrackConstraint", () => {
       startAngleDegrees: -90,
     });
   });
+
+  it("applies the requested arc-span preset while preserving the tangent entry endpoint", async () => {
+    const { createBoardAnchoredArcTrackConstraint } =
+      await loadCreateBoardAnchoredArcTrackConstraint();
+
+    const constraint = createBoardAnchoredArcTrackConstraint({
+      board: createBoard(),
+      center: { x: 8, y: 5.5 },
+      endpointKey: "start",
+      id: "arc-track-3",
+      spanDegrees: 90,
+    });
+
+    expect(constraint).toEqual({
+      center: { x: 8, y: 5.5 },
+      endAngleDegrees: 180,
+      entryEndpoint: "start",
+      id: "arc-track-3",
+      kind: "arc-track",
+      radius: 1,
+      side: "inside",
+      startAngleDegrees: 90,
+    });
+  });
 });

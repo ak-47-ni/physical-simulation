@@ -487,6 +487,88 @@ describe("PropertyPanel", () => {
     ]);
   });
 
+  it("offers pending arc span presets during the pick-span stage", () => {
+    const presetSelections: number[] = [];
+
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings()}
+        onApplyPendingArcSpanPreset={(spanDegrees) => {
+          presetSelections.push(spanDegrees);
+        }}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        pendingConstraintPlacement={{
+          anchorEntityId: "board-1",
+          boardEndpointKey: "start",
+          draftCenter: { x: 1.8, y: 3.2 },
+          draftRadius: 1.6,
+          draftSpanDegrees: null,
+          hint: "Choose an arc span preset to create the arc track",
+          kind: "arc-track",
+          mode: "pick-span",
+          stage: "pick-span",
+        }}
+        scenePhysics={TEST_SCENE_PHYSICS}
+        selectedEntity={null}
+      />,
+    );
+
+    expect(screen.getByText("Pending arc track")).toBeDefined();
+    expect(screen.getByText("Radius 1.6 m")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Create 90° arc" }));
+
+    expect(presetSelections).toEqual([90]);
+  });
+
+  it("applies span presets to a selected arc-track without hiding exact angle inputs", () => {
+    const constraintUpdates: Array<Record<string, unknown>> = [];
+
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings()}
+        onDeleteSelectedConstraint={() => undefined}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedConstraint={(constraint) => {
+          constraintUpdates.push(constraint);
+        }}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        scenePhysics={TEST_SCENE_PHYSICS}
+        selectedConstraint={{
+          center: { x: 2.4, y: 1.8 },
+          entryEndpoint: "start",
+          endAngleDegrees: 135,
+          id: "arc-track-1",
+          kind: "arc-track",
+          label: "Arc track 1",
+          radius: 0.9,
+          side: "inside",
+          startAngleDegrees: -45,
+        }}
+        selectedEntity={null}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Apply 90° span" }));
+
+    expect((screen.getByLabelText("Start angle") as HTMLInputElement).value).toBe("-45");
+    expect((screen.getByLabelText("End angle") as HTMLInputElement).value).toBe("135");
+    expect(constraintUpdates).toEqual([{ endAngleDegrees: 45, startAngleDegrees: -45 }]);
+  });
+
   it("renders scene physics controls and unit-aware readouts for the selected entity", () => {
     render(
       <PropertyPanel
