@@ -3,6 +3,10 @@ import { useEffect, useState, type CSSProperties, type MouseEvent } from "react"
 import type { SceneDisplaySettings } from "../io/sceneFile";
 import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
 import type { EditorSceneEntity } from "../state/editorStore";
+import {
+  renderArcTrackAuthoringPreview,
+  type ArcTrackSpanPreset,
+} from "./arcTrackAuthoringPreview";
 import { renderArcTrackPlacementAffordances } from "./arcTrackPlacementAffordances";
 import type { LibraryDragSession } from "./libraryDragSession";
 import {
@@ -33,7 +37,18 @@ type ConstraintPlacementState = {
   boardEndpointKey?: "start" | "end" | null;
   hint: string;
   kind: LibraryConstraintKind;
-  mode: "pick-board" | "pick-board-endpoint" | "pick-center" | "pick-entity" | "pick-point";
+  mode:
+    | "pick-board"
+    | "pick-board-endpoint"
+    | "pick-center"
+    | "pick-entity"
+    | "pick-point"
+    | "pick-radius"
+    | "pick-span";
+  previewConstraint?: Extract<EditorConstraint, { kind: "arc-track" }> | null;
+  radiusLabel?: string | null;
+  selectedSpanDegrees?: ArcTrackSpanPreset | null;
+  spanPresetOptions?: readonly ArcTrackSpanPreset[];
 };
 
 type WorkspaceCanvasProps = {
@@ -49,6 +64,7 @@ type WorkspaceCanvasProps = {
   onCancelPlacement?: () => void;
   onCreateEntity: (position: { x: number; y: number }) => void;
   onLibraryDragHoverChange?: (hover: WorkspaceCanvasLibraryDragHover | null) => void;
+  onSelectArcTrackSpanPreset?: (spanDegrees: ArcTrackSpanPreset) => void;
   onPlaceConstraintBoardEndpoint?: (endpointKey: "start" | "end") => void;
   onPlaceConstraintEntity?: (entityId: string) => void;
   onPlaceConstraintPoint?: (position: { x: number; y: number }) => void;
@@ -401,6 +417,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     libraryDragSession = null,
     onCancelPlacement,
     onLibraryDragHoverChange,
+    onSelectArcTrackSpanPreset,
     onPlaceConstraintBoardEndpoint,
     onPlaceConstraintEntity,
     onPlaceConstraintPoint,
@@ -599,7 +616,9 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
 
     if (
       state.activeTool === "place-constraint" &&
-      (constraintPlacement?.mode === "pick-point" || constraintPlacement?.mode === "pick-center")
+      (constraintPlacement?.mode === "pick-point" ||
+        constraintPlacement?.mode === "pick-center" ||
+        constraintPlacement?.mode === "pick-radius")
     ) {
       onPlaceConstraintPoint?.(authoringPosition);
     }
@@ -641,7 +660,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   const arcPlacementBoard =
     constraintPlacement?.kind === "arc-track" &&
     (constraintPlacement.mode === "pick-board-endpoint" ||
-      (constraintPlacement.mode === "pick-center" && constraintPlacement.boardEndpointKey))
+      ((constraintPlacement.mode === "pick-center" ||
+        constraintPlacement.mode === "pick-radius" ||
+        constraintPlacement.mode === "pick-span") &&
+        constraintPlacement.boardEndpointKey))
       ? entities.find(
           (entity): entity is Extract<EditorSceneEntity, { kind: "board" }> =>
             entity.id === constraintPlacement.anchorEntityId &&
@@ -649,6 +671,12 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             entity.locked,
         ) ?? null
       : null;
+  const showArcTrackAuthoringPreview =
+    constraintPlacement?.kind === "arc-track" &&
+    arcPlacementBoard &&
+    constraintPlacement.boardEndpointKey &&
+    constraintPlacement.previewConstraint &&
+    (constraintPlacement.mode === "pick-radius" || constraintPlacement.mode === "pick-span");
 
   function handleConstraintClick(
     event: MouseEvent<HTMLButtonElement>,
@@ -895,6 +923,19 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
               board: arcPlacementBoard,
               onSelectEndpoint: onPlaceConstraintBoardEndpoint,
               selectedEndpointKey: constraintPlacement?.boardEndpointKey,
+              viewport,
+            })
+          : null}
+
+        {showArcTrackAuthoringPreview
+          ? renderArcTrackAuthoringPreview({
+              board: arcPlacementBoard,
+              endpointKey: constraintPlacement.boardEndpointKey,
+              onSelectSpanPreset: onSelectArcTrackSpanPreset,
+              previewConstraint: constraintPlacement.previewConstraint,
+              radiusLabel: constraintPlacement.radiusLabel,
+              selectedSpanDegrees: constraintPlacement.selectedSpanDegrees,
+              spanPresetOptions: constraintPlacement.spanPresetOptions,
               viewport,
             })
           : null}

@@ -32,6 +32,13 @@ function createArcTrackConstraint(): EditorConstraint {
   };
 }
 
+function createArcTrackPreviewConstraint(): Extract<EditorConstraint, { kind: "arc-track" }> {
+  return {
+    ...createArcTrackConstraint(),
+    label: "Arc preview",
+  };
+}
+
 describe("WorkspaceCanvas arc-track overlays", () => {
   it("renders a curved arc-track overlay from authored arc data", () => {
     render(
@@ -124,5 +131,169 @@ describe("WorkspaceCanvas arc-track overlays", () => {
 
     expect(selectedConstraintIds).toEqual(["arc-track-1"]);
     expect(selectedEntityIds).toEqual([]);
+  });
+
+  it("shows a live quantized radius readout during arc-track radius picking", () => {
+    const board = { ...authoredBoardInMeters, locked: true };
+    const projectedBoard = projectRuntimeSceneEntities({
+      editorEntities: [board],
+      runtimeFrame: null,
+      viewport: meterViewport,
+    });
+    const { rerender } = render(
+      <WorkspaceCanvas
+        constraintPlacement={{
+          anchorEntityId: board.id,
+          boardEndpointKey: "start",
+          hint: "Drag out the arc radius",
+          kind: "arc-track",
+          mode: "pick-radius",
+          previewConstraint: createArcTrackPreviewConstraint(),
+          radiusLabel: "1.2 m",
+        }}
+        display={createDisplaySettings()}
+        displayEntities={projectedBoard}
+        entities={[board]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-constraint" as never,
+        }}
+        viewport={meterViewport}
+      />,
+    );
+
+    expect(screen.getByTestId("workspace-arc-track-radius-readout").textContent).toContain(
+      "1.2 m",
+    );
+
+    rerender(
+      <WorkspaceCanvas
+        constraintPlacement={{
+          anchorEntityId: board.id,
+          boardEndpointKey: "start",
+          hint: "Drag out the arc radius",
+          kind: "arc-track",
+          mode: "pick-radius",
+          previewConstraint: createArcTrackPreviewConstraint(),
+          radiusLabel: "1.3 m",
+        }}
+        display={createDisplaySettings()}
+        displayEntities={projectedBoard}
+        entities={[board]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-constraint" as never,
+        }}
+        viewport={meterViewport}
+      />,
+    );
+
+    expect(screen.getByTestId("workspace-arc-track-radius-readout").textContent).toContain(
+      "1.3 m",
+    );
+    expect(screen.queryByText("1.2 m")).toBeNull();
+  });
+
+  it("shows span preset buttons and reports the selected preset during arc-track creation", () => {
+    const board = { ...authoredBoardInMeters, locked: true };
+    const selectedPresetDegrees: number[] = [];
+
+    render(
+      <WorkspaceCanvas
+        constraintPlacement={{
+          anchorEntityId: board.id,
+          boardEndpointKey: "start",
+          hint: "Choose the arc span",
+          kind: "arc-track",
+          mode: "pick-span",
+          previewConstraint: createArcTrackPreviewConstraint(),
+          radiusLabel: "1.2 m",
+          selectedSpanDegrees: 180,
+          spanPresetOptions: [90, 180, 270],
+        }}
+        display={createDisplaySettings()}
+        displayEntities={projectRuntimeSceneEntities({
+          editorEntities: [board],
+          runtimeFrame: null,
+          viewport: meterViewport,
+        })}
+        entities={[board]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onSelectArcTrackSpanPreset={(spanDegrees) => {
+          selectedPresetDegrees.push(spanDegrees);
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-constraint" as never,
+        }}
+        viewport={meterViewport}
+      />,
+    );
+
+    expect(screen.getByTestId("workspace-arc-track-span-preset-90")).toBeDefined();
+    expect(
+      screen.getByTestId("workspace-arc-track-span-preset-180").getAttribute("data-selected"),
+    ).toBe("true");
+    expect(screen.getByTestId("workspace-arc-track-span-preset-270")).toBeDefined();
+
+    fireEvent.click(screen.getByTestId("workspace-arc-track-span-preset-270"));
+
+    expect(selectedPresetDegrees).toEqual([270]);
+  });
+
+  it("renders tangent-continuous preview guides during arc-track creation", () => {
+    const board = { ...authoredBoardInMeters, locked: true };
+
+    render(
+      <WorkspaceCanvas
+        constraintPlacement={{
+          anchorEntityId: board.id,
+          boardEndpointKey: "start",
+          hint: "Choose the arc span",
+          kind: "arc-track",
+          mode: "pick-span",
+          previewConstraint: createArcTrackPreviewConstraint(),
+          radiusLabel: "1.2 m",
+          selectedSpanDegrees: 90,
+          spanPresetOptions: [90, 180, 270],
+        }}
+        display={createDisplaySettings()}
+        displayEntities={projectRuntimeSceneEntities({
+          editorEntities: [board],
+          runtimeFrame: null,
+          viewport: meterViewport,
+        })}
+        entities={[board]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-constraint" as never,
+        }}
+        viewport={meterViewport}
+      />,
+    );
+
+    expect(screen.getByTestId("workspace-arc-track-preview")).toBeDefined();
+    expect(screen.getByTestId("workspace-arc-track-preview-path")).toBeDefined();
+    expect(screen.getByTestId("workspace-arc-track-preview-radius-guide")).toBeDefined();
+    expect(screen.getByTestId("workspace-arc-track-preview-tangent-guide")).toBeDefined();
   });
 });
