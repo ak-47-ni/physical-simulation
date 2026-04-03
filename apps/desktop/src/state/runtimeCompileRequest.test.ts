@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createSceneAuthoringSettings } from "./sceneAuthoringSettings";
-import { createInitialSceneEntities } from "./editorStore";
+import { createInitialSceneEntities, createPlacedBodyEntity } from "./editorStore";
 import {
   createRuntimeCompileRequest,
   createRuntimeCompileRequestFromEditorState,
@@ -338,6 +338,26 @@ describe("runtimeCompileRequest", () => {
         startAngleDegrees: 30,
       },
     ]);
+  });
+
+  it("keeps arc-track entities typed as arc-track when building a runtime compile request", () => {
+    const request = createRuntimeCompileRequestFromEditorState({
+      entities: [
+        ...createInitialSceneEntities(),
+        createPlacedBodyEntity(createInitialSceneEntities(), "arc-track", { x: 360, y: 240 }),
+      ],
+    });
+
+    expect(request.scene.entities).toContainEqual({
+      id: "arc-track-1",
+      kind: "arc-track",
+      label: "Arc Track 1",
+      center: { x: 360, y: 240 },
+      radius: 100,
+      centralAngleDegrees: 90,
+      rotationDegrees: 0,
+      thickness: 18,
+    });
   });
 
   it("keeps compile-request cloning stable when the source scene mutates later", () => {

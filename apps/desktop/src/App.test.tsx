@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { App } from "./App";
 
 afterEach(() => {
+  delete (globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   cleanup();
 });
 
@@ -220,6 +221,75 @@ describe("App selection sync", () => {
     expect((screen.getByLabelText("Radius") as HTMLInputElement).value).toBe("1.2");
     expect((screen.getByLabelText("Central angle") as HTMLInputElement).value).toBe("210");
     expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("25");
+  });
+
+  it("compiles a dragged arc-track body as an arc-track entity with a center payload", async () => {
+    const compileRequests: Array<{ scene: { entities: unknown[] } }> = [];
+    (globalThis as { __TAURI_INTERNALS__?: { invoke: (command: string, payload?: Record<string, unknown>) => Promise<unknown> } }).__TAURI_INTERNALS__ = {
+      invoke: async (command, payload) => {
+        if (command !== "compile_scene") {
+          throw new Error(`unexpected command: ${command}`);
+        }
+
+        compileRequests.push((payload as { request: { scene: { entities: unknown[] } } }).request);
+
+        return {
+          status: "idle",
+          currentFrame: null,
+          currentTimeSeconds: 0,
+          timeScale: 1,
+          dirtyScopes: [],
+          rebuildRequired: false,
+          canResume: true,
+          blockReason: null,
+          playbackMode: "realtime",
+          totalDurationSeconds: 40,
+          preparingProgress: null,
+          canSeek: false,
+        };
+      },
+    };
+
+    render(<App />);
+
+    createArcTrackViaLibraryDrop({ x: 360, y: 240 });
+
+    await waitFor(() =>
+      expect(
+        compileRequests.some((request) =>
+          request.scene.entities.some(
+            (entity) =>
+              typeof entity === "object" &&
+              entity !== null &&
+              "id" in entity &&
+              entity.id === "arc-track-1",
+          ),
+        ),
+      ).toBe(true),
+    );
+
+    const latestRequest = compileRequests.at(-1);
+    const arcTrackEntity = latestRequest?.scene.entities.find(
+      (entity): entity is {
+        id: string;
+        kind: string;
+        center?: { x: number; y: number };
+        x?: number;
+        y?: number;
+      } =>
+        typeof entity === "object" &&
+        entity !== null &&
+        "id" in entity &&
+        entity.id === "arc-track-1",
+    );
+
+    expect(arcTrackEntity).toMatchObject({
+      id: "arc-track-1",
+      kind: "arc-track",
+      center: { x: 3.6, y: 2.4 },
+    });
+    expect(arcTrackEntity).not.toHaveProperty("x");
+    expect(arcTrackEntity).not.toHaveProperty("y");
   });
 
   it("updates physics properties and locked markers from the property panel", () => {

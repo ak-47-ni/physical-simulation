@@ -55,6 +55,15 @@ export type RuntimeBallSceneEntity = RuntimeBaseSceneEntity & {
   radius: number;
 };
 
+export type RuntimeArcTrackSceneEntity = RuntimeBaseSceneEntity & {
+  kind: "arc-track";
+  center: Vector2;
+  radius: number;
+  centralAngleDegrees: number;
+  rotationDegrees: number;
+  thickness: number;
+};
+
 export type RuntimeSizedSceneEntity = RuntimeBaseSceneEntity & {
   kind: "block" | "board" | "polygon";
   x: number;
@@ -66,6 +75,7 @@ export type RuntimeSizedSceneEntity = RuntimeBaseSceneEntity & {
 
 export type RuntimeSceneEntity =
   | RuntimeBallSceneEntity
+  | RuntimeArcTrackSceneEntity
   | RuntimeSizedSceneEntity
   | RuntimeUserPolygonEntity;
 
@@ -191,7 +201,20 @@ function cloneRuntimeSceneEntity(
     };
   }
 
-  if ("radius" in entity) {
+  if (entity.kind === "arc-track") {
+    return {
+      id: entity.id,
+      kind: "arc-track",
+      ...(label !== undefined ? { label } : {}),
+      center: { ...entity.center },
+      radius: entity.radius,
+      centralAngleDegrees: entity.centralAngleDegrees,
+      rotationDegrees: entity.rotationDegrees,
+      thickness: entity.thickness,
+    };
+  }
+
+  if (entity.kind === "ball") {
     return {
       id: entity.id,
       kind: "ball",
@@ -356,6 +379,18 @@ function normalizeRuntimeSceneEntityToSi(
       x: normalizeLengthToSi(entity.x, settings.lengthUnit),
       y: normalizeLengthToSi(entity.y, settings.lengthUnit),
       radius: normalizeLengthToSi(entity.radius, settings.lengthUnit),
+    };
+  }
+
+  if (entity.kind === "arc-track") {
+    return {
+      ...entity,
+      center: {
+        x: normalizeLengthToSi(entity.center.x, settings.lengthUnit),
+        y: normalizeLengthToSi(entity.center.y, settings.lengthUnit),
+      },
+      radius: normalizeLengthToSi(entity.radius, settings.lengthUnit),
+      thickness: normalizeLengthToSi(entity.thickness, settings.lengthUnit),
     };
   }
 
