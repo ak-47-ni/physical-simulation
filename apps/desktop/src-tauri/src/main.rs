@@ -153,6 +153,13 @@ fn format_bridge_error(error: BridgeError) -> String {
         } => {
             format!("incomplete entity record: {id} ({kind}) is missing {missing_field}")
         }
+        BridgeError::EntityPayloadKindMismatch {
+            id,
+            expected_kind,
+            actual_kind,
+        } => format!(
+            "invalid entity payload kind: {id} looks like {expected_kind} but is labeled {actual_kind}"
+        ),
         BridgeError::InvalidTimeScale { value } => format!("invalid time scale: {value}"),
         BridgeError::InvalidPlaybackConfig { field, value } => {
             format!("invalid playback config: {field} must be positive (received {value})")
@@ -198,9 +205,9 @@ fn format_scene_compile_error(error: SceneCompileError) -> String {
         SceneCompileError::InvalidArcTrackRadius {
             constraint_id,
             value,
-        } => format!(
-            "invalid arc track radius: {constraint_id} must be positive (received {value})"
-        ),
+        } => {
+            format!("invalid arc track radius: {constraint_id} must be positive (received {value})")
+        }
         SceneCompileError::InvalidArcTrackSpan {
             constraint_id,
             start_angle_degrees,
@@ -380,6 +387,20 @@ mod tests {
         assert_eq!(
             span_message,
             "invalid arc track span: arc-track-1 must define a non-zero partial sweep (received 45deg -> 45deg)"
+        );
+    }
+
+    #[test]
+    fn format_bridge_error_reports_arc_track_payload_kind_mismatches_without_ball_fallbacks() {
+        let message = format_bridge_error(BridgeError::EntityPayloadKindMismatch {
+            id: "arc-track-1".to_string(),
+            expected_kind: "arc-track".to_string(),
+            actual_kind: "ball".to_string(),
+        });
+
+        assert_eq!(
+            message,
+            "invalid entity payload kind: arc-track-1 looks like arc-track but is labeled ball"
         );
     }
 

@@ -156,6 +156,48 @@ fn runtime_compile_validation_accepts_arc_track_entities() {
 }
 
 #[test]
+fn runtime_compile_validation_flags_arc_track_shaped_ball_payloads_as_arc_tracks() {
+    let request: RuntimeCompileRequest = serde_json::from_value(json!({
+        "scene": {
+            "schemaVersion": 1,
+            "entities": [
+                {
+                    "id": "arc-track-1",
+                    "kind": "ball",
+                    "center": { "x": 0.0, "y": 2.0 },
+                    "radius": 3.0,
+                    "centralAngleDegrees": 135.0,
+                    "rotationDegrees": 180.0,
+                    "thickness": 0.18
+                }
+            ],
+            "constraints": [],
+            "forceSources": [
+                {
+                    "id": "gravity-1",
+                    "kind": "gravity",
+                    "acceleration": { "x": 0.0, "y": -9.81 }
+                }
+            ],
+            "analyzers": [],
+            "annotations": []
+        },
+        "dirtyScopes": [],
+        "rebuildRequired": false
+    }))
+    .expect("arc-track-like payload should deserialize");
+
+    assert_eq!(
+        SimulationBridge::new(1.0 / 60.0).compile_runtime_request(request),
+        Err(BridgeError::EntityPayloadKindMismatch {
+            id: "arc-track-1".to_string(),
+            expected_kind: "arc-track".to_string(),
+            actual_kind: "ball".to_string(),
+        })
+    );
+}
+
+#[test]
 fn runtime_compile_validation_rejects_legacy_arc_track_entity_binding_field() {
     let error = serde_json::from_value::<RuntimeCompileRequest>(json!({
         "scene": {

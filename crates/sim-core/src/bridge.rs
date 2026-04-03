@@ -24,6 +24,11 @@ pub enum BridgeError {
         kind: String,
         missing_field: String,
     },
+    EntityPayloadKindMismatch {
+        id: String,
+        expected_kind: String,
+        actual_kind: String,
+    },
     InvalidTimeScale {
         value: f64,
     },
@@ -822,6 +827,21 @@ impl SceneEntityPayload {
             velocity_y,
         } = self;
 
+        if kind != "arc-track"
+            && looks_like_arc_track_entity_payload(
+                center.as_ref(),
+                central_angle_degrees,
+                thickness,
+                rotation_degrees,
+            )
+        {
+            return Err(BridgeError::EntityPayloadKindMismatch {
+                id,
+                expected_kind: "arc-track".to_string(),
+                actual_kind: kind,
+            });
+        }
+
         let (shape, position, defaults) = match kind.as_str() {
             "user-polygon" => {
                 let points = points.ok_or_else(|| BridgeError::IncompleteEntityRecord {
@@ -1034,4 +1054,16 @@ fn required_scalar(
         kind: kind.to_string(),
         missing_field: field.to_string(),
     })
+}
+
+fn looks_like_arc_track_entity_payload(
+    center: Option<&Vector2>,
+    central_angle_degrees: Option<f64>,
+    thickness: Option<f64>,
+    rotation_degrees: Option<f64>,
+) -> bool {
+    center.is_some()
+        || central_angle_degrees.is_some()
+        || thickness.is_some()
+        || rotation_degrees.is_some()
 }
