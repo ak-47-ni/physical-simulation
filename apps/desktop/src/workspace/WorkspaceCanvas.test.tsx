@@ -47,6 +47,22 @@ function createArcTrackEntity(overrides: Record<string, unknown> = {}): EditorSc
   } as unknown as EditorSceneEntity;
 }
 
+function createAuthoredArcTrackEntity(
+  overrides: Partial<Extract<EditorSceneEntity, { kind: "arc-track" }>> = {},
+): Extract<EditorSceneEntity, { kind: "arc-track" }> {
+  return {
+    id: "arc-track-authored-1",
+    kind: "arc-track",
+    label: "Arc Track Authored 1",
+    center: { x: 4, y: 2 },
+    radius: 1,
+    centralAngleDegrees: 90,
+    rotationDegrees: 0,
+    thickness: 0.14,
+    ...overrides,
+  };
+}
+
 function expectStraightEndArcTrackPath(pathTestId: string) {
   const path = screen.getByTestId(pathTestId) as SVGPathElement;
 
@@ -254,6 +270,41 @@ describe("WorkspaceCanvas", () => {
     fireEvent.click(entity);
 
     expect(selectedEntityIds).toEqual(["arc-track-entity-1"]);
+  });
+
+  it("renders and selects committed center-based arc-track entities without physics fields", () => {
+    const selectedEntityIds: string[] = [];
+    const authoredArcTrack = createAuthoredArcTrackEntity();
+
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        displayEntities={[authoredArcTrack as never]}
+        entities={[authoredArcTrack]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          selectedEntityId: "arc-track-authored-1",
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={(entityId) => {
+          selectedEntityIds.push(entityId);
+        }}
+        onToolChange={() => undefined}
+        viewport={meterViewport}
+      />,
+    );
+
+    const entity = screen.getByTestId("scene-entity-arc-track-authored-1");
+
+    expect(entity.getAttribute("data-arc-track")).toBe("true");
+    expect(entity.getAttribute("data-selected")).toBe("true");
+    expectStraightEndArcTrackPath("scene-entity-arc-track-authored-1-path");
+
+    fireEvent.click(entity);
+
+    expect(selectedEntityIds).toEqual(["arc-track-authored-1"]);
   });
 
   it("renders labels and teaching vectors according to display settings", () => {

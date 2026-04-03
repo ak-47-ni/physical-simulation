@@ -149,6 +149,24 @@ const actionButtonStyle: CSSProperties = {
 const authoringLockMessage =
   "Playback running. Move, placement, and constraint editing are temporarily locked.";
 
+function isArcTrackLocked(entity: ArcTrackBodyEntity): boolean {
+  return entity.locked ?? false;
+}
+
+function getArcTrackVelocityComponents(entity: ArcTrackBodyEntity): {
+  velocityX: number;
+  velocityY: number;
+} {
+  return {
+    velocityX: entity.velocityX ?? 0,
+    velocityY: entity.velocityY ?? 0,
+  };
+}
+
+function getArcTrackMass(entity: ArcTrackBodyEntity): number {
+  return entity.mass ?? 0;
+}
+
 function getEntityVisualStyle(
   entity: WorkspaceSceneEntity | ArcTrackBodyEntity,
   isSelected: boolean,
@@ -159,7 +177,7 @@ function getEntityVisualStyle(
     const strokeColor = isSelected ? "#2457a6" : "#112540";
     const haloColor = isContactTarget
       ? "0 0 0 4px rgba(27, 167, 132, 0.18)"
-      : entity.locked
+      : isArcTrackLocked(entity)
         ? "0 0 0 2px rgba(245, 181, 62, 0.45)"
         : "none";
 
@@ -330,10 +348,27 @@ function getVelocityVector(entity: WorkspaceSceneEntity | ArcTrackBodyEntity): {
   dx: number;
   dy: number;
 } | null {
+  if (isArcTrackEntity(entity)) {
+    const velocity = getArcTrackVelocityComponents(entity);
+
+    return getVelocityVectorFromComponents(velocity.velocityX, velocity.velocityY);
+  }
+
   return getVelocityVectorFromComponents(entity.velocityX, entity.velocityY);
 }
 
 function getForceVector(entity: WorkspaceSceneEntity | ArcTrackBodyEntity): { dx: number; dy: number } | null {
+  if (isArcTrackEntity(entity)) {
+    if (isArcTrackLocked(entity)) {
+      return null;
+    }
+
+    return {
+      dx: 0,
+      dy: Math.max(18, Math.min(72, getArcTrackMass(entity) * 10)),
+    };
+  }
+
   if (entity.locked) {
     return null;
   }
@@ -1227,7 +1262,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
                 aria-label={`Select ${entity.label}`}
                 data-arc-track="true"
                 data-contact-target={String(contactTargetEntityId === entity.id)}
-                data-locked={String(entity.locked)}
+                data-locked={String(isArcTrackLocked(entity))}
                 data-selected={String(state.selectedEntityId === entity.id)}
                 data-testid={`scene-entity-${entity.id}`}
                 type="button"
@@ -1244,7 +1279,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
                   `scene-entity-${entity.id}-svg`,
                   `scene-entity-${entity.id}-path`,
                 )}
-                {entity.locked ? (
+                {isArcTrackLocked(entity) ? (
                   <span
                     data-testid={`scene-entity-lock-${entity.id}`}
                     style={{

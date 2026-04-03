@@ -98,6 +98,19 @@ function createPolygonEntity(): EditorSceneEntity {
   };
 }
 
+function createAuthoredArcTrackEntity(): EditorSceneEntity {
+  return {
+    id: "arc-track-1",
+    kind: "arc-track",
+    label: "Arc Track 1",
+    center: { x: 4.2, y: 2.1 },
+    radius: 1,
+    centralAngleDegrees: 90,
+    rotationDegrees: 0,
+    thickness: 0.14,
+  };
+}
+
 function createRuntimeFrame(overrides: Partial<RuntimeFrameView> = {}): RuntimeFrameView {
   return {
     frameNumber: 12,
@@ -235,6 +248,27 @@ describe("projectRuntimeSceneEntities", () => {
         velocityY: -4,
       }),
     );
+  });
+
+  it("projects center-based authored arc-track entities without requiring rigid-body physics fields", () => {
+    const projected = projectRuntimeSceneEntities({
+      editorEntities: [createAuthoredArcTrackEntity()],
+      runtimeFrame: null,
+      viewport: meterViewport,
+    });
+
+    expect(projected).toEqual([
+      expect.objectContaining({
+        id: "arc-track-1",
+        kind: "arc-track",
+        label: "Arc Track 1",
+        center: { x: 420, y: 210 },
+        radius: 100,
+        centralAngleDegrees: 90,
+        rotationDegrees: 0,
+        thickness: 14,
+      }),
+    ]);
   });
 
   it("preserves runtime or authored rotation for rotated boards", () => {
