@@ -4,9 +4,12 @@ import { getBoardArcEndpoint } from "../state/boardArcPlacement";
 import type { EditorConstraint } from "../state/editorConstraints";
 import type { EditorSceneEntity } from "../state/editorStore";
 import {
-  createArcOverlayGeometry,
   createConstraintLineGeometry,
 } from "./constraintOverlayGeometry";
+import {
+  createArcTrackProfileGeometryFromAngles,
+  DEFAULT_ARC_TRACK_THICKNESS,
+} from "./arcTrackBodyEntity";
 import {
   authoringLengthToScreenPixels,
   projectAuthoringPointToScreen,
@@ -122,11 +125,12 @@ export function renderArcTrackAuthoringPreview(
     input.previewConstraint.center,
     input.viewport,
   );
-  const previewArc = createArcOverlayGeometry({
+  const previewArc = createArcTrackProfileGeometryFromAngles({
     center: projectedCenter,
     endAngleDegrees: input.previewConstraint.endAngleDegrees,
     radius: authoringLengthToScreenPixels(input.previewConstraint.radius, input.viewport),
     startAngleDegrees: input.previewConstraint.startAngleDegrees,
+    thickness: authoringLengthToScreenPixels(DEFAULT_ARC_TRACK_THICKNESS, input.viewport),
   });
   const tangentGuideEnd = projectAuthoringPointToScreen(
     {
@@ -180,11 +184,10 @@ export function renderArcTrackAuthoringPreview(
           <path
             d={previewArc.pathData}
             data-testid="workspace-arc-track-preview-path"
-            fill="none"
+            fill="rgba(15, 118, 110, 0.16)"
             stroke="#0f766e"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={previewArc.strokeThickness + 1}
+            strokeLinejoin="miter"
+            strokeWidth={previewArc.outlineWidth}
           />
         </svg>
         {input.radiusLabel ? (

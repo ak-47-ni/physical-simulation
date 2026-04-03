@@ -5,6 +5,7 @@ import type { EditorConstraint } from "../state/editorConstraints";
 import { createInitialEditorState } from "../state/editorStore";
 import { createBoardAnchoredArcTrackConstraint } from "../state/createBoardAnchoredArcTrackConstraint";
 import { WorkspaceCanvas } from "./WorkspaceCanvas";
+import { createArcTrackProfileGeometry } from "./arcTrackBodyEntity";
 import {
   authoredBoardInMeters,
   authoredBallInMeters,
@@ -40,6 +41,39 @@ function createArcTrackPreviewConstraint(): Extract<EditorConstraint, { kind: "a
 }
 
 describe("WorkspaceCanvas arc-track overlays", () => {
+  it("builds arc-track profile geometry with radial start and end faces", () => {
+    const geometry = createArcTrackProfileGeometry({
+      center: { x: 400, y: 220 },
+      centralAngleDegrees: 90,
+      friction: 0.42,
+      id: "arc-track-geometry",
+      kind: "arc-track",
+      label: "Arc Track Geometry",
+      locked: false,
+      mass: 5,
+      radius: 96,
+      restitution: 1,
+      rotationDegrees: 0,
+      thickness: 24,
+      velocityX: 0,
+      velocityY: 0,
+    });
+    const startCross =
+      (geometry.outerStartPoint.x - geometry.center.x) *
+        (geometry.innerStartPoint.y - geometry.center.y) -
+      (geometry.outerStartPoint.y - geometry.center.y) *
+        (geometry.innerStartPoint.x - geometry.center.x);
+    const endCross =
+      (geometry.outerEndPoint.x - geometry.center.x) *
+        (geometry.innerEndPoint.y - geometry.center.y) -
+      (geometry.outerEndPoint.y - geometry.center.y) *
+        (geometry.innerEndPoint.x - geometry.center.x);
+
+    expect(Math.abs(startCross)).toBeLessThan(0.001);
+    expect(Math.abs(endCross)).toBeLessThan(0.001);
+    expect(geometry.pathData).toContain("Z");
+  });
+
   it("renders a curved arc-track overlay from authored arc data", () => {
     render(
       <WorkspaceCanvas
@@ -292,7 +326,11 @@ describe("WorkspaceCanvas arc-track overlays", () => {
     );
 
     expect(screen.getByTestId("workspace-arc-track-preview")).toBeDefined();
-    expect(screen.getByTestId("workspace-arc-track-preview-path")).toBeDefined();
+    const previewPath = screen.getByTestId("workspace-arc-track-preview-path") as SVGPathElement;
+
+    expect(previewPath.getAttribute("d")).toContain("Z");
+    expect(previewPath.getAttribute("fill")).not.toBe("none");
+    expect(previewPath.getAttribute("stroke-linejoin")).toBe("miter");
     expect(screen.getByTestId("workspace-arc-track-preview-radius-guide")).toBeDefined();
     expect(screen.getByTestId("workspace-arc-track-preview-tangent-guide")).toBeDefined();
   });

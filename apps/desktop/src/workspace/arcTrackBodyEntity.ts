@@ -35,7 +35,7 @@ export type ArcTrackPreviewResolution = {
 
 const DEFAULT_ARC_TRACK_RADIUS = 0.72;
 const DEFAULT_ARC_TRACK_SPAN_DEGREES = 90;
-const DEFAULT_ARC_TRACK_THICKNESS = 0.24;
+export const DEFAULT_ARC_TRACK_THICKNESS = 0.24;
 const DEFAULT_ARC_TRACK_PHYSICS: EditorEntityPhysics = {
   friction: 0.42,
   locked: false,
@@ -45,6 +45,32 @@ const DEFAULT_ARC_TRACK_PHYSICS: EditorEntityPhysics = {
   velocityY: 0,
 };
 const DEFAULT_ARC_TRACK_SNAP_DISTANCE = 0.28;
+const ARC_TRACK_PROFILE_PADDING = 6;
+const ARC_TRACK_PROFILE_OUTLINE_WIDTH = 2;
+
+export type ArcTrackProfileGeometry = {
+  bounds: {
+    height: number;
+    left: number;
+    top: number;
+    width: number;
+  };
+  center: OverlayPoint;
+  innerEndPoint: OverlayPoint;
+  innerStartPoint: OverlayPoint;
+  outerEndPoint: OverlayPoint;
+  outerStartPoint: OverlayPoint;
+  outlineWidth: number;
+  pathData: string;
+};
+
+type ArcTrackProfileGeometryInput = {
+  center: Point2;
+  endAngleDegrees: number;
+  radius: number;
+  startAngleDegrees: number;
+  thickness: number;
+};
 
 function isPoint2(value: unknown): value is Point2 {
   return (
@@ -60,6 +86,20 @@ function isPoint2(value: unknown): value is Point2 {
 function normalizeAngleDegrees(angleDegrees: number): number {
   const normalized = angleDegrees % 360;
   return normalized < 0 ? normalized + 360 : normalized;
+}
+
+function roundOverlayValue(value: number): number {
+  return Number(value.toFixed(3));
+}
+
+function normalizeArcSweepDegrees(startAngleDegrees: number, endAngleDegrees: number): number {
+  let sweep = endAngleDegrees - startAngleDegrees;
+
+  while (sweep <= 0) {
+    sweep += 360;
+  }
+
+  return sweep;
 }
 
 function distanceBetweenPoints(a: Point2, b: Point2): number {
@@ -169,6 +209,104 @@ function projectRadiusVector(radius: number, angleDegrees: number): OverlayPoint
     x: radius * Math.cos(angleRadians),
     y: -radius * Math.sin(angleRadians),
   };
+}
+
+function projectArcPoint(center: Point2, radius: number, angleDegrees: number): OverlayPoint {
+  const radiusVector = projectRadiusVector(radius, angleDegrees);
+
+  return {
+    x: roundOverlayValue(center.x + radiusVector.x),
+    y: roundOverlayValue(center.y + radiusVector.y),
+  };
+}
+
+function sampleArcPoints(input: ArcTrackProfileGeometryInput & { radius: number }): OverlayPoint[] {
+  const sweepDegrees = normalizeArcSweepDegrees(input.startAngleDegrees, input.endAngleDegrees);
+  const segmentCount = Math.max(10, Math.ceil(sweepDegrees / 10));
+  const points: OverlayPoint[] = [];
+
+  for (let index = 0; index <= segmentCount; index += 1) {
+    const angleDegrees = input.startAngleDegrees + (sweepDegrees * index) / segmentCount;
+
+    points.push(projectArcPoint(input.center, input.radius, angleDegrees));
+  }
+
+  return points;
+}
+
+function createTranslatedPathSegment(
+  points: OverlayPoint[],
+  bounds: ArcTrackProfileGeometry["bounds"],
+  command: "M" | "L",
+): string[] {
+  return points.map((point, index) => {
+    const translatedX = roundOverlayValue(point.x - bounds.left);
+    const translatedY = roundOverlayValue(point.y - bounds.top);
+
+    return `${index === 0 ? command : "L"} ${translatedX} ${translatedY}`;
+  });
+}
+
+export function createArcTrackProfileGeometryFromAngles(
+  input: ArcTrackProfileGeometryInput,
+): ArcTrackProfileGeometry {
+  const outerRadius = Math.max(input.radius + input.thickness / 2, 0);
+  const innerRadius = Math.max(input.radius - input.thickness / 2, 0);
+  const outerPoints = sampleArcPoints({
+    ...input,
+    radius: outerRadius,
+  });
+  const innerPoints = sampleArcPoints({
+    ...input,
+    radius: innerRadius,
+  });
+  const allPoints = [...outerPoints, ...innerPoints];
+  const left = roundOverlayValue(Math.min(...allPoints.map((point) => point.x)) - ARC_TRACK_PROFILE_PADDING);
+  const top = roundOverlayValue(Math.min(...allPoints.map((point) => point.y)) - ARC_TRACK_PROFILE_PADDING);
+  const right = roundOverlayValue(
+    Math.max(...allPoints.map((point) => point.x)) + ARC_TRACK_PROFILE_PADDING,
+  );
+  const bottom = roundOverlayValue(
+    Math.max(...allPoints.map((point) => point.y)) + ARC_TRACK_PROFILE_PADDING,
+  );
+  const bounds = {
+    height: roundOverlayValue(bottom - top),
+    left,
+    top,
+    width: roundOverlayValue(right - left),
+  };
+  const pathData = [
+    ...createTranslatedPathSegment(outerPoints, bounds, "M"),
+    ...createTranslatedPathSegment([...innerPoints].reverse(), bounds, "L"),
+    "Z",
+  ].join(" ");
+  const startAngleDegrees = input.startAngleDegrees;
+  const endAngleDegrees = input.endAngleDegrees;
+
+  return {
+    bounds,
+    center: projectArcPoint(input.center, 0, 0),
+    innerEndPoint: projectArcPoint(input.center, innerRadius, endAngleDegrees),
+    innerStartPoint: projectArcPoint(input.center, innerRadius, startAngleDegrees),
+    outerEndPoint: projectArcPoint(input.center, outerRadius, endAngleDegrees),
+    outerStartPoint: projectArcPoint(input.center, outerRadius, startAngleDegrees),
+    outlineWidth: ARC_TRACK_PROFILE_OUTLINE_WIDTH,
+    pathData,
+  };
+}
+
+export function createArcTrackProfileGeometry(
+  entity: ArcTrackBodyEntity,
+): ArcTrackProfileGeometry {
+  const angles = getArcTrackAngleRange(entity);
+
+  return createArcTrackProfileGeometryFromAngles({
+    center: entity.center,
+    endAngleDegrees: angles.endAngleDegrees,
+    radius: entity.radius,
+    startAngleDegrees: angles.startAngleDegrees,
+    thickness: entity.thickness,
+  });
 }
 
 export function resolveArcTrackBodyPreview(input: {
