@@ -1,7 +1,9 @@
+use serde_json::json;
+use sim_core::bridge::{RuntimeCompileRequest, SimulationBridge};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::runtime::RuntimeScene;
-use sim_core::scene::{CompileSceneRequest, compile_scene};
+use sim_core::scene::{compile_scene, CompileSceneRequest};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
@@ -117,6 +119,83 @@ fn runtime_entity(
         .find(|entity| entity.entity_id == entity_id)
         .expect("entity should exist")
         .clone()
+}
+
+#[test]
+fn mechanics_regression_bridge_ball_and_board_defaults_still_resolve_contact() {
+    let request: RuntimeCompileRequest = serde_json::from_value(json!({
+        "scene": {
+            "schemaVersion": 1,
+            "entities": [
+                {
+                    "id": "board-1",
+                    "kind": "board",
+                    "x": 0.0,
+                    "y": 0.0,
+                    "width": 20.0,
+                    "height": 1.0,
+                    "locked": true
+                },
+                {
+                    "id": "ball-1",
+                    "kind": "ball",
+                    "x": 9.5,
+                    "y": 6.0,
+                    "radius": 0.5
+                }
+            ],
+            "constraints": [],
+            "forceSources": [
+                {
+                    "id": "gravity-1",
+                    "kind": "gravity",
+                    "acceleration": { "x": 0.0, "y": -9.81 }
+                }
+            ],
+            "analyzers": [],
+            "annotations": []
+        },
+        "dirtyScopes": ["physics"],
+        "rebuildRequired": true
+    }))
+    .expect("bridge payload should deserialize");
+
+    let mut bridge = SimulationBridge::new(1.0 / 60.0);
+    bridge
+        .compile_runtime_request(request)
+        .expect("bridge payload should compile");
+
+    let mut last_frame = bridge.current_frame().expect("current frame should exist");
+    let mut lowest_ball_y = f64::INFINITY;
+    let mut max_upward_velocity = f64::NEG_INFINITY;
+    for _ in 0..180 {
+        last_frame = bridge.step().expect("bridge step should succeed");
+        let ball = last_frame
+            .entities
+            .iter()
+            .find(|entity| entity.entity_id == "ball-1")
+            .expect("ball should exist");
+        lowest_ball_y = lowest_ball_y.min(ball.position.y);
+        max_upward_velocity = max_upward_velocity.max(ball.velocity.y);
+    }
+
+    let ball = last_frame
+        .entities
+        .iter()
+        .find(|entity| entity.entity_id == "ball-1")
+        .expect("ball should exist");
+
+    assert!(
+        lowest_ball_y >= 1.0 - 1e-6,
+        "lowest_ball_y={}",
+        lowest_ball_y
+    );
+    assert!(
+        max_upward_velocity > 0.5,
+        "max_upward_velocity={}",
+        max_upward_velocity
+    );
+    assert!(ball.position.y >= 1.0 - 1e-6, "ball_y={}", ball.position.y);
 }
 
 #[test]

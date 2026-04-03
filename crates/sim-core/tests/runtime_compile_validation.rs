@@ -147,12 +147,91 @@ fn runtime_compile_validation_accepts_arc_track_entities() {
         .expect("arc-track entities should compile through the bridge");
 
     assert_eq!(frame.frame_number, 0);
-    assert!(
-        frame
-            .entities
-            .iter()
-            .any(|entity| entity.entity_id == "poly-1")
-    );
+    assert!(frame
+        .entities
+        .iter()
+        .any(|entity| entity.entity_id == "poly-1"));
+}
+
+#[test]
+fn runtime_compile_validation_applies_board_only_default_friction_policy() {
+    let request: RuntimeCompileRequest = serde_json::from_value(json!({
+        "scene": {
+            "schemaVersion": 1,
+            "entities": [
+                {
+                    "id": "board-1",
+                    "kind": "board",
+                    "x": 0.0,
+                    "y": 0.0,
+                    "width": 4.0,
+                    "height": 0.5,
+                    "locked": true
+                },
+                {
+                    "id": "ball-1",
+                    "kind": "ball",
+                    "x": 1.0,
+                    "y": 2.0,
+                    "radius": 0.25
+                },
+                {
+                    "id": "block-1",
+                    "kind": "block",
+                    "x": 2.0,
+                    "y": 2.0,
+                    "width": 0.5,
+                    "height": 0.5
+                },
+                {
+                    "id": "polygon-1",
+                    "kind": "polygon",
+                    "x": 3.0,
+                    "y": 2.0,
+                    "width": 0.5,
+                    "height": 0.5
+                },
+                {
+                    "id": "arc-track-1",
+                    "kind": "arc-track",
+                    "center": { "x": 4.0, "y": 2.0 },
+                    "radius": 0.5,
+                    "centralAngleDegrees": 120.0,
+                    "rotationDegrees": 180.0,
+                    "thickness": 0.14
+                }
+            ],
+            "constraints": [],
+            "forceSources": [
+                {
+                    "id": "gravity-1",
+                    "kind": "gravity",
+                    "acceleration": { "x": 0.0, "y": -9.81 }
+                }
+            ],
+            "analyzers": [],
+            "annotations": []
+        },
+        "dirtyScopes": ["physics"],
+        "rebuildRequired": true
+    }))
+    .expect("default-friction payload should deserialize");
+
+    let compile_request = request
+        .into_compile_scene_request()
+        .expect("default-friction payload should convert");
+
+    let friction_by_entity_id = compile_request
+        .entities
+        .into_iter()
+        .map(|entity| (entity.id, entity.friction_coefficient))
+        .collect::<std::collections::HashMap<_, _>>();
+
+    assert_eq!(friction_by_entity_id.get("board-1"), Some(&0.2));
+    assert_eq!(friction_by_entity_id.get("ball-1"), Some(&0.0));
+    assert_eq!(friction_by_entity_id.get("block-1"), Some(&0.0));
+    assert_eq!(friction_by_entity_id.get("polygon-1"), Some(&0.0));
+    assert_eq!(friction_by_entity_id.get("arc-track-1"), Some(&0.0));
 }
 
 #[test]

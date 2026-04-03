@@ -5,11 +5,11 @@ use crate::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinitio
 use crate::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use crate::force::ForceSourceDefinition;
 use crate::playback::{
-    InvalidPlaybackConfig, PRECOMPUTE_CHUNK_STEPS, PlaybackConfig, PlaybackMode, PrecomputeSession,
-    PreparedPlayback,
+    InvalidPlaybackConfig, PlaybackConfig, PlaybackMode, PrecomputeSession, PreparedPlayback,
+    PRECOMPUTE_CHUNK_STEPS,
 };
 use crate::runtime::{RuntimeFramePayload, RuntimeScene};
-use crate::scene::{CompileSceneRequest, CompiledScene, SceneCompileError, compile_scene};
+use crate::scene::{compile_scene, CompileSceneRequest, CompiledScene, SceneCompileError};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BridgeError {
@@ -862,7 +862,7 @@ impl SceneEntityPayload {
                     centroid,
                     EntityPhysicsDefaults {
                         mass: 0.0,
-                        friction: 0.6,
+                        friction: 0.0,
                         restitution: 0.0,
                         locked: true,
                     },
@@ -902,10 +902,10 @@ impl SceneEntityPayload {
                 (
                     ShapeDefinition::Ball { radius },
                     Vector2::new(x + radius, y + radius),
-                    EntityPhysicsDefaults::dynamic(),
+                    EntityPhysicsDefaults::dynamic_body(),
                 )
             }
-            "block" | "board" => {
+            "block" => {
                 let x = required_scalar(&id, &kind, "x", x)?;
                 let y = required_scalar(&id, &kind, "y", y)?;
                 let width = required_scalar(&id, &kind, "width", width)?;
@@ -914,7 +914,19 @@ impl SceneEntityPayload {
                 (
                     ShapeDefinition::Block { width, height },
                     Vector2::new(x + width * 0.5, y + height * 0.5),
-                    EntityPhysicsDefaults::dynamic(),
+                    EntityPhysicsDefaults::dynamic_body(),
+                )
+            }
+            "board" => {
+                let x = required_scalar(&id, &kind, "x", x)?;
+                let y = required_scalar(&id, &kind, "y", y)?;
+                let width = required_scalar(&id, &kind, "width", width)?;
+                let height = required_scalar(&id, &kind, "height", height)?;
+
+                (
+                    ShapeDefinition::Block { width, height },
+                    Vector2::new(x + width * 0.5, y + height * 0.5),
+                    EntityPhysicsDefaults::board_body(),
                 )
             }
             "polygon" => {
@@ -928,13 +940,13 @@ impl SceneEntityPayload {
                         points: rectangle_points(width, height),
                     },
                     Vector2::new(x + width * 0.5, y + height * 0.5),
-                    EntityPhysicsDefaults::dynamic(),
+                    EntityPhysicsDefaults::dynamic_body(),
                 )
             }
             _ => (
                 ShapeDefinition::Unsupported { kind: kind.clone() },
                 Vector2::ZERO,
-                EntityPhysicsDefaults::dynamic(),
+                EntityPhysicsDefaults::dynamic_body(),
             ),
         };
 
@@ -1011,7 +1023,16 @@ struct EntityPhysicsDefaults {
 }
 
 impl EntityPhysicsDefaults {
-    fn dynamic() -> Self {
+    fn dynamic_body() -> Self {
+        Self {
+            mass: 1.0,
+            friction: 0.0,
+            restitution: 1.0,
+            locked: false,
+        }
+    }
+
+    fn board_body() -> Self {
         Self {
             mass: 1.0,
             friction: 0.2,
