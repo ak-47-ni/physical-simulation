@@ -376,7 +376,7 @@ export function App() {
   const selectedEntity = entities.find((entity) => entity.id === editorState.selectedEntityId) ?? null;
   const selectedConstraint =
     constraints.find((constraint) => constraint.id === editorState.selectedConstraintId) ?? null;
-  const workspaceEntities = entities.filter((entity) => entity.kind !== "arc-track");
+  const workspaceEntities = entities;
   const displayEntities = projectRuntimeSceneEntities({
     editorEntities: workspaceEntities,
     runtimeFrame: visibleRuntimeFrame,
@@ -442,8 +442,7 @@ export function App() {
     libraryDragCandidate && libraryDragResolution
       ? createAuthoringPlacementPreview(libraryDragCandidate, libraryDragResolution)
       : pendingEntityDragPreview;
-  const workspaceAuthoringPlacementPreview =
-    authoringPlacementPreview?.entity.kind === "arc-track" ? null : authoringPlacementPreview;
+  const workspaceAuthoringPlacementPreview = authoringPlacementPreview;
   const libraryDragBlocked = authoringPlacementPreview?.status === "blocked";
 
   useEffect(() => {

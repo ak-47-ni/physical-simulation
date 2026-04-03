@@ -352,6 +352,40 @@ describe("App direct manipulation contracts", () => {
     expect(screen.getByText("3.36 m, 2.2 m")).toBeDefined();
   });
 
+  it("passes arc-track placement previews through to the workspace canvas during body drag", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start arc-track drag" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
+
+    const placementPreview = (
+      mockWorkspaceState.latestProps as {
+        authoringPlacementPreview?: { entity?: { kind?: string } } | null;
+      } | null
+    )?.authoringPlacementPreview;
+
+    expect(placementPreview).not.toBeNull();
+    expect(placementPreview?.entity?.kind).toBe("arc-track");
+  });
+
+  it("keeps committed arc-track bodies in workspace entity payloads after drag release", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start arc-track drag" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
+    fireEvent.pointerUp(window);
+
+    const workspaceProps = mockWorkspaceState.latestProps as {
+      displayEntities?: Array<{ id: string; kind: string }>;
+      entities?: Array<{ id: string; kind: string }>;
+    } | null;
+
+    expect(workspaceProps?.entities?.some((entity) => entity.id === "arc-track-1")).toBe(true);
+    expect(workspaceProps?.displayEntities?.some((entity) => entity.id === "arc-track-1")).toBe(
+      true,
+    );
+  });
+
   it("commits a snapped block pose when a drag release lands near a board face", () => {
     render(<App />);
 
