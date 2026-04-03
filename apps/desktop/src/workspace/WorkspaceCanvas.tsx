@@ -4,6 +4,15 @@ import type { SceneDisplaySettings } from "../io/sceneFile";
 import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
 import type { EditorSceneEntity } from "../state/editorStore";
 import {
+  createArcTrackOverlay,
+  getArcTrackCenter,
+  isArcTrackBodyKind,
+  isArcTrackEntity,
+  projectArcTrackEntityToScreen,
+  resolveArcTrackBodyPreview,
+  type ArcTrackBodyEntity,
+} from "./arcTrackBodyEntity";
+import {
   renderArcTrackAuthoringPreview,
   type ArcTrackSpanPreset,
 } from "./arcTrackAuthoringPreview";
@@ -115,7 +124,7 @@ type WorkspaceCanvasLibraryDragHover = {
 
 type ProjectedPlacementPreview = {
   contactWithEntityId?: string;
-  entity: WorkspaceSceneEntity;
+  entity: WorkspaceSceneEntity | ArcTrackBodyEntity;
   status: WorkspaceCanvasAuthoringPlacementStatus;
 };
 
@@ -141,10 +150,37 @@ const authoringLockMessage =
   "Playback running. Move, placement, and constraint editing are temporarily locked.";
 
 function getEntityVisualStyle(
-  entity: WorkspaceSceneEntity,
+  entity: WorkspaceSceneEntity | ArcTrackBodyEntity,
   isSelected: boolean,
   isContactTarget: boolean,
 ): CSSProperties {
+  if (isArcTrackEntity(entity)) {
+    const overlay = createArcTrackOverlay(entity);
+    const strokeColor = isSelected ? "#2457a6" : "#112540";
+    const haloColor = isContactTarget
+      ? "0 0 0 4px rgba(27, 167, 132, 0.18)"
+      : entity.locked
+        ? "0 0 0 2px rgba(245, 181, 62, 0.45)"
+        : "none";
+
+    return {
+      position: "absolute",
+      left: `${overlay.bounds.left}px`,
+      top: `${overlay.bounds.top}px`,
+      width: `${overlay.bounds.width}px`,
+      height: `${overlay.bounds.height}px`,
+      padding: 0,
+      border: "none",
+      background: "transparent",
+      color: strokeColor,
+      cursor: "pointer",
+      overflow: "visible",
+      userSelect: "none",
+      boxShadow: haloColor,
+      zIndex: 1,
+    };
+  }
+
   const rotationDegrees = getEntityRotationDegrees(entity);
   const boxShadows: string[] = [];
 
@@ -195,7 +231,11 @@ function getEntityVisualStyle(
   };
 }
 
-function getEntityCenter(entity: WorkspaceSceneEntity): { x: number; y: number } {
+function getEntityCenter(entity: WorkspaceSceneEntity | ArcTrackBodyEntity): { x: number; y: number } {
+  if (isArcTrackEntity(entity)) {
+    return getArcTrackCenter(entity);
+  }
+
   if (entity.kind === "ball") {
     return {
       x: entity.x + entity.radius,
@@ -286,11 +326,14 @@ function getVelocityVectorFromComponents(
   });
 }
 
-function getVelocityVector(entity: WorkspaceSceneEntity): { dx: number; dy: number } | null {
+function getVelocityVector(entity: WorkspaceSceneEntity | ArcTrackBodyEntity): {
+  dx: number;
+  dy: number;
+} | null {
   return getVelocityVectorFromComponents(entity.velocityX, entity.velocityY);
 }
 
-function getForceVector(entity: WorkspaceSceneEntity): { dx: number; dy: number } | null {
+function getForceVector(entity: WorkspaceSceneEntity | ArcTrackBodyEntity): { dx: number; dy: number } | null {
   if (entity.locked) {
     return null;
   }
@@ -358,6 +401,25 @@ function getPlacementPreviewPalette(
 }
 
 function createPlacementPreviewStyle(preview: ProjectedPlacementPreview): CSSProperties {
+  if (isArcTrackEntity(preview.entity)) {
+    const overlay = createArcTrackOverlay(preview.entity);
+
+    return {
+      position: "absolute",
+      left: `${overlay.bounds.left}px`,
+      top: `${overlay.bounds.top}px`,
+      width: `${overlay.bounds.width}px`,
+      height: `${overlay.bounds.height}px`,
+      border: "none",
+      background: "transparent",
+      boxShadow: "none",
+      color: getPlacementPreviewPalette(preview.status).color,
+      pointerEvents: "none",
+      overflow: "visible",
+      zIndex: 3,
+    };
+  }
+
   const { background, border, boxShadow, color } = getPlacementPreviewPalette(preview.status);
   const rotationDegrees = getEntityRotationDegrees(preview.entity);
   const baseStyle: CSSProperties = {
@@ -396,12 +458,49 @@ function createPlacementPreviewStyle(preview: ProjectedPlacementPreview): CSSPro
   };
 }
 
-function getEntityRotationDegrees(entity: WorkspaceSceneEntity): number {
+function getEntityRotationDegrees(entity: WorkspaceSceneEntity | ArcTrackBodyEntity): number {
+  if (isArcTrackEntity(entity)) {
+    return entity.rotationDegrees;
+  }
+
   if (entity.kind === "ball") {
     return 0;
   }
 
   return entity.rotationDegrees ?? 0;
+}
+
+function createArcTrackStrokeColor(
+  status: WorkspaceCanvasAuthoringPlacementStatus,
+  isSelected: boolean,
+): string {
+  if (status === "snap") {
+    return isSelected ? "#0f766e" : "#12755d";
+  }
+
+  if (status === "blocked") {
+    return "#b91c1c";
+  }
+
+  return isSelected ? "#2457a6" : "#17304f";
+}
+
+function createArcTrackGuideStyle(start: { x: number; y: number }, end: { x: number; y: number }): CSSProperties {
+  const line = createConstraintLineGeometry(start, end);
+
+  return {
+    position: "absolute",
+    left: `${start.x}px`,
+    top: `${start.y}px`,
+    width: `${line.length}px`,
+    height: "4px",
+    borderRadius: "999px",
+    background: "rgba(20, 184, 166, 0.92)",
+    transform: `translateY(-50%) rotate(${line.angleDegrees}deg)`,
+    transformOrigin: "0 50%",
+    pointerEvents: "none",
+    zIndex: 4,
+  };
 }
 
 export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
@@ -436,13 +535,47 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     screenPosition: { x: number; y: number };
   } | null>(null);
   const renderedEntities = displayEntities ?? entities;
+  const authoredArcTrackEntitiesById = new Map(
+    entities
+      .filter(isArcTrackEntity)
+      .map((entity) => [entity.id, entity] as const),
+  );
   const projectedPlacementPreview = authoringPlacementPreview
     ? {
         ...authoringPlacementPreview,
         entity: projectAuthoringEntityToScreen(authoringPlacementPreview.entity, viewport),
       }
     : null;
-  const contactTargetEntityId = projectedPlacementPreview?.contactWithEntityId ?? null;
+  const arcTrackLibraryDragPreview =
+    libraryDragSession &&
+    libraryDragPreview &&
+    isArcTrackBodyKind(libraryDragSession.bodyKind)
+      ? resolveArcTrackBodyPreview({
+          entities: entities.filter(
+            (entity): entity is EditorSceneEntity => !isArcTrackEntity(entity),
+          ),
+          position: libraryDragPreview.authoringPosition,
+        })
+      : null;
+  const projectedArcTrackLibraryDragPreview = arcTrackLibraryDragPreview
+    ? {
+        ...arcTrackLibraryDragPreview,
+        entity: projectArcTrackEntityToScreen(arcTrackLibraryDragPreview.entity, viewport),
+        tangentGuide: arcTrackLibraryDragPreview.tangentGuide
+          ? {
+              end: projectAuthoringPointToScreen(arcTrackLibraryDragPreview.tangentGuide.end, viewport),
+              start: projectAuthoringPointToScreen(
+                arcTrackLibraryDragPreview.tangentGuide.start,
+                viewport,
+              ),
+            }
+          : undefined,
+      }
+    : null;
+  const contactTargetEntityId =
+    projectedPlacementPreview?.contactWithEntityId ??
+    projectedArcTrackLibraryDragPreview?.contactWithEntityId ??
+    null;
   const sceneDomainOverlay = createSceneDomainOverlay(viewport);
 
   useEffect(() => {
@@ -796,6 +929,104 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     );
   }
 
+  function getRenderedArcTrackEntity(entity: ArcTrackBodyEntity): ArcTrackBodyEntity {
+    return projectArcTrackEntityToScreen(
+      authoredArcTrackEntitiesById.get(entity.id) ?? entity,
+      viewport,
+    );
+  }
+
+  function renderArcTrackShape(
+    entity: ArcTrackBodyEntity,
+    status: WorkspaceCanvasAuthoringPlacementStatus,
+    testId: string,
+    pathTestId: string,
+  ) {
+    const overlay = createArcTrackOverlay(entity);
+    const strokeColor = createArcTrackStrokeColor(
+      status,
+      state.selectedEntityId === entity.id && testId.startsWith("scene-entity-"),
+    );
+
+    return (
+      <svg
+        aria-hidden="true"
+        data-testid={testId}
+        height={overlay.bounds.height}
+        style={{ display: "block", overflow: "visible", pointerEvents: "none" }}
+        viewBox={`0 0 ${Math.max(overlay.bounds.width, 1)} ${Math.max(overlay.bounds.height, 1)}`}
+        width={overlay.bounds.width}
+      >
+        <path
+          d={overlay.pathData}
+          data-testid={pathTestId}
+          fill="none"
+          stroke={strokeColor}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={Math.max(overlay.strokeThickness + 1, entity.thickness)}
+        />
+      </svg>
+    );
+  }
+
+  function renderArcTrackPreview() {
+    if (projectedPlacementPreview && isArcTrackEntity(projectedPlacementPreview.entity)) {
+      return (
+        <div
+          data-body-kind={projectedPlacementPreview.entity.kind}
+          data-placement-valid={String(projectedPlacementPreview.status !== "blocked")}
+          data-preview-status={projectedPlacementPreview.status}
+          data-testid="workspace-stage-body-preview"
+          style={createPlacementPreviewStyle(projectedPlacementPreview)}
+        >
+          {renderArcTrackShape(
+            projectedPlacementPreview.entity,
+            projectedPlacementPreview.status,
+            "workspace-stage-arc-track-preview",
+            "workspace-stage-arc-track-preview-path",
+          )}
+        </div>
+      );
+    }
+
+    if (!libraryDragSession || !libraryDragPreview || !projectedArcTrackLibraryDragPreview) {
+      return null;
+    }
+
+    return (
+      <>
+        <div
+          data-body-kind={libraryDragSession.bodyKind}
+          data-placement-valid="true"
+          data-preview-status={projectedArcTrackLibraryDragPreview.status}
+          data-testid="workspace-stage-body-preview"
+          style={createPlacementPreviewStyle({
+            contactWithEntityId: projectedArcTrackLibraryDragPreview.contactWithEntityId,
+            entity: projectedArcTrackLibraryDragPreview.entity,
+            status: projectedArcTrackLibraryDragPreview.status,
+          })}
+        >
+          {renderArcTrackShape(
+            projectedArcTrackLibraryDragPreview.entity,
+            projectedArcTrackLibraryDragPreview.status,
+            "workspace-stage-arc-track-preview",
+            "workspace-stage-arc-track-preview-path",
+          )}
+        </div>
+        {projectedArcTrackLibraryDragPreview.tangentGuide ? (
+          <div
+            data-testid="workspace-stage-arc-track-snap-guide"
+            style={createArcTrackGuideStyle(
+              projectedArcTrackLibraryDragPreview.tangentGuide.start,
+              projectedArcTrackLibraryDragPreview.tangentGuide.end,
+            )}
+          />
+        ) : null}
+      </>
+    );
+  }
+
   return (
     <section
       data-grid-visible={String(display.gridVisible)}
@@ -940,7 +1171,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             })
           : null}
 
-        {projectedPlacementPreview ? (
+        {((projectedPlacementPreview && isArcTrackEntity(projectedPlacementPreview.entity)) ||
+          projectedArcTrackLibraryDragPreview) ? (
+          renderArcTrackPreview()
+        ) : projectedPlacementPreview ? (
           <div
             data-body-kind={projectedPlacementPreview.entity.kind}
             data-placement-valid={String(projectedPlacementPreview.status !== "blocked")}
@@ -966,45 +1200,96 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           </div>
         ) : null}
 
-        {renderedEntities.map((entity) => (
-          <button
-            key={entity.id}
-            aria-label={`Select ${entity.label}`}
-            data-contact-target={String(contactTargetEntityId === entity.id)}
-            data-locked={String(entity.locked)}
-            data-selected={String(state.selectedEntityId === entity.id)}
-            data-testid={`scene-entity-${entity.id}`}
-            type="button"
-            onClick={() => handleEntityClick(entity.id)}
-            style={getEntityVisualStyle(
-              entity,
-              state.selectedEntityId === entity.id,
-              contactTargetEntityId === entity.id,
-            )}
-            onMouseDown={(event) => beginEntityDrag(entity, event)}
-          >
-            {entity.locked ? (
-              <span
-                data-testid={`scene-entity-lock-${entity.id}`}
-                style={{
-                  position: "absolute",
-                  top: "2px",
-                  right: "4px",
-                  borderRadius: "999px",
-                  background: "rgba(245, 181, 62, 0.92)",
-                  color: "#17304f",
-                  fontSize: "9px",
-                  fontWeight: 700,
-                  lineHeight: 1,
-                  padding: "2px 4px",
-                }}
+        {renderedEntities.map((entity) => {
+          if (isArcTrackEntity(entity)) {
+            const renderedArcTrackEntity = getRenderedArcTrackEntity(entity);
+
+            return (
+              <button
+                key={entity.id}
+                aria-label={`Select ${entity.label}`}
+                data-arc-track="true"
+                data-contact-target={String(contactTargetEntityId === entity.id)}
+                data-locked={String(entity.locked)}
+                data-selected={String(state.selectedEntityId === entity.id)}
+                data-testid={`scene-entity-${entity.id}`}
+                type="button"
+                onClick={() => handleEntityClick(entity.id)}
+                style={getEntityVisualStyle(
+                  renderedArcTrackEntity,
+                  state.selectedEntityId === entity.id,
+                  contactTargetEntityId === entity.id,
+                )}
               >
-                FIX
-              </span>
-            ) : null}
-            {display.showLabels ? entity.label : null}
-          </button>
-        ))}
+                {renderArcTrackShape(
+                  renderedArcTrackEntity,
+                  "free",
+                  `scene-entity-${entity.id}-svg`,
+                  `scene-entity-${entity.id}-path`,
+                )}
+                {entity.locked ? (
+                  <span
+                    data-testid={`scene-entity-lock-${entity.id}`}
+                    style={{
+                      position: "absolute",
+                      top: "2px",
+                      right: "4px",
+                      borderRadius: "999px",
+                      background: "rgba(245, 181, 62, 0.92)",
+                      color: "#17304f",
+                      fontSize: "9px",
+                      fontWeight: 700,
+                      lineHeight: 1,
+                      padding: "2px 4px",
+                    }}
+                  >
+                    FIX
+                  </span>
+                ) : null}
+              </button>
+            );
+          }
+
+          return (
+            <button
+              key={entity.id}
+              aria-label={`Select ${entity.label}`}
+              data-contact-target={String(contactTargetEntityId === entity.id)}
+              data-locked={String(entity.locked)}
+              data-selected={String(state.selectedEntityId === entity.id)}
+              data-testid={`scene-entity-${entity.id}`}
+              type="button"
+              onClick={() => handleEntityClick(entity.id)}
+              style={getEntityVisualStyle(
+                entity,
+                state.selectedEntityId === entity.id,
+                contactTargetEntityId === entity.id,
+              )}
+              onMouseDown={(event) => beginEntityDrag(entity, event)}
+            >
+              {entity.locked ? (
+                <span
+                  data-testid={`scene-entity-lock-${entity.id}`}
+                  style={{
+                    position: "absolute",
+                    top: "2px",
+                    right: "4px",
+                    borderRadius: "999px",
+                    background: "rgba(245, 181, 62, 0.92)",
+                    color: "#17304f",
+                    fontSize: "9px",
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    padding: "2px 4px",
+                  }}
+                >
+                  FIX
+                </span>
+              ) : null}
+              {display.showLabels ? entity.label : null}
+            </button>
+          );
+        })}
       </div>
     </section>
   );

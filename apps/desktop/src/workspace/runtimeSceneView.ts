@@ -1,6 +1,11 @@
 import type { EditorSceneEntity } from "../state/editorStore";
 import type { RuntimeFrameView } from "../state/runtimeBridge";
 import {
+  isArcTrackEntity,
+  projectArcTrackEntityToScreen,
+  type ArcTrackBodyEntity,
+} from "./arcTrackBodyEntity";
+import {
   authoringLengthToScreenPixels,
   DEFAULT_WORKSPACE_VIEWPORT,
   projectAuthoringPointToScreen,
@@ -8,9 +13,11 @@ import {
   type UnitViewport,
 } from "./unitViewport";
 
-export type WorkspaceSceneEntity = EditorSceneEntity & {
-  rotationDegrees?: number;
-};
+export type WorkspaceSceneEntity =
+  | (EditorSceneEntity & {
+      rotationDegrees?: number;
+    })
+  | ArcTrackBodyEntity;
 
 type ProjectRuntimeSceneEntitiesInput = {
   editorEntities: WorkspaceSceneEntity[];
@@ -30,6 +37,10 @@ function resolveRuntimeRotationDegrees(
     return undefined;
   }
 
+  if (isArcTrackEntity(editorEntity)) {
+    return editorEntity.rotationDegrees;
+  }
+
   const runtimeRotationDegrees = radiansToDegrees(runtimeRotationRadians);
 
   if (Math.abs(runtimeRotationDegrees) > 0) {
@@ -43,6 +54,10 @@ export function projectAuthoringEntityToScreen(
   entity: WorkspaceSceneEntity,
   viewport: UnitViewport,
 ): WorkspaceSceneEntity {
+  if (isArcTrackEntity(entity)) {
+    return projectArcTrackEntityToScreen(entity, viewport);
+  }
+
   const projectedPosition = projectAuthoringPointToScreen(
     {
       x: entity.x,
@@ -88,6 +103,10 @@ export function projectRuntimeSceneEntities(
     const runtimeEntity = runtimeEntitiesById.get(editorEntity.id);
 
     if (!runtimeEntity) {
+      return projectedEditorEntity;
+    }
+
+    if (isArcTrackEntity(editorEntity)) {
       return projectedEditorEntity;
     }
 

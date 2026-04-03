@@ -7,6 +7,7 @@ import {
 } from "../state/editorStore";
 import { WorkspaceCanvas } from "./WorkspaceCanvas";
 import {
+  authoredBallInMeters,
   authoredBoardInMeters,
   createBallEntityPx,
   createAuthoredBlockEntity,
@@ -25,6 +26,26 @@ import {
 afterEach(() => {
   cleanup();
 });
+
+function createArcTrackEntity(overrides: Record<string, unknown> = {}): EditorSceneEntity {
+  return {
+    id: "arc-track-entity-1",
+    kind: "arc-track",
+    label: "Arc Track 1",
+    center: { x: 4, y: 2 },
+    radius: 1,
+    centralAngleDegrees: 90,
+    rotationDegrees: 0,
+    thickness: 0.24,
+    locked: false,
+    mass: 1,
+    friction: 0,
+    restitution: 1,
+    velocityX: 0,
+    velocityY: 0,
+    ...overrides,
+  } as unknown as EditorSceneEntity;
+}
 
 describe("WorkspaceCanvas", () => {
   it("mounts the center canvas and renders mock scene entities by id", () => {
@@ -190,6 +211,41 @@ describe("WorkspaceCanvas", () => {
 
     expect(board.getAttribute("data-locked")).toBe("false");
     expect(screen.queryByTestId("scene-entity-lock-board-1")).toBeNull();
+  });
+
+  it("renders arc-track entities with curved geometry, visual thickness, and selection behavior", () => {
+    const selectedEntityIds: string[] = [];
+    const arcTrackEntity = createArcTrackEntity();
+
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        displayEntities={[arcTrackEntity as never]}
+        entities={[arcTrackEntity]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          selectedEntityId: "arc-track-entity-1",
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={(entityId) => {
+          selectedEntityIds.push(entityId);
+        }}
+        onToolChange={() => undefined}
+        viewport={meterViewport}
+      />,
+    );
+
+    const entity = screen.getByTestId("scene-entity-arc-track-entity-1");
+
+    expect(entity.getAttribute("data-arc-track")).toBe("true");
+    expect(entity.getAttribute("data-selected")).toBe("true");
+    expect(screen.getByTestId("scene-entity-arc-track-entity-1-path")).toBeDefined();
+
+    fireEvent.click(entity);
+
+    expect(selectedEntityIds).toEqual(["arc-track-entity-1"]);
   });
 
   it("renders labels and teaching vectors according to display settings", () => {
@@ -780,6 +836,55 @@ describe("WorkspaceCanvas", () => {
     expect(screen.getByTestId("workspace-stage-body-preview").getAttribute("data-placement-valid")).toBe(
       "false",
     );
+  });
+
+  it("renders a free arc-track body preview during library drag when no board snap qualifies", () => {
+    render(
+      <WorkspaceCanvasPanHarness
+        libraryDragSession={{
+          bodyKind: "arc-track" as never,
+          pointerClientPx: { x: 520, y: 140 },
+        }}
+        entities={[authoredBallInMeters]}
+      />,
+    );
+
+    fireEvent.mouseMove(screen.getByTestId("workspace-stage"), {
+      clientX: 520,
+      clientY: 140,
+    });
+
+    const preview = screen.getByTestId("workspace-stage-body-preview");
+
+    expect(preview.getAttribute("data-body-kind")).toBe("arc-track");
+    expect(preview.getAttribute("data-preview-status")).toBe("free");
+    expect(screen.getByTestId("workspace-stage-arc-track-preview")).toBeDefined();
+  });
+
+  it("snaps arc-track body previews onto nearby board endpoints with tangent guides", () => {
+    render(
+      <WorkspaceCanvasPanHarness
+        libraryDragSession={{
+          bodyKind: "arc-track" as never,
+          pointerClientPx: { x: 320, y: 272 },
+        }}
+        entities={[authoredBoardInMeters]}
+      />,
+    );
+
+    fireEvent.mouseMove(screen.getByTestId("workspace-stage"), {
+      clientX: 320,
+      clientY: 272,
+    });
+
+    const preview = screen.getByTestId("workspace-stage-body-preview");
+    const board = screen.getByTestId("scene-entity-board-1");
+
+    expect(preview.getAttribute("data-body-kind")).toBe("arc-track");
+    expect(preview.getAttribute("data-preview-status")).toBe("snap");
+    expect(board.getAttribute("data-contact-target")).toBe("true");
+    expect(screen.getByTestId("workspace-stage-arc-track-preview")).toBeDefined();
+    expect(screen.getByTestId("workspace-stage-arc-track-snap-guide")).toBeDefined();
   });
 
   it("renders snapped placement previews at the resolved pose and highlights the contacted body", () => {
