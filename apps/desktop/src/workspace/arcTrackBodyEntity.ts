@@ -12,20 +12,13 @@ import {
   type UnitViewport,
 } from "./unitViewport";
 
-export type ArcTrackBodyEntity = {
-  center: Point2;
-  centralAngleDegrees: number;
-  id: string;
-  kind: "arc-track";
-  label: string;
-  radius: number;
-  rotationDegrees: number;
-  thickness: number;
-} & EditorEntityPhysics;
+export type ArcTrackGeometryEntity = Extract<EditorSceneEntity, { kind: "arc-track" }>;
+export type ArcTrackBodyEntity = ArcTrackGeometryEntity & Partial<EditorEntityPhysics>;
+export type ArcTrackPreviewEntity = ArcTrackGeometryEntity & EditorEntityPhysics;
 
 export type ArcTrackPreviewResolution = {
   contactWithEntityId?: string;
-  entity: ArcTrackBodyEntity;
+  entity: ArcTrackPreviewEntity;
   status: "free" | "snap";
   tangentGuide?: {
     end: Point2;
@@ -129,19 +122,7 @@ export function isArcTrackEntity(value: unknown): value is ArcTrackBodyEntity {
     "rotationDegrees" in value &&
     typeof value.rotationDegrees === "number" &&
     "thickness" in value &&
-    typeof value.thickness === "number" &&
-    "locked" in value &&
-    typeof value.locked === "boolean" &&
-    "mass" in value &&
-    typeof value.mass === "number" &&
-    "friction" in value &&
-    typeof value.friction === "number" &&
-    "restitution" in value &&
-    typeof value.restitution === "number" &&
-    "velocityX" in value &&
-    typeof value.velocityX === "number" &&
-    "velocityY" in value &&
-    typeof value.velocityY === "number"
+    typeof value.thickness === "number"
   );
 }
 
@@ -149,7 +130,7 @@ export function isArcTrackBodyKind(value: string): value is "arc-track" {
   return value === "arc-track";
 }
 
-export function createArcTrackTemplate(position: Point2): ArcTrackBodyEntity {
+export function createArcTrackTemplate(position: Point2): ArcTrackPreviewEntity {
   return {
     ...DEFAULT_ARC_TRACK_PHYSICS,
     center: position,
