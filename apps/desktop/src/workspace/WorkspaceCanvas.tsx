@@ -587,6 +587,8 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           : undefined,
       }
     : null;
+  const arcTrackBodyDragActive =
+    libraryDragSession !== null && isArcTrackBodyKind(libraryDragSession.bodyKind);
   const contactTargetEntityId =
     projectedPlacementPreview?.contactWithEntityId ??
     projectedArcTrackLibraryDragPreview?.contactWithEntityId ??
@@ -806,6 +808,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
         )
       : null;
   const arcPlacementBoard =
+    !arcTrackBodyDragActive &&
     constraintPlacement?.kind === "arc-track" &&
     (constraintPlacement.mode === "pick-board-endpoint" ||
       ((constraintPlacement.mode === "pick-center" ||
@@ -820,6 +823,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
         ) ?? null
       : null;
   const showArcTrackAuthoringPreview =
+    !arcTrackBodyDragActive &&
     constraintPlacement?.kind === "arc-track" &&
     arcPlacementBoard &&
     constraintPlacement.boardEndpointKey &&

@@ -36,7 +36,7 @@ function createArcTrackEntity(overrides: Record<string, unknown> = {}): EditorSc
     radius: 1,
     centralAngleDegrees: 90,
     rotationDegrees: 0,
-    thickness: 0.24,
+    thickness: 0.14,
     locked: false,
     mass: 1,
     friction: 0,
@@ -895,6 +895,65 @@ describe("WorkspaceCanvas", () => {
     expect(screen.getByTestId("workspace-stage-arc-track-preview")).toBeDefined();
     expectStraightEndArcTrackPath("workspace-stage-arc-track-preview-path");
     expect(screen.getByTestId("workspace-stage-arc-track-snap-guide")).toBeDefined();
+  });
+
+  it("keeps arc-track body drags independent from the legacy arc-track constraint wizard", () => {
+    render(
+      <WorkspaceCanvas
+        constraintPlacement={{
+          anchorEntityId: "board-1",
+          boardEndpointKey: "start",
+          hint: "Choose the arc span",
+          kind: "arc-track",
+          mode: "pick-span",
+          previewConstraint: {
+            id: "arc-track-constraint-preview",
+            kind: "arc-track",
+            label: "Arc preview",
+            center: { x: 4.12, y: 2.12 },
+            radius: 0.72,
+            startAngleDegrees: -45,
+            endAngleDegrees: 45,
+            side: "inside",
+            entryEndpoint: "start",
+          },
+          radiusLabel: "0.7 m",
+          selectedSpanDegrees: 90,
+          spanPresetOptions: [90, 180, 270],
+        }}
+        display={createDisplaySettings()}
+        displayEntities={[createBoardEntityPx({ locked: true })]}
+        entities={[{ ...authoredBoardInMeters, locked: true }]}
+        libraryDragSession={{
+          bodyKind: "arc-track" as never,
+          pointerClientPx: { x: 320, y: 272 },
+        }}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onGridVisibleChange={() => undefined}
+        onPlaceConstraintBoardEndpoint={() => undefined}
+        onSelectArcTrackSpanPreset={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          activeTool: "place-constraint" as never,
+        }}
+        viewport={meterViewport}
+      />,
+    );
+
+    fireEvent.mouseMove(screen.getByTestId("workspace-stage"), {
+      clientX: 320,
+      clientY: 272,
+    });
+
+    expect(screen.getByTestId("workspace-stage-body-preview").getAttribute("data-body-kind")).toBe(
+      "arc-track",
+    );
+    expect(screen.queryByTestId("workspace-arc-track-preview")).toBeNull();
+    expect(screen.queryByTestId("scene-constraint-arc-endpoint-start-board-1")).toBeNull();
+    expect(screen.queryByTestId("scene-constraint-arc-endpoint-end-board-1")).toBeNull();
   });
 
   it("renders snapped placement previews at the resolved pose and highlights the contacted body", () => {

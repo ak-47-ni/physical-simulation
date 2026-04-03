@@ -35,7 +35,7 @@ export type ArcTrackPreviewResolution = {
 
 const DEFAULT_ARC_TRACK_RADIUS = 0.72;
 const DEFAULT_ARC_TRACK_SPAN_DEGREES = 90;
-export const DEFAULT_ARC_TRACK_THICKNESS = 0.24;
+export const DEFAULT_ARC_TRACK_THICKNESS = 0.14;
 const DEFAULT_ARC_TRACK_PHYSICS: EditorEntityPhysics = {
   friction: 0.42,
   locked: false,
