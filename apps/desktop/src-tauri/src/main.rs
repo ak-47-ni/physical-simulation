@@ -285,12 +285,12 @@ mod tests {
     use sim_core::bridge::BridgeStatus;
     use sim_core::playback::PlaybackMode;
     use sim_core::scene::SceneCompileError;
-    use tauri::Manager;
-    use tauri::test::{INVOKE_KEY, get_ipc_response, mock_builder, mock_context, noop_assets};
+    use tauri::test::{get_ipc_response, mock_builder, mock_context, noop_assets, INVOKE_KEY};
     use tauri::webview::InvokeRequest;
+    use tauri::Manager;
 
     use super::{
-        BridgeError, BridgeStatusSnapshot, build_desktop_app, format_bridge_error, run_desktop_app,
+        build_desktop_app, format_bridge_error, run_desktop_app, BridgeError, BridgeStatusSnapshot,
     };
 
     #[test]
@@ -547,6 +547,83 @@ mod tests {
         assert_eq!(
             config_error.as_str(),
             Some("runtime playback config is locked while playback is active")
+        );
+    }
+
+    #[test]
+    fn build_desktop_app_accepts_center_based_arc_track_compile_payloads() {
+        let app =
+            build_desktop_app(mock_builder(), mock_context(noop_assets())).expect("app builds");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("webview builds");
+
+        let response = get_ipc_response(
+            &webview,
+            invoke_request_with_body(
+                "compile_scene",
+                json!({
+                    "request": {
+                        "scene": {
+                            "schemaVersion": 1,
+                            "entities": [
+                                {
+                                    "id": "poly-1",
+                                    "kind": "user-polygon",
+                                    "points": [
+                                        { "x": -1.0, "y": 0.0 },
+                                        { "x": 1.0, "y": 0.0 },
+                                        { "x": 1.0, "y": 2.0 },
+                                        { "x": -1.0, "y": 2.0 }
+                                    ]
+                                },
+                                {
+                                    "id": "arc-track-1",
+                                    "kind": "arc-track",
+                                    "center": { "x": 0.0, "y": 2.0 },
+                                    "radius": 3.0,
+                                    "centralAngleDegrees": 135.0,
+                                    "rotationDegrees": 180.0,
+                                    "thickness": 0.14
+                                }
+                            ],
+                            "constraints": [],
+                            "forceSources": [
+                                {
+                                    "id": "gravity-1",
+                                    "kind": "gravity",
+                                    "acceleration": { "x": 0.0, "y": -9.81 }
+                                }
+                            ],
+                            "analyzers": [],
+                            "annotations": []
+                        },
+                        "dirtyScopes": [],
+                        "rebuildRequired": false
+                    }
+                }),
+            ),
+        )
+        .expect("center-based arc-track payload should compile");
+
+        let snapshot = response
+            .deserialize::<BridgeStatusSnapshot>()
+            .expect("compile snapshot deserializes");
+
+        assert_eq!(snapshot.status, BridgeStatus::Idle);
+        assert_eq!(
+            snapshot
+                .current_frame
+                .as_ref()
+                .map(|frame| frame.frame_number),
+            Some(0)
+        );
+        assert_eq!(
+            snapshot
+                .current_frame
+                .as_ref()
+                .map(|frame| frame.entities.len()),
+            Some(1)
         );
     }
 
