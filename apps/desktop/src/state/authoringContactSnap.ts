@@ -119,6 +119,10 @@ function createPlacementSuggestion(
   candidate: EditorSceneEntity,
   obstacle: EditorSceneEntity,
 ): PlacementSuggestion | null {
+  if (candidate.kind === "arc-track" || obstacle.kind === "arc-track") {
+    return null;
+  }
+
   const candidateFootprint = createFootprint(candidate);
   const obstacleFootprint = createFootprint(obstacle);
   const snappedCenter = findSnappedCenter(candidateFootprint, obstacleFootprint);

@@ -33,6 +33,15 @@ export type BallSceneEntity = BaseSceneEntity &
     radius: number;
   };
 
+export type ArcTrackSceneEntity = BaseSceneEntity & {
+  kind: "arc-track";
+  center: Vector2;
+  radius: number;
+  centralAngleDegrees: number;
+  rotationDegrees: number;
+  thickness: number;
+};
+
 export type SizedSceneEntity = BaseSceneEntity &
   SceneEntityPhysics & {
     kind: "block" | "board" | "polygon";
@@ -43,7 +52,11 @@ export type SizedSceneEntity = BaseSceneEntity &
     rotationDegrees?: number;
   };
 
-export type SceneEntity = UserPolygonEntity | BallSceneEntity | SizedSceneEntity;
+export type SceneEntity =
+  | UserPolygonEntity
+  | BallSceneEntity
+  | SizedSceneEntity
+  | ArcTrackSceneEntity;
 
 type BaseSceneConstraint = {
   id: string;
@@ -198,6 +211,13 @@ function cloneSceneEntity(entity: SceneEntity): SceneEntity {
     return {
       ...entity,
       points: clonePoints(entity.points),
+    };
+  }
+
+  if (entity.kind === "arc-track") {
+    return {
+      ...entity,
+      center: cloneVector2(entity.center),
     };
   }
 

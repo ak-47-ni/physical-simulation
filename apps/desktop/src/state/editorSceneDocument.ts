@@ -241,14 +241,34 @@ export function resolveAnalyzerEntityId(
   entities: EditorSceneEntity[],
   explicitEntityId?: string | null,
 ): string | null {
-  if (explicitEntityId && entities.some((entity) => entity.id === explicitEntityId)) {
+  if (
+    explicitEntityId &&
+    entities.some((entity) => entity.id === explicitEntityId && entity.kind !== "arc-track")
+  ) {
     return explicitEntityId;
   }
 
-  return entities.find((entity) => !entity.locked)?.id ?? entities[0]?.id ?? null;
+  return (
+    entities.find((entity) => entity.kind !== "arc-track" && !entity.locked)?.id ??
+    entities.find((entity) => entity.kind !== "arc-track")?.id ??
+    null
+  );
 }
 
 function mapEditorEntityToSceneEntity(entity: EditorSceneEntity): SceneEntity {
+  if (entity.kind === "arc-track") {
+    return {
+      id: entity.id,
+      kind: "arc-track",
+      label: entity.label,
+      center: cloneVector(entity.center),
+      radius: entity.radius,
+      centralAngleDegrees: entity.centralAngleDegrees,
+      rotationDegrees: entity.rotationDegrees,
+      thickness: entity.thickness,
+    };
+  }
+
   const physics = {
     friction: entity.friction,
     locked: entity.locked,
@@ -336,6 +356,21 @@ function mapEditorConstraintToSceneConstraint(
 function mapSceneEntityToEditorEntity(entity: SceneEntity): EditorSceneEntity[] {
   if (entity.kind === "user-polygon") {
     return [];
+  }
+
+  if (entity.kind === "arc-track") {
+    return [
+      {
+        id: entity.id,
+        kind: "arc-track",
+        label: entity.label ?? entity.id,
+        center: cloneVector(entity.center),
+        radius: entity.radius,
+        centralAngleDegrees: entity.centralAngleDegrees,
+        rotationDegrees: entity.rotationDegrees,
+        thickness: entity.thickness,
+      },
+    ];
   }
 
   const physics = {
@@ -441,6 +476,21 @@ function convertEditorEntityUnits(
   fromSettings: SceneAuthoringSettings,
   toSettings: SceneAuthoringSettings,
 ): EditorSceneEntity {
+  if (entity.kind === "arc-track") {
+    const convertLength = (value: number) =>
+      Number(convertLengthValue(value, fromSettings.lengthUnit, toSettings.lengthUnit).toFixed(6));
+
+    return {
+      ...entity,
+      center: {
+        x: convertLength(entity.center.x),
+        y: convertLength(entity.center.y),
+      },
+      radius: convertLength(entity.radius),
+      thickness: convertLength(entity.thickness),
+    };
+  }
+
   const convertedBase = {
     ...entity,
     mass: convertMassValue(entity.mass, fromSettings.massUnit, toSettings.massUnit),

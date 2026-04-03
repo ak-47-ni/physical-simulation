@@ -569,6 +569,61 @@ describe("PropertyPanel", () => {
     expect(constraintUpdates).toEqual([{ endAngleDegrees: 45, startAngleDegrees: -45 }]);
   });
 
+  it("edits selected arc-track body geometry without showing body physics controls", () => {
+    const arcTrackUpdates: Array<Record<string, unknown>> = [];
+
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings()}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedArcTrack={(update) => {
+          arcTrackUpdates.push(update);
+        }}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntityRotation={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        scenePhysics={TEST_SCENE_PHYSICS}
+        selectedEntity={{
+          id: "arc-track-1",
+          kind: "arc-track",
+          label: "Arc Track 1",
+          center: { x: 3.6, y: 2.4 },
+          radius: 1.2,
+          centralAngleDegrees: 135,
+          rotationDegrees: 20,
+          thickness: 0.18,
+        }}
+      />,
+    );
+
+    expect((screen.getByLabelText("Center X") as HTMLInputElement).value).toBe("3.6");
+    expect((screen.getByLabelText("Center Y") as HTMLInputElement).value).toBe("2.4");
+    expect((screen.getByLabelText("Radius") as HTMLInputElement).value).toBe("1.2");
+    expect((screen.getByLabelText("Central angle") as HTMLInputElement).value).toBe("135");
+    expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("20");
+    expect(screen.queryByLabelText("Mass")).toBeNull();
+    expect(screen.queryByLabelText("Velocity X")).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Center X"), { target: { value: "4.1" } });
+    fireEvent.change(screen.getByLabelText("Center Y"), { target: { value: "2.9" } });
+    fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "1.3" } });
+    fireEvent.change(screen.getByLabelText("Central angle"), { target: { value: "210" } });
+    fireEvent.change(screen.getByLabelText("Angle"), { target: { value: "-30" } });
+
+    expect(arcTrackUpdates).toEqual([
+      { center: { x: 4.1, y: 2.4 } },
+      { center: { x: 3.6, y: 2.9 } },
+      { radius: 1.3 },
+      { centralAngleDegrees: 210 },
+      { rotationDegrees: -30 },
+    ]);
+  });
+
   it("renders scene physics controls and unit-aware readouts for the selected entity", () => {
     render(
       <PropertyPanel

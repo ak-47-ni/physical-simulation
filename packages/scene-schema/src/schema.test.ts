@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  ArcTrackSceneEntity,
   ArcTrackConstraint,
   RuntimeCompileConstraint,
   SceneConstraint,
@@ -35,12 +36,32 @@ type _AssertExpectedExtendsArcTrackConstraint = Assert<
   ExpectedArcTrackConstraint extends ArcTrackConstraint ? true : false
 >;
 
+type ExpectedArcTrackSceneEntity = {
+  id: string;
+  kind: "arc-track";
+  center: { x: number; y: number };
+  radius: number;
+  centralAngleDegrees: number;
+  rotationDegrees: number;
+  thickness: number;
+};
+type _AssertArcTrackSceneEntityExtendsExpected = Assert<
+  ArcTrackSceneEntity extends ExpectedArcTrackSceneEntity ? true : false
+>;
+type _AssertExpectedExtendsArcTrackSceneEntity = Assert<
+  ExpectedArcTrackSceneEntity extends ArcTrackSceneEntity ? true : false
+>;
+
 describe("scene schema", () => {
   it("publishes a schema version", () => {
     expect(SCENE_SCHEMA_VERSION).toBe(1);
   });
 
   it("types arc-track constraints as free-entry rail segments", () => {
+    expect(true).toBe(true);
+  });
+
+  it("types arc-track entities as explicit editable body geometry", () => {
     expect(true).toBe(true);
   });
 
@@ -221,6 +242,37 @@ describe("scene schema", () => {
     expect(clonedBoard.rotationDegrees).toBe(24);
   });
 
+  it("deep-clones arc-track entity center vectors by value", () => {
+    const scene = createEmptySceneDocument();
+    const arcTrack: ArcTrackSceneEntity = {
+      id: "arc-track-entity-1",
+      kind: "arc-track",
+      label: "Arc Track 1",
+      center: { x: 6, y: 4 },
+      radius: 1,
+      centralAngleDegrees: 90,
+      rotationDegrees: 30,
+      thickness: 0.18,
+    };
+
+    scene.entities.push(arcTrack);
+
+    const clone = cloneSceneDocument(scene);
+    const originalEntity = scene.entities[0];
+    const clonedEntity = clone.entities[0];
+
+    if (!originalEntity || !clonedEntity || originalEntity.kind !== "arc-track" || clonedEntity.kind !== "arc-track") {
+      throw new Error("expected arc-track entities");
+    }
+
+    expect(clonedEntity).toEqual(arcTrack);
+    expect(clonedEntity.center).not.toBe(originalEntity.center);
+
+    originalEntity.center.x = 999;
+
+    expect(clonedEntity.center).toEqual({ x: 6, y: 4 });
+  });
+
   it("creates runtime compile requests from cloned scene state and dirty scopes", () => {
     const scene = createEmptySceneDocument();
 
@@ -258,6 +310,32 @@ describe("scene schema", () => {
 
     originalBall.x = 999;
     expect(clonedBall.x).toBe(132);
+  });
+
+  it("creates runtime compile requests that preserve typed arc-track entities", () => {
+    const scene = createEmptySceneDocument();
+    const arcTrack: ArcTrackSceneEntity = {
+      id: "arc-track-entity-1",
+      kind: "arc-track",
+      label: "Arc Track 1",
+      center: { x: 3.2, y: 2.4 },
+      radius: 1.4,
+      centralAngleDegrees: 135,
+      rotationDegrees: -20,
+      thickness: 0.18,
+    };
+
+    scene.entities.push(arcTrack);
+
+    const request = createRuntimeCompileRequest(scene, ["structure"]);
+    const compiledEntity = request.scene.entities[0];
+
+    if (!compiledEntity || compiledEntity.kind !== "arc-track") {
+      throw new Error("expected compiled arc-track entity");
+    }
+
+    expect(compiledEntity).toEqual(arcTrack);
+    expect(compiledEntity.center).not.toBe(arcTrack.center);
   });
 
   it("deep-clones typed constraint and force-source payload vectors", () => {

@@ -1,7 +1,7 @@
 import type { EditorTool } from "../workspace/tools";
 import type { LibraryConstraintKind } from "./editorConstraints";
 
-export type LibraryBodyKind = "ball" | "block" | "board" | "polygon";
+export type LibraryBodyKind = "ball" | "block" | "board" | "polygon" | "arc-track";
 export type LibraryItemKind = LibraryBodyKind | LibraryConstraintKind;
 
 export type EditorEntityPhysics = {
@@ -15,7 +15,7 @@ export type EditorEntityPhysics = {
 
 type BaseEditorSceneEntity = {
   id: string;
-  kind: LibraryBodyKind;
+  kind: Exclude<LibraryBodyKind, "arc-track">;
   label: string;
   x: number;
   y: number;
@@ -33,7 +33,18 @@ export type SizedSceneEntity = BaseEditorSceneEntity & {
   rotationDegrees?: number;
 };
 
-export type EditorSceneEntity = BallSceneEntity | SizedSceneEntity;
+export type ArcTrackSceneEntity = {
+  id: string;
+  kind: "arc-track";
+  label: string;
+  center: { x: number; y: number };
+  radius: number;
+  centralAngleDegrees: number;
+  rotationDegrees: number;
+  thickness: number;
+};
+
+export type EditorSceneEntity = BallSceneEntity | SizedSceneEntity | ArcTrackSceneEntity;
 
 export type EditorState = {
   activeTool: EditorTool;
@@ -83,6 +94,7 @@ const BODY_LABELS: Record<LibraryBodyKind, string> = {
   block: "Block",
   board: "Board",
   polygon: "Polygon",
+  "arc-track": "Arc Track",
 };
 
 const BODY_DEFAULTS = {
@@ -90,9 +102,10 @@ const BODY_DEFAULTS = {
   block: { width: 84, height: 52 },
   board: { width: 120, height: 18 },
   polygon: { width: 76, height: 76 },
+  "arc-track": { radius: 100, centralAngleDegrees: 90, thickness: 18 },
 } as const;
 
-const BODY_PHYSICS_DEFAULTS: Record<LibraryBodyKind, EditorEntityPhysics> = {
+const BODY_PHYSICS_DEFAULTS: Record<Exclude<LibraryBodyKind, "arc-track">, EditorEntityPhysics> = {
   ball: {
     mass: 1.2,
     friction: 0.14,
@@ -132,8 +145,8 @@ export function isLibraryBodyKind(value: string): value is LibraryBodyKind {
 }
 
 function inferBodyKind(entityId: string): LibraryBodyKind | null {
-  const [kind] = entityId.split("-");
-  return isLibraryBodyKind(kind) ? kind : null;
+  const bodyKinds = Object.keys(BODY_LABELS) as LibraryBodyKind[];
+  return bodyKinds.find((kind) => entityId.startsWith(`${kind}-`)) ?? null;
 }
 
 function getNextEntityIndex(entities: EditorSceneEntity[], kind: LibraryBodyKind): number {
@@ -146,9 +159,25 @@ export function createPlacedBodyEntity(
   position: { x: number; y: number },
 ): EditorSceneEntity {
   const nextIndex = getNextEntityIndex(entities, kind);
+  const id = `${kind}-${nextIndex}`;
+  const label = `${BODY_LABELS[kind]} ${nextIndex}`;
+
+  if (kind === "arc-track") {
+    return {
+      id,
+      kind: "arc-track",
+      label,
+      center: { x: position.x, y: position.y },
+      radius: BODY_DEFAULTS["arc-track"].radius,
+      centralAngleDegrees: BODY_DEFAULTS["arc-track"].centralAngleDegrees,
+      rotationDegrees: 0,
+      thickness: BODY_DEFAULTS["arc-track"].thickness,
+    };
+  }
+
   const baseEntity = {
-    id: `${kind}-${nextIndex}`,
-    label: `${BODY_LABELS[kind]} ${nextIndex}`,
+    id,
+    label,
     x: position.x,
     y: position.y,
     ...BODY_PHYSICS_DEFAULTS[kind],
@@ -192,6 +221,21 @@ export function createDuplicatedEntity(
   entities: EditorSceneEntity[],
   entity: EditorSceneEntity,
 ): EditorSceneEntity {
+  if (entity.kind === "arc-track") {
+    const nextIndex =
+      entities.filter((candidate) => candidate.id.startsWith(`${entity.id}-copy-`)).length + 1;
+
+    return {
+      ...entity,
+      id: `${entity.id}-copy-${nextIndex}`,
+      label: `${entity.label} Copy ${nextIndex}`,
+      center: {
+        x: entity.center.x + DUPLICATE_OFFSET,
+        y: entity.center.y + DUPLICATE_OFFSET,
+      },
+    };
+  }
+
   const duplicatedPosition = {
     x: entity.x + DUPLICATE_OFFSET,
     y: entity.y + DUPLICATE_OFFSET,

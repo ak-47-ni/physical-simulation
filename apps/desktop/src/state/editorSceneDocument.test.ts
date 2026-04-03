@@ -43,14 +43,26 @@ const TEST_CONSTRAINTS = [
   },
 ];
 
+const TEST_ARC_TRACK_ENTITY = {
+  id: "arc-track-entity-1",
+  kind: "arc-track" as const,
+  label: "Arc Track 1",
+  center: { x: 4.2, y: 2.8 },
+  radius: 1.1,
+  centralAngleDegrees: 120,
+  rotationDegrees: -15,
+  thickness: 0.18,
+};
+
 describe("editorSceneDocument", () => {
   it("creates a scene document with typed constraints and an explicit gravity source", () => {
     const scene = createSceneDocumentFromEditorState({
       analyzerId: "traj-primary",
       constraints: TEST_CONSTRAINTS,
-      entities: createInitialSceneEntities(),
+      entities: [...createInitialSceneEntities(), TEST_ARC_TRACK_ENTITY],
     });
 
+    expect(scene.entities).toContainEqual(TEST_ARC_TRACK_ENTITY);
     expect(scene.constraints).toEqual([
       {
         entityAId: "ball-1",
@@ -95,7 +107,7 @@ describe("editorSceneDocument", () => {
   });
 
   it("restores editor entities, constraints, and selected ids from a scene document", () => {
-    const entities = createInitialSceneEntities();
+    const entities = [...createInitialSceneEntities(), TEST_ARC_TRACK_ENTITY];
     const scene = createSceneDocumentFromEditorState({
       constraints: TEST_CONSTRAINTS,
       entities,
@@ -152,7 +164,7 @@ describe("editorSceneDocument", () => {
   });
 
   it("converts stored authored values when scene units change", () => {
-    const entities = createInitialSceneEntities().map((entity, index) =>
+    const entities = [...createInitialSceneEntities(), TEST_ARC_TRACK_ENTITY].map((entity, index) =>
       index === 0
         ? {
             ...entity,
@@ -213,6 +225,16 @@ describe("editorSceneDocument", () => {
         velocityX: 0,
         velocityY: 0,
       },
+      {
+        id: "arc-track-entity-1",
+        kind: "arc-track",
+        label: "Arc Track 1",
+        center: { x: 420, y: 280 },
+        radius: 110,
+        centralAngleDegrees: 120,
+        rotationDegrees: -15,
+        thickness: 18,
+      },
     ]);
     expect(converted.constraints).toEqual([
       {
@@ -247,7 +269,7 @@ describe("editorSceneDocument", () => {
   });
 
   it("preserves semantic size and motion when unit conversions round-trip back to SI", () => {
-    const entities = createInitialSceneEntities().map((entity, index) =>
+    const entities = [...createInitialSceneEntities(), TEST_ARC_TRACK_ENTITY].map((entity, index) =>
       index === 0
         ? {
             ...entity,
@@ -281,6 +303,19 @@ describe("editorSceneDocument", () => {
     expect(roundTrip.settings).toEqual(createDefaultSceneAuthoringSettings());
     expect(roundTrip.entities).toEqual(entities);
     expect(roundTrip.constraints).toEqual(TEST_CONSTRAINTS);
+  });
+
+  it("round-trips arc-track entities through persisted scene documents", () => {
+    const scene = createSceneDocumentFromEditorState({
+      constraints: TEST_CONSTRAINTS,
+      entities: [...createInitialSceneEntities(), TEST_ARC_TRACK_ENTITY],
+    });
+
+    expect(scene.entities).toContainEqual(TEST_ARC_TRACK_ENTITY);
+
+    const restored = createEditorSceneStateFromSceneDocument({ scene });
+
+    expect(restored.entities).toContainEqual(TEST_ARC_TRACK_ENTITY);
   });
 
   it("round-trips arc-track constraints through persisted scene documents", () => {

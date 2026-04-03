@@ -50,6 +50,13 @@ export function normalizeAuthoringEntityPositionForCommit<T extends EditorSceneE
   entity: T,
   lengthUnit: LengthUnit,
 ): T {
+  if (entity.kind === "arc-track") {
+    return createRepositionedEntity(
+      entity,
+      normalizeAuthoredPositionForCommit(entity.center, lengthUnit),
+    );
+  }
+
   return createRepositionedEntity(
     entity,
     normalizeAuthoredPositionForCommit(
@@ -109,6 +116,15 @@ export function convertLegacyCreatedEntityToSceneUnits(
   settings: SceneAuthoringSettings,
   position: { x: number; y: number },
 ): EditorSceneEntity {
+  if (entity.kind === "arc-track") {
+    return {
+      ...entity,
+      center: { x: position.x, y: position.y },
+      radius: convertLengthValue(entity.radius, LEGACY_LENGTH_UNIT, settings.lengthUnit),
+      thickness: convertLengthValue(entity.thickness, LEGACY_LENGTH_UNIT, settings.lengthUnit),
+    };
+  }
+
   const mass = convertMassValue(entity.mass, LEGACY_MASS_UNIT, settings.massUnit);
 
   if (entity.kind === "ball") {
@@ -136,6 +152,19 @@ export function applySceneDuplicateOffset(
   settings: SceneAuthoringSettings,
 ): EditorSceneEntity {
   const offset = convertLengthValue(DUPLICATE_OFFSET, LEGACY_LENGTH_UNIT, settings.lengthUnit);
+
+  if (entity.kind === "arc-track") {
+    return normalizeAuthoringEntityPositionForCommit(
+      {
+        ...entity,
+        center: {
+          x: Number((entity.center.x - DUPLICATE_OFFSET + offset).toFixed(6)),
+          y: Number((entity.center.y - DUPLICATE_OFFSET + offset).toFixed(6)),
+        },
+      },
+      settings.lengthUnit,
+    );
+  }
 
   return normalizeAuthoringEntityPositionForCommit(
     {

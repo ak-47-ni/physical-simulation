@@ -68,9 +68,12 @@ describe("ObjectLibraryPanel", () => {
     expect(screen.getByTestId("library-item-block").getAttribute("data-selected")).toBe("false");
     expect(screen.getByTestId("library-item-board").getAttribute("data-selected")).toBe("false");
     expect(screen.getByTestId("library-item-polygon").getAttribute("data-selected")).toBe("false");
+    expect(screen.getByTestId("library-item-arc-track").getAttribute("data-selected")).toBe(
+      "false",
+    );
   });
 
-  it("keeps spring, track, and arc-track on the existing selection callback path", () => {
+  it("keeps spring and track on the existing selection callback path", () => {
     const selections: string[] = [];
     const { rerender } = render(
       <DragAwareObjectLibraryPanel
@@ -106,21 +109,51 @@ describe("ObjectLibraryPanel", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Arc track" }));
+    expect(selections).toEqual(["spring", "track"]);
+    expect(screen.getByTestId("library-item-spring").getAttribute("data-selected")).toBe("false");
+    expect(screen.getByTestId("library-item-track").getAttribute("data-selected")).toBe("false");
+  });
 
-    rerender(
+  it("starts an arc-track body drag from the Bodies group", () => {
+    const selections: string[] = [];
+    const drags: Array<{
+      bodyKind: string;
+      pointerClientPx: {
+        x: number;
+        y: number;
+      };
+    }> = [];
+
+    render(
       <DragAwareObjectLibraryPanel
         onSelectItem={(itemId: string) => {
           selections.push(itemId);
         }}
-        onStartBodyDrag={() => undefined}
-        selectedItemId="arc-track"
+        onStartBodyDrag={(session: {
+          bodyKind: string;
+          pointerClientPx: { x: number; y: number };
+        }) => {
+          drags.push(session);
+        }}
+        selectedItemId="spring"
       />,
     );
 
-    expect(selections).toEqual(["spring", "track", "arc-track"]);
-    expect(screen.getByTestId("library-item-spring").getAttribute("data-selected")).toBe("false");
-    expect(screen.getByTestId("library-item-track").getAttribute("data-selected")).toBe("false");
-    expect(screen.getByTestId("library-item-arc-track").getAttribute("data-selected")).toBe("true");
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Arc Track" }), {
+      button: 0,
+      clientX: 312,
+      clientY: 228,
+    });
+
+    expect(drags).toEqual([
+      {
+        bodyKind: "arc-track",
+        pointerClientPx: {
+          x: 312,
+          y: 228,
+        },
+      },
+    ]);
+    expect(selections).toEqual([]);
   });
 });

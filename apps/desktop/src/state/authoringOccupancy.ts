@@ -34,6 +34,16 @@ export function createRepositionedEntity<T extends EditorSceneEntity>(
   entity: T,
   position: { x: number; y: number },
 ): T {
+  if (entity.kind === "arc-track") {
+    return {
+      ...entity,
+      center: {
+        x: position.x,
+        y: position.y,
+      },
+    };
+  }
+
   return {
     ...entity,
     x: position.x,
@@ -75,6 +85,10 @@ export function canPlaceAuthoringEntity(input: {
 }
 
 function entitiesPenetrate(a: EditorSceneEntity, b: EditorSceneEntity): boolean {
+  if (a.kind === "arc-track" || b.kind === "arc-track") {
+    return false;
+  }
+
   const footprintA = createFootprint(a);
   const footprintB = createFootprint(b);
 

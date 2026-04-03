@@ -63,12 +63,12 @@ const bodyItems: BodyLibraryItem[] = [
   { id: "block", label: "Block" },
   { id: "board", label: "Board" },
   { id: "polygon", label: "Polygon" },
+  { id: "arc-track", label: "Arc Track" },
 ];
 
 const constraintItems: ConstraintLibraryItem[] = [
   { id: "spring", label: "Spring" },
   { id: "track", label: "Track" },
-  { id: "arc-track", label: "Arc track" },
 ];
 
 const chipGroups: Array<{ title: string; items: string[] }> = [
@@ -79,7 +79,7 @@ const chipGroups: Array<{ title: string; items: string[] }> = [
 ];
 
 export function ObjectLibraryPanel(props: ObjectLibraryPanelProps) {
-  const { onSelectItem, onStartBodyDrag, selectedItemId } = props;
+  const { onSelectItem, onStartBodyDrag } = props;
 
   function handleBodyPointerDown(
     bodyKind: LibraryBodyKind,
@@ -140,11 +140,10 @@ export function ObjectLibraryPanel(props: ObjectLibraryPanelProps) {
           {constraintItems.map((item) => (
             <button
               key={item.id}
-              data-selected={String(selectedItemId === item.id)}
+              data-selected="false"
               data-testid={`library-item-${item.id}`}
               style={{
                 ...buttonChipStyle,
-                background: selectedItemId === item.id ? "#dbe8ff" : chipStyle.background,
               }}
               type="button"
               onClick={() => onSelectItem(item.id)}

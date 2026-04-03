@@ -20,6 +20,19 @@ function createBlockViaLibraryDrop(screenPosition: { x: number; y: number }) {
   fireEvent.pointerUp(window);
 }
 
+function createArcTrackViaLibraryDrop(screenPosition: { x: number; y: number }) {
+  fireEvent.mouseDown(screen.getByTestId("library-item-arc-track"), {
+    button: 0,
+    clientX: 24,
+    clientY: 36,
+  });
+  fireEvent.mouseMove(screen.getByTestId("workspace-stage"), {
+    clientX: screenPosition.x,
+    clientY: screenPosition.y,
+  });
+  fireEvent.pointerUp(window);
+}
+
 function readBoardCenterY() {
   return 2.72 + 0.18 / 2;
 }
@@ -184,6 +197,29 @@ describe("App selection sync", () => {
 
     expect(ball.style.width).toBe("60px");
     expect(ball.style.height).toBe("60px");
+  });
+
+  it("creates an arc-track body from the Bodies library and edits its geometry in the inspector", () => {
+    render(<App />);
+
+    createArcTrackViaLibraryDrop({ x: 360, y: 240 });
+
+    expect(screen.getByTestId("scene-tree-item-arc-track-1").getAttribute("data-selected")).toBe(
+      "true",
+    );
+    expect((screen.getByLabelText("Center X") as HTMLInputElement).value).toBe("3.6");
+    expect((screen.getByLabelText("Center Y") as HTMLInputElement).value).toBe("2.4");
+    expect((screen.getByLabelText("Radius") as HTMLInputElement).value).toBe("1");
+    expect((screen.getByLabelText("Central angle") as HTMLInputElement).value).toBe("90");
+    expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("0");
+
+    fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "1.24" } });
+    fireEvent.change(screen.getByLabelText("Central angle"), { target: { value: "210" } });
+    fireEvent.change(screen.getByLabelText("Angle"), { target: { value: "25" } });
+
+    expect((screen.getByLabelText("Radius") as HTMLInputElement).value).toBe("1.2");
+    expect((screen.getByLabelText("Central angle") as HTMLInputElement).value).toBe("210");
+    expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("25");
   });
 
   it("updates physics properties and locked markers from the property panel", () => {

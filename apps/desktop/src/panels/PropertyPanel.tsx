@@ -28,6 +28,14 @@ type ConstraintPanelUpdate = {
   stiffness?: number;
 };
 
+type ArcTrackPanelUpdate = {
+  center?: { x: number; y: number };
+  centralAngleDegrees?: number;
+  radius?: number;
+  rotationDegrees?: number;
+  thickness?: number;
+};
+
 type ScenePhysicsPanelState = {
   gravity: number;
   gravityUnitLabel: string;
@@ -59,6 +67,7 @@ type PropertyPanelProps = {
   onDuplicateSelectedEntity: () => void;
   onScenePhysicsChange?: (scenePhysics: ScenePhysicsPanelUpdate) => void;
   onUpdateDisplaySetting: (display: Partial<SceneDisplaySettings>) => void;
+  onUpdateSelectedArcTrack?: (update: ArcTrackPanelUpdate) => void;
   onUpdateSelectedConstraint?: (constraint: ConstraintPanelUpdate) => void;
   onUpdateSelectedEntityLabel: (label: string) => void;
   onUpdateSelectedEntityPosition: (position: { x: number; y: number }) => void;
@@ -304,6 +313,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
     onDuplicateSelectedEntity,
     onScenePhysicsChange = () => undefined,
     onUpdateDisplaySetting,
+    onUpdateSelectedArcTrack = () => undefined,
     onUpdateSelectedConstraint = () => undefined,
     onUpdateSelectedEntityLabel,
     onUpdateSelectedEntityPosition,
@@ -322,10 +332,12 @@ export function PropertyPanel(props: PropertyPanelProps) {
   const selectionLockReason = authoringLocked ? authoringLockReason : null;
   const scenePhysicsLockReason = scenePhysics?.lockReason ?? selectionLockReason;
   const selectedVelocityPolar = selectedEntity
-    ? cartesianVelocityToPolar({
-        velocityX: selectedEntity.velocityX,
-        velocityY: selectedEntity.velocityY,
-      })
+    ? selectedEntity.kind === "arc-track"
+      ? null
+      : cartesianVelocityToPolar({
+          velocityX: selectedEntity.velocityX,
+          velocityY: selectedEntity.velocityY,
+        })
     : null;
 
   return (
@@ -609,153 +621,249 @@ export function PropertyPanel(props: PropertyPanelProps) {
               value={selectedEntity.label}
               onChange={onUpdateSelectedEntityLabel}
             />
-            <ReadonlyField
-              label="Position"
-              value={
-                lengthUnitLabel
-                  ? `${selectedEntity.x} ${lengthUnitLabel}, ${selectedEntity.y} ${lengthUnitLabel}`
-                  : `${selectedEntity.x}, ${selectedEntity.y}`
-              }
-            />
-            {velocityUnitLabel ? (
-              <ReadonlyField
-                label="Velocity"
-                value={`${selectedEntity.velocityX} ${velocityUnitLabel}, ${selectedEntity.velocityY} ${velocityUnitLabel}`}
-              />
-            ) : null}
-            {massUnitLabel ? (
-              <ReadonlyField label="Mass" value={`${selectedEntity.mass} ${massUnitLabel}`} />
-            ) : null}
-            <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-              <PositionInput
-                disabled={authoringLocked}
-                label="Position X"
-                suffix={lengthUnitLabel ?? undefined}
-                value={selectedEntity.x}
-                onChange={(x) => onUpdateSelectedEntityPosition({ x, y: selectedEntity.y })}
-              />
-              <PositionInput
-                disabled={authoringLocked}
-                label="Position Y"
-                suffix={lengthUnitLabel ?? undefined}
-                value={selectedEntity.y}
-                onChange={(y) => onUpdateSelectedEntityPosition({ x: selectedEntity.x, y })}
-              />
-            </div>
-            {selectedEntity.kind === "ball" ? (
-              <PositionInput
-                disabled={authoringLocked}
-                label="Radius"
-                suffix={lengthUnitLabel ?? undefined}
-                value={selectedEntity.radius}
-                onChange={onUpdateSelectedEntityRadius}
-              />
+            {selectedEntity.kind === "arc-track" ? (
+              <>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "10px",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  }}
+                >
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Center X"
+                    suffix={lengthUnitLabel ?? undefined}
+                    value={selectedEntity.center.x}
+                    onChange={(x) =>
+                      onUpdateSelectedArcTrack({
+                        center: {
+                          x,
+                          y: selectedEntity.center.y,
+                        },
+                      })
+                    }
+                  />
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Center Y"
+                    suffix={lengthUnitLabel ?? undefined}
+                    value={selectedEntity.center.y}
+                    onChange={(y) =>
+                      onUpdateSelectedArcTrack({
+                        center: {
+                          x: selectedEntity.center.x,
+                          y,
+                        },
+                      })
+                    }
+                  />
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Radius"
+                    suffix={lengthUnitLabel ?? undefined}
+                    value={selectedEntity.radius}
+                    onChange={(radius) => onUpdateSelectedArcTrack({ radius })}
+                  />
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Central angle"
+                    suffix="°"
+                    value={selectedEntity.centralAngleDegrees}
+                    onChange={(centralAngleDegrees) =>
+                      onUpdateSelectedArcTrack({ centralAngleDegrees })
+                    }
+                  />
+                </div>
+                <PositionInput
+                  disabled={authoringLocked}
+                  label="Angle"
+                  suffix="°"
+                  value={selectedEntity.rotationDegrees}
+                  onChange={(rotationDegrees) =>
+                    onUpdateSelectedArcTrack({ rotationDegrees })
+                  }
+                />
+              </>
             ) : (
-              <div
-                style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}
-              >
-                <PositionInput
-                  disabled={authoringLocked}
-                  label="Width"
-                  suffix={lengthUnitLabel ?? undefined}
-                  value={selectedEntity.width}
-                  onChange={(width) =>
-                    onUpdateSelectedEntitySize({ width, height: selectedEntity.height })
+              <>
+                <ReadonlyField
+                  label="Position"
+                  value={
+                    lengthUnitLabel
+                      ? `${selectedEntity.x} ${lengthUnitLabel}, ${selectedEntity.y} ${lengthUnitLabel}`
+                      : `${selectedEntity.x}, ${selectedEntity.y}`
                   }
                 />
-                <PositionInput
-                  disabled={authoringLocked}
-                  label="Height"
-                  suffix={lengthUnitLabel ?? undefined}
-                  value={selectedEntity.height}
-                  onChange={(height) =>
-                    onUpdateSelectedEntitySize({ width: selectedEntity.width, height })
-                  }
-                />
-              </div>
+                {velocityUnitLabel ? (
+                  <ReadonlyField
+                    label="Velocity"
+                    value={`${selectedEntity.velocityX} ${velocityUnitLabel}, ${selectedEntity.velocityY} ${velocityUnitLabel}`}
+                  />
+                ) : null}
+                {massUnitLabel ? (
+                  <ReadonlyField label="Mass" value={`${selectedEntity.mass} ${massUnitLabel}`} />
+                ) : null}
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "10px",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  }}
+                >
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Position X"
+                    suffix={lengthUnitLabel ?? undefined}
+                    value={selectedEntity.x}
+                    onChange={(x) => onUpdateSelectedEntityPosition({ x, y: selectedEntity.y })}
+                  />
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Position Y"
+                    suffix={lengthUnitLabel ?? undefined}
+                    value={selectedEntity.y}
+                    onChange={(y) => onUpdateSelectedEntityPosition({ x: selectedEntity.x, y })}
+                  />
+                </div>
+                {selectedEntity.kind === "ball" ? (
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Radius"
+                    suffix={lengthUnitLabel ?? undefined}
+                    value={selectedEntity.radius}
+                    onChange={onUpdateSelectedEntityRadius}
+                  />
+                ) : (
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: "10px",
+                      gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                    }}
+                  >
+                    <PositionInput
+                      disabled={authoringLocked}
+                      label="Width"
+                      suffix={lengthUnitLabel ?? undefined}
+                      value={selectedEntity.width}
+                      onChange={(width) =>
+                        onUpdateSelectedEntitySize({ width, height: selectedEntity.height })
+                      }
+                    />
+                    <PositionInput
+                      disabled={authoringLocked}
+                      label="Height"
+                      suffix={lengthUnitLabel ?? undefined}
+                      value={selectedEntity.height}
+                      onChange={(height) =>
+                        onUpdateSelectedEntitySize({ width: selectedEntity.width, height })
+                      }
+                    />
+                  </div>
+                )}
+                {selectedEntity.kind !== "ball" ? (
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Angle"
+                    suffix="°"
+                    value={selectedEntity.rotationDegrees ?? 0}
+                    onChange={onUpdateSelectedEntityRotation}
+                  />
+                ) : null}
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "10px",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  }}
+                >
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Mass"
+                    suffix={massUnitLabel ?? undefined}
+                    value={selectedEntity.mass}
+                    onChange={(mass) => onUpdateSelectedEntityPhysics({ mass })}
+                  />
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Friction"
+                    value={selectedEntity.friction}
+                    onChange={(friction) => onUpdateSelectedEntityPhysics({ friction })}
+                  />
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Restitution"
+                    value={selectedEntity.restitution}
+                    onChange={(restitution) => onUpdateSelectedEntityPhysics({ restitution })}
+                  />
+                  <CheckboxInput
+                    disabled={authoringLocked}
+                    label="Locked in simulation"
+                    checked={selectedEntity.locked}
+                    onChange={(locked) => onUpdateSelectedEntityPhysics({ locked })}
+                  />
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "10px",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  }}
+                >
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Velocity X"
+                    suffix={velocityUnitLabel ?? undefined}
+                    value={selectedEntity.velocityX}
+                    onChange={(velocityX) => onUpdateSelectedEntityPhysics({ velocityX })}
+                  />
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Velocity Y"
+                    suffix={velocityUnitLabel ?? undefined}
+                    value={selectedEntity.velocityY}
+                    onChange={(velocityY) => onUpdateSelectedEntityPhysics({ velocityY })}
+                  />
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "10px",
+                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  }}
+                >
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Speed"
+                    suffix={velocityUnitLabel ?? undefined}
+                    value={selectedVelocityPolar?.speed ?? 0}
+                    onChange={(speed) =>
+                      onUpdateSelectedEntityPhysics(
+                        polarVelocityToCartesian({
+                          directionDegrees: selectedVelocityPolar?.directionDegrees ?? 0,
+                          speed,
+                        }),
+                      )
+                    }
+                  />
+                  <PositionInput
+                    disabled={authoringLocked}
+                    label="Direction"
+                    suffix="°"
+                    value={selectedVelocityPolar?.directionDegrees ?? 0}
+                    onChange={(directionDegrees) =>
+                      onUpdateSelectedEntityPhysics(
+                        polarVelocityToCartesian({
+                          directionDegrees,
+                          speed: selectedVelocityPolar?.speed ?? 0,
+                        }),
+                      )
+                    }
+                  />
+                </div>
+              </>
             )}
-            {selectedEntity.kind !== "ball" ? (
-              <PositionInput
-                disabled={authoringLocked}
-                label="Angle"
-                suffix="°"
-                value={selectedEntity.rotationDegrees ?? 0}
-                onChange={onUpdateSelectedEntityRotation}
-              />
-            ) : null}
-            <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-              <PositionInput
-                disabled={authoringLocked}
-                label="Mass"
-                suffix={massUnitLabel ?? undefined}
-                value={selectedEntity.mass}
-                onChange={(mass) => onUpdateSelectedEntityPhysics({ mass })}
-              />
-              <PositionInput
-                disabled={authoringLocked}
-                label="Friction"
-                value={selectedEntity.friction}
-                onChange={(friction) => onUpdateSelectedEntityPhysics({ friction })}
-              />
-              <PositionInput
-                disabled={authoringLocked}
-                label="Restitution"
-                value={selectedEntity.restitution}
-                onChange={(restitution) => onUpdateSelectedEntityPhysics({ restitution })}
-              />
-              <CheckboxInput
-                disabled={authoringLocked}
-                label="Locked in simulation"
-                checked={selectedEntity.locked}
-                onChange={(locked) => onUpdateSelectedEntityPhysics({ locked })}
-              />
-            </div>
-            <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-              <PositionInput
-                disabled={authoringLocked}
-                label="Velocity X"
-                suffix={velocityUnitLabel ?? undefined}
-                value={selectedEntity.velocityX}
-                onChange={(velocityX) => onUpdateSelectedEntityPhysics({ velocityX })}
-              />
-              <PositionInput
-                disabled={authoringLocked}
-                label="Velocity Y"
-                suffix={velocityUnitLabel ?? undefined}
-                value={selectedEntity.velocityY}
-                onChange={(velocityY) => onUpdateSelectedEntityPhysics({ velocityY })}
-              />
-            </div>
-            <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
-              <PositionInput
-                disabled={authoringLocked}
-                label="Speed"
-                suffix={velocityUnitLabel ?? undefined}
-                value={selectedVelocityPolar?.speed ?? 0}
-                onChange={(speed) =>
-                  onUpdateSelectedEntityPhysics(
-                    polarVelocityToCartesian({
-                      directionDegrees: selectedVelocityPolar?.directionDegrees ?? 0,
-                      speed,
-                    }),
-                  )
-                }
-              />
-              <PositionInput
-                disabled={authoringLocked}
-                label="Direction"
-                suffix="°"
-                value={selectedVelocityPolar?.directionDegrees ?? 0}
-                onChange={(directionDegrees) =>
-                  onUpdateSelectedEntityPhysics(
-                    polarVelocityToCartesian({
-                      directionDegrees,
-                      speed: selectedVelocityPolar?.speed ?? 0,
-                    }),
-                  )
-                }
-              />
-            </div>
             <div style={{ display: "grid", gap: "8px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
               <button
                 disabled={authoringLocked}

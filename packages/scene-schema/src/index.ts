@@ -9,6 +9,7 @@ export {
 } from "./schema";
 export type {
   Analyzer,
+  ArcTrackSceneEntity,
   ArcTrackConstraint,
   AnnotationStroke,
   BallSceneEntity,

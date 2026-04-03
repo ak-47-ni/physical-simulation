@@ -59,6 +59,7 @@ import { createMockRuntimeBridgePort } from "./state/runtimeBridge";
 import { createDesktopRuntimeBridgePort } from "./state/desktopRuntimeBridgePort";
 import { createRuntimeCompileRequestFromEditorState } from "./state/runtimeCompileRequest";
 import { createRuntimePreviewFrame, createRuntimePreviewTrajectorySamples } from "./state/runtimePreview";
+import { quantizeArcTrackRadiusForLengthUnit } from "./state/sceneUnits";
 import { runtimeVelocityToAuthoring } from "./state/velocitySemantics";
 import { createSceneAuthoringSettings, type SceneAuthoringSettings } from "./state/sceneAuthoringSettings";
 import { useDualPlaybackController } from "./state/useDualPlaybackController";
@@ -306,6 +307,12 @@ export function App() {
     setLibraryDragHover(null);
     setLibraryDragSession(null);
 
+    if (itemId === "arc-track") {
+      handleToolChange("place-constraint");
+      setConstraintPlacement(createConstraintPlacementState(itemId));
+      return;
+    }
+
     if (isLibraryBodyKind(itemId)) {
       setConstraintPlacement(null);
       handleToolChange("select");
@@ -375,8 +382,9 @@ export function App() {
   const selectedEntity = entities.find((entity) => entity.id === editorState.selectedEntityId) ?? null;
   const selectedConstraint =
     constraints.find((constraint) => constraint.id === editorState.selectedConstraintId) ?? null;
+  const workspaceEntities = entities.filter((entity) => entity.kind !== "arc-track");
   const displayEntities = projectRuntimeSceneEntities({
-    editorEntities: entities,
+    editorEntities: workspaceEntities,
     runtimeFrame: visibleRuntimeFrame,
     viewport: workspaceViewport,
   });
@@ -440,6 +448,8 @@ export function App() {
     libraryDragCandidate && libraryDragResolution
       ? createAuthoringPlacementPreview(libraryDragCandidate, libraryDragResolution)
       : pendingEntityDragPreview;
+  const workspaceAuthoringPlacementPreview =
+    authoringPlacementPreview?.entity.kind === "arc-track" ? null : authoringPlacementPreview;
   const libraryDragBlocked = authoringPlacementPreview?.status === "blocked";
 
   useEffect(() => {
@@ -556,7 +566,7 @@ export function App() {
 
   function handleUpdateSelectedEntitySize(size: { width: number; height: number }) {
     updateSelectedEntity((entity) => {
-      if (entity.kind === "ball") {
+      if (entity.kind === "ball" || entity.kind === "arc-track") {
         return entity;
       }
 
@@ -569,7 +579,11 @@ export function App() {
   }
 
   function handleUpdateSelectedEntityRotation(rotationDegrees: number) {
-    if (!selectedEntity || selectedEntity.kind === "ball") {
+    if (
+      !selectedEntity ||
+      selectedEntity.kind === "ball" ||
+      selectedEntity.kind === "arc-track"
+    ) {
       return;
     }
 
@@ -593,10 +607,42 @@ export function App() {
   }
 
   function handleUpdateSelectedEntityPhysics(physics: Partial<EditorEntityPhysics>) {
-    updateSelectedEntity((entity) => ({
-      ...entity,
-      ...physics,
-    }));
+    updateSelectedEntity((entity) => {
+      if (entity.kind === "arc-track") {
+        return entity;
+      }
+
+      return {
+        ...entity,
+        ...physics,
+      };
+    });
+  }
+
+  function handleUpdateSelectedArcTrack(update: {
+    center?: { x: number; y: number };
+    centralAngleDegrees?: number;
+    radius?: number;
+    rotationDegrees?: number;
+    thickness?: number;
+  }) {
+    updateSelectedEntity((entity) => {
+      if (entity.kind !== "arc-track") {
+        return entity;
+      }
+
+      return {
+        ...entity,
+        center: update.center ?? entity.center,
+        radius:
+          update.radius === undefined
+            ? entity.radius
+            : quantizeArcTrackRadiusForLengthUnit(update.radius, sceneSettings.lengthUnit),
+        centralAngleDegrees: update.centralAngleDegrees ?? entity.centralAngleDegrees,
+        rotationDegrees: update.rotationDegrees ?? entity.rotationDegrees,
+        thickness: update.thickness ?? entity.thickness,
+      };
+    });
   }
 
   function handleUpdateDisplaySetting(display: Partial<SceneDisplaySettings>) {
@@ -984,6 +1030,7 @@ export function App() {
             onDuplicateSelectedEntity={handleDuplicateSelectedEntity}
             onScenePhysicsChange={handleScenePhysicsChange}
             onUpdateDisplaySetting={handleUpdateDisplaySetting}
+            onUpdateSelectedArcTrack={handleUpdateSelectedArcTrack}
             onUpdateSelectedConstraint={handleUpdateSelectedConstraint}
             onUpdateSelectedEntityLabel={handleUpdateSelectedEntityLabel}
             onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
@@ -1030,12 +1077,12 @@ export function App() {
 
         <WorkspaceCanvas
           authoringLocked={authoringLocked}
-          authoringPlacementPreview={authoringPlacementPreview}
+          authoringPlacementPreview={workspaceAuthoringPlacementPreview}
           constraintPlacement={constraintPlacement}
           constraints={constraints}
           display={displaySettings}
           displayEntities={displayEntities}
-          entities={entities}
+          entities={workspaceEntities}
           libraryDragBlocked={libraryDragBlocked}
           onCancelPlacement={handleCancelConstraintPlacement}
           onCreateEntity={handleCreateEntity}

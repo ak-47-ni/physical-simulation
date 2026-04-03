@@ -94,6 +94,10 @@ export function getEntityCenter(entity: EditorSceneEntity) {
     };
   }
 
+  if (entity.kind === "arc-track") {
+    return entity.center;
+  }
+
   return {
     x: entity.x + entity.width / 2,
     y: entity.y + entity.height / 2,
