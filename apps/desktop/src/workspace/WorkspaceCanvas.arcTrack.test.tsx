@@ -5,7 +5,11 @@ import type { EditorConstraint } from "../state/editorConstraints";
 import { createInitialEditorState } from "../state/editorStore";
 import { createBoardAnchoredArcTrackConstraint } from "../state/createBoardAnchoredArcTrackConstraint";
 import { WorkspaceCanvas } from "./WorkspaceCanvas";
-import { createArcTrackProfileGeometry } from "./arcTrackBodyEntity";
+import {
+  createArcTrackProfileGeometry,
+  createArcTrackTemplate,
+  resolveArcTrackBodyPreview,
+} from "./arcTrackBodyEntity";
 import {
   authoredBoardInMeters,
   authoredBallInMeters,
@@ -41,6 +45,17 @@ function createArcTrackPreviewConstraint(): Extract<EditorConstraint, { kind: "a
 }
 
 describe("WorkspaceCanvas arc-track overlays", () => {
+  it("uses the standardized 0.14 m default thickness for arc-track body previews", () => {
+    const freeTemplate = createArcTrackTemplate({ x: 2.4, y: 1.8 });
+    const snappedPreview = resolveArcTrackBodyPreview({
+      entities: [{ ...authoredBoardInMeters, locked: true }],
+      position: { x: authoredBoardInMeters.x, y: authoredBoardInMeters.y + 0.12 },
+    });
+
+    expect(freeTemplate.thickness).toBeCloseTo(0.14);
+    expect(snappedPreview.entity.thickness).toBeCloseTo(0.14);
+  });
+
   it("builds arc-track profile geometry with radial start and end faces", () => {
     const geometry = createArcTrackProfileGeometry({
       center: { x: 400, y: 220 },
