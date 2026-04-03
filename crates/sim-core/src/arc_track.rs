@@ -1,10 +1,29 @@
 use std::f64::consts::PI;
 
-use crate::constraint::{ArcTrackEntryEndpoint, ArcTrackSide};
+use crate::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, CompiledConstraint};
 use crate::entity::Vector2;
 
 pub const ARC_TRACK_EPSILON: f64 = 1e-6;
 const TWO_PI: f64 = PI * 2.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArcTrackCapturePolicy {
+    Start,
+    End,
+    Either,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CompiledArcTrack {
+    pub id: String,
+    pub center: Vector2,
+    pub radius: f64,
+    pub start_angle_radians: f64,
+    pub end_angle_radians: f64,
+    pub span_radians: f64,
+    pub side: ArcTrackSide,
+    pub capture_policy: ArcTrackCapturePolicy,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ArcTrackProjection {
@@ -37,6 +56,58 @@ pub fn validated_arc_angles(
     } else {
         Some((start_angle_radians, end_angle_radians, span_radians))
     }
+}
+
+pub fn validated_arc_start_and_span(
+    start_angle_radians: f64,
+    span_degrees: f64,
+) -> Option<(f64, f64, f64)> {
+    if !start_angle_radians.is_finite() || !span_degrees.is_finite() {
+        return None;
+    }
+
+    let span_radians = span_degrees.to_radians();
+
+    if span_radians <= ARC_TRACK_EPSILON || span_radians >= TWO_PI - ARC_TRACK_EPSILON {
+        return None;
+    }
+
+    let start_angle_radians = normalize_angle_radians(start_angle_radians);
+    let end_angle_radians = normalize_angle_radians(start_angle_radians + span_radians);
+
+    Some((start_angle_radians, end_angle_radians, span_radians))
+}
+
+pub fn compiled_arc_track_from_constraint(
+    constraint: &CompiledConstraint,
+) -> Option<CompiledArcTrack> {
+    let CompiledConstraint::ArcTrack {
+        id,
+        center,
+        radius,
+        start_angle_radians,
+        end_angle_radians,
+        span_radians,
+        side,
+        entry_endpoint,
+    } = constraint
+    else {
+        return None;
+    };
+
+    Some(CompiledArcTrack {
+        id: id.clone(),
+        center: *center,
+        radius: *radius,
+        start_angle_radians: *start_angle_radians,
+        end_angle_radians: *end_angle_radians,
+        span_radians: *span_radians,
+        side: *side,
+        capture_policy: match entry_endpoint {
+            ArcTrackEntryEndpoint::Start => ArcTrackCapturePolicy::Start,
+            ArcTrackEntryEndpoint::End => ArcTrackCapturePolicy::End,
+        },
+    })
 }
 
 pub fn project_point_to_arc(

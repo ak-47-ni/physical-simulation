@@ -22,6 +22,30 @@ fn ball(id: &str, position: Vector2, velocity: Vector2) -> EntityDefinition {
     }
 }
 
+fn arc_track_entity(
+    id: &str,
+    center: Vector2,
+    radius: f64,
+    central_angle_degrees: f64,
+    rotation_degrees: f64,
+) -> EntityDefinition {
+    EntityDefinition {
+        id: id.to_string(),
+        shape: ShapeDefinition::ArcTrack {
+            radius,
+            central_angle_degrees,
+            thickness: 0.18,
+        },
+        position: center,
+        rotation_radians: rotation_degrees.to_radians(),
+        initial_velocity: Vector2::ZERO,
+        mass: 0.0,
+        is_static: true,
+        friction_coefficient: 0.0,
+        restitution_coefficient: 0.0,
+    }
+}
+
 fn runtime_for_scene(
     entity: EntityDefinition,
     constraint: ConstraintDefinition,
@@ -31,6 +55,26 @@ fn runtime_for_scene(
     let compiled = compile_scene(&CompileSceneRequest {
         entities: vec![entity],
         constraints: vec![constraint],
+        force_sources: vec![ForceSourceDefinition::Gravity {
+            id: "gravity".to_string(),
+            acceleration: gravity,
+        }],
+        analyzers: vec![],
+    })
+    .expect("scene should compile");
+
+    RuntimeScene::new(compiled, fixed_delta_seconds)
+}
+
+fn runtime_for_scene_with_arc_entity(
+    entity: EntityDefinition,
+    arc_track: EntityDefinition,
+    gravity: Vector2,
+    fixed_delta_seconds: f64,
+) -> RuntimeScene {
+    let compiled = compile_scene(&CompileSceneRequest {
+        entities: vec![entity, arc_track],
+        constraints: vec![],
         force_sources: vec![ForceSourceDefinition::Gravity {
             id: "gravity".to_string(),
             acceleration: gravity,
@@ -148,6 +192,30 @@ fn arc_entry_capture_regression_frontend_board_anchored_payload_enters_from_junc
     assert!(
         (radial_distance - 1.0).abs() < 5e-2,
         "expected board-anchored payload to stay on the arc, got position=({:.3}, {:.3}) distance={:.3}",
+        frame.position.x,
+        frame.position.y,
+        radial_distance,
+    );
+    assert!(frame.position.x < 8.0);
+}
+
+#[test]
+fn arc_entry_capture_regression_arc_track_entity_captures_from_tangent_board_endpoint() {
+    let center = vector2(8.0, 5.5);
+    let mut runtime = runtime_for_scene_with_arc_entity(
+        ball("ball", vector2(8.4, 4.5), vector2(-2.0, 0.0)),
+        arc_track_entity("arc-track", center, 1.0, 180.0, 90.0),
+        Vector2::ZERO,
+        0.05,
+    );
+
+    run_steps(&mut runtime, 12);
+    let frame = runtime_entity(&runtime, "ball");
+    let radial_distance = frame.position.sub(center).length();
+
+    assert!(
+        (radial_distance - 1.0).abs() < 5e-2,
+        "expected arc-track entity capture to keep the ball on-arc, got position=({:.3}, {:.3}) distance={:.3}",
         frame.position.x,
         frame.position.y,
         radial_distance,

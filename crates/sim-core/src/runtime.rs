@@ -7,6 +7,7 @@ mod contact_substeps;
 use std::collections::HashMap;
 
 use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySample};
+use crate::arc_track::{CompiledArcTrack, compiled_arc_track_from_constraint};
 use crate::entity::{CompiledShape, Vector2};
 use crate::scene::CompiledScene;
 use crate::solver::{
@@ -37,6 +38,7 @@ pub struct RuntimeScene {
     baseline: Vec<RuntimeBodyState>,
     bodies: Vec<RuntimeBodyState>,
     constraints: Vec<crate::constraint::CompiledConstraint>,
+    arc_tracks: Vec<CompiledArcTrack>,
     attached_arc_track_by_body_id: HashMap<String, String>,
     analyzer_blueprints: Vec<CompiledAnalyzer>,
     analyzers: Vec<TrajectoryAnalyzerState>,
@@ -48,9 +50,15 @@ pub struct RuntimeScene {
 
 impl RuntimeScene {
     pub fn new(compiled: CompiledScene, fixed_delta_seconds: f64) -> Self {
-        let gravity = compiled.gravity.acceleration;
-        let mut baseline = compiled
-            .entities
+        let CompiledScene {
+            entities,
+            constraints,
+            arc_tracks,
+            gravity,
+            analyzers,
+        } = compiled;
+        let gravity = gravity.acceleration;
+        let mut baseline = entities
             .into_iter()
             .map(|entity| RuntimeBodyState {
                 entity_id: entity.id,
@@ -77,9 +85,19 @@ impl RuntimeScene {
                 is_static: entity.is_static,
             })
             .collect::<Vec<_>>();
-        let constraints = compiled.constraints;
-        project_track_bindings(&mut baseline, &constraints, &HashMap::new());
-        let analyzer_blueprints = compiled.analyzers;
+        let mut runtime_arc_tracks = arc_tracks;
+        runtime_arc_tracks.extend(
+            constraints
+                .iter()
+                .filter_map(compiled_arc_track_from_constraint),
+        );
+        project_track_bindings(
+            &mut baseline,
+            &constraints,
+            &runtime_arc_tracks,
+            &HashMap::new(),
+        );
+        let analyzer_blueprints = analyzers;
         let mut analyzers = analyzer_blueprints
             .iter()
             .map(TrajectoryAnalyzerState::from_compiled)
@@ -91,6 +109,7 @@ impl RuntimeScene {
             baseline: baseline.clone(),
             bodies: baseline,
             constraints,
+            arc_tracks: runtime_arc_tracks,
             attached_arc_track_by_body_id: HashMap::new(),
             analyzer_blueprints,
             analyzers,
@@ -127,6 +146,7 @@ impl RuntimeScene {
             step_bodies(
                 &mut self.bodies,
                 &self.constraints,
+                &self.arc_tracks,
                 &mut self.attached_arc_track_by_body_id,
                 self.gravity,
                 substep_delta_seconds,

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use crate::analyzer::{AnalyzerDefinition, CompiledAnalyzer};
+use crate::arc_track::{ArcTrackCapturePolicy, CompiledArcTrack, validated_arc_start_and_span};
 use crate::constraint::{
     CompiledConstraint, ConstraintCompileError, ConstraintDefinition, compile_constraint,
 };
@@ -22,8 +23,14 @@ pub struct CompileSceneRequest {
 pub struct CompiledScene {
     pub entities: Vec<CompiledEntity>,
     pub constraints: Vec<CompiledConstraint>,
+    pub arc_tracks: Vec<CompiledArcTrack>,
     pub gravity: GravityForce,
     pub analyzers: Vec<CompiledAnalyzer>,
+}
+
+enum CompiledSceneEntity {
+    Body(CompiledEntity),
+    ArcTrack(CompiledArcTrack),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -116,6 +123,7 @@ impl From<ConstraintCompileError> for SceneCompileError {
 pub fn compile_scene(request: &CompileSceneRequest) -> Result<CompiledScene, SceneCompileError> {
     let mut entity_ids = HashSet::new();
     let mut compiled_entities = Vec::with_capacity(request.entities.len());
+    let mut compiled_arc_tracks = Vec::new();
 
     for entity in &request.entities {
         if !entity_ids.insert(entity.id.clone()) {
@@ -124,7 +132,10 @@ pub fn compile_scene(request: &CompileSceneRequest) -> Result<CompiledScene, Sce
             });
         }
 
-        compiled_entities.push(compile_entity(entity)?);
+        match compile_entity(entity)? {
+            CompiledSceneEntity::Body(entity) => compiled_entities.push(entity),
+            CompiledSceneEntity::ArcTrack(arc_track) => compiled_arc_tracks.push(arc_track),
+        }
     }
 
     let gravity = request
@@ -164,12 +175,13 @@ pub fn compile_scene(request: &CompileSceneRequest) -> Result<CompiledScene, Sce
     Ok(CompiledScene {
         entities: compiled_entities,
         constraints: compiled_constraints,
+        arc_tracks: compiled_arc_tracks,
         gravity,
         analyzers: compiled_analyzers,
     })
 }
 
-fn compile_entity(entity: &EntityDefinition) -> Result<CompiledEntity, SceneCompileError> {
+fn compile_entity(entity: &EntityDefinition) -> Result<CompiledSceneEntity, SceneCompileError> {
     let shape = match &entity.shape {
         ShapeDefinition::Ball { radius } => {
             if *radius <= 0.0 {
@@ -180,6 +192,40 @@ fn compile_entity(entity: &EntityDefinition) -> Result<CompiledEntity, SceneComp
             }
 
             CompiledShape::Ball { radius: *radius }
+        }
+        ShapeDefinition::ArcTrack {
+            radius,
+            central_angle_degrees,
+            ..
+        } => {
+            if !radius.is_finite() || *radius <= 0.0 {
+                return Err(SceneCompileError::InvalidArcTrackRadius {
+                    constraint_id: entity.id.clone(),
+                    value: *radius,
+                });
+            }
+
+            let Some((start_angle_radians, end_angle_radians, span_radians)) =
+                validated_arc_start_and_span(entity.rotation_radians, *central_angle_degrees)
+            else {
+                return Err(SceneCompileError::InvalidArcTrackSpan {
+                    constraint_id: entity.id.clone(),
+                    start_angle_degrees: entity.rotation_radians.to_degrees(),
+                    end_angle_degrees: entity.rotation_radians.to_degrees()
+                        + *central_angle_degrees,
+                });
+            };
+
+            return Ok(CompiledSceneEntity::ArcTrack(CompiledArcTrack {
+                id: entity.id.clone(),
+                center: entity.position,
+                radius: *radius,
+                start_angle_radians,
+                end_angle_radians,
+                span_radians,
+                side: crate::constraint::ArcTrackSide::Inside,
+                capture_policy: ArcTrackCapturePolicy::Either,
+            }));
         }
         ShapeDefinition::Block { width, height } => {
             if *width <= 0.0 || *height <= 0.0 {
@@ -213,7 +259,7 @@ fn compile_entity(entity: &EntityDefinition) -> Result<CompiledEntity, SceneComp
         }
     };
 
-    Ok(CompiledEntity {
+    Ok(CompiledSceneEntity::Body(CompiledEntity {
         id: entity.id.clone(),
         shape,
         position: entity.position,
@@ -223,5 +269,5 @@ fn compile_entity(entity: &EntityDefinition) -> Result<CompiledEntity, SceneComp
         is_static: entity.is_static,
         friction_coefficient: entity.friction_coefficient,
         restitution_coefficient: entity.restitution_coefficient,
-    })
+    }))
 }

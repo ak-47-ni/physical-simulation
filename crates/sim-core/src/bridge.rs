@@ -777,13 +777,19 @@ impl SceneForceSourcePayload {
 pub struct SceneEntityPayload {
     pub id: String,
     pub kind: String,
+    pub center: Option<Vector2>,
+    #[serde(rename = "centralAngleDegrees")]
+    pub central_angle_degrees: Option<f64>,
     pub points: Option<Vec<Vector2>>,
+    #[serde(rename = "rotationDegrees")]
+    pub rotation_degrees: Option<f64>,
     pub x: Option<f64>,
     pub y: Option<f64>,
     pub width: Option<f64>,
     pub height: Option<f64>,
     pub radius: Option<f64>,
     pub rotation_radians: Option<f64>,
+    pub thickness: Option<f64>,
     pub mass: Option<f64>,
     pub friction: Option<f64>,
     pub restitution: Option<f64>,
@@ -797,13 +803,17 @@ impl SceneEntityPayload {
         let SceneEntityPayload {
             id,
             kind,
+            center,
+            central_angle_degrees,
             points,
+            rotation_degrees,
             x,
             y,
             width,
             height,
             radius,
             rotation_radians,
+            thickness,
             mass,
             friction,
             restitution,
@@ -833,6 +843,32 @@ impl SceneEntityPayload {
                     EntityPhysicsDefaults {
                         mass: 0.0,
                         friction: 0.6,
+                        restitution: 0.0,
+                        locked: true,
+                    },
+                )
+            }
+            "arc-track" => {
+                let center = center.ok_or_else(|| BridgeError::IncompleteEntityRecord {
+                    id: id.clone(),
+                    kind: kind.clone(),
+                    missing_field: "center".to_string(),
+                })?;
+                let radius = required_scalar(&id, &kind, "radius", radius)?;
+                let central_angle_degrees =
+                    required_scalar(&id, &kind, "centralAngleDegrees", central_angle_degrees)?;
+                let thickness = required_scalar(&id, &kind, "thickness", thickness)?;
+
+                (
+                    ShapeDefinition::ArcTrack {
+                        radius,
+                        central_angle_degrees,
+                        thickness,
+                    },
+                    center,
+                    EntityPhysicsDefaults {
+                        mass: 0.0,
+                        friction: 0.0,
                         restitution: 0.0,
                         locked: true,
                     },
@@ -886,7 +922,10 @@ impl SceneEntityPayload {
             id,
             shape,
             position,
-            rotation_radians: rotation_radians.unwrap_or(0.0),
+            rotation_radians: match kind.as_str() {
+                "arc-track" => rotation_degrees.unwrap_or(0.0).to_radians(),
+                _ => rotation_radians.unwrap_or(0.0),
+            },
             initial_velocity: Vector2::new(velocity_x.unwrap_or(0.0), velocity_y.unwrap_or(0.0)),
             mass: mass.unwrap_or(defaults.mass),
             is_static: locked.unwrap_or(defaults.locked),

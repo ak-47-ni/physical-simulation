@@ -22,6 +22,30 @@ fn ball(id: &str, position: Vector2, velocity: Vector2) -> EntityDefinition {
     }
 }
 
+fn arc_track_entity(
+    id: &str,
+    center: Vector2,
+    radius: f64,
+    central_angle_degrees: f64,
+    rotation_degrees: f64,
+) -> EntityDefinition {
+    EntityDefinition {
+        id: id.to_string(),
+        shape: ShapeDefinition::ArcTrack {
+            radius,
+            central_angle_degrees,
+            thickness: 0.18,
+        },
+        position: center,
+        rotation_radians: rotation_degrees.to_radians(),
+        initial_velocity: Vector2::ZERO,
+        mass: 0.0,
+        is_static: true,
+        friction_coefficient: 0.0,
+        restitution_coefficient: 0.0,
+    }
+}
+
 fn runtime_for_scene(
     entity: EntityDefinition,
     constraint: ConstraintDefinition,
@@ -31,6 +55,26 @@ fn runtime_for_scene(
     let compiled = compile_scene(&CompileSceneRequest {
         entities: vec![entity],
         constraints: vec![constraint],
+        force_sources: vec![ForceSourceDefinition::Gravity {
+            id: "gravity".to_string(),
+            acceleration: gravity,
+        }],
+        analyzers: vec![],
+    })
+    .expect("scene should compile");
+
+    RuntimeScene::new(compiled, fixed_delta_seconds)
+}
+
+fn runtime_for_scene_with_arc_entity(
+    entity: EntityDefinition,
+    arc_track: EntityDefinition,
+    gravity: Vector2,
+    fixed_delta_seconds: f64,
+) -> RuntimeScene {
+    let compiled = compile_scene(&CompileSceneRequest {
+        entities: vec![entity, arc_track],
+        constraints: vec![],
         force_sources: vec![ForceSourceDefinition::Gravity {
             id: "gravity".to_string(),
             acceleration: gravity,
@@ -144,6 +188,23 @@ fn arc_track_regression_detaches_at_arc_end_and_continues_free_flight() {
             side: ArcTrackSide::Inside,
             entry_endpoint: ArcTrackEntryEndpoint::End,
         },
+        Vector2::ZERO,
+        0.05,
+    );
+
+    run_steps(&mut runtime, 12);
+    let frame = runtime_entity(&runtime, "ball");
+
+    assert!((frame.position.sub(center).length() - 2.0).abs() > 5e-2);
+    assert!(frame.velocity.x > 0.0);
+}
+
+#[test]
+fn arc_track_regression_arc_track_entity_detaches_at_arc_end_and_continues_free_flight() {
+    let center = vector2(4.0, 4.0);
+    let mut runtime = runtime_for_scene_with_arc_entity(
+        ball("ball", vector2(3.7, 2.0), vector2(2.8, 0.0)),
+        arc_track_entity("arc-track", center, 2.0, 30.0, 60.0),
         Vector2::ZERO,
         0.05,
     );

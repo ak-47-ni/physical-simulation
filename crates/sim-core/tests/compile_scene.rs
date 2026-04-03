@@ -93,3 +93,29 @@ fn compile_scene_rejects_unsupported_shapes() {
         }
     );
 }
+
+#[test]
+fn compile_scene_accepts_arc_track_entities_as_runtime_guides() {
+    let request = CompileSceneRequest {
+        entities: vec![dynamic_entity(
+            "arc-track-1",
+            ShapeDefinition::ArcTrack {
+                radius: 2.5,
+                central_angle_degrees: 120.0,
+                thickness: 0.18,
+            },
+        )],
+        constraints: vec![],
+        force_sources: vec![ForceSourceDefinition::Gravity {
+            id: "gravity-earth".to_string(),
+            acceleration: vector2(0.0, -9.81),
+        }],
+        analyzers: vec![],
+    };
+
+    let compiled = compile_scene(&request).expect("arc-track entities should compile");
+
+    assert_eq!(compiled.entities.len(), 0);
+    assert_eq!(compiled.arc_tracks.len(), 1);
+    assert_eq!(compiled.arc_tracks[0].id, "arc-track-1");
+}

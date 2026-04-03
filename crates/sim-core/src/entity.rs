@@ -59,10 +59,24 @@ impl Vector2 {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ShapeDefinition {
-    Ball { radius: f64 },
-    Block { width: f64, height: f64 },
-    ConvexPolygon { points: Vec<Vector2> },
-    Unsupported { kind: String },
+    Ball {
+        radius: f64,
+    },
+    Block {
+        width: f64,
+        height: f64,
+    },
+    ConvexPolygon {
+        points: Vec<Vector2>,
+    },
+    ArcTrack {
+        radius: f64,
+        central_angle_degrees: f64,
+        thickness: f64,
+    },
+    Unsupported {
+        kind: String,
+    },
 }
 
 impl ShapeDefinition {
@@ -71,6 +85,7 @@ impl ShapeDefinition {
             Self::Ball { .. } => "ball",
             Self::Block { .. } => "block",
             Self::ConvexPolygon { .. } => "convex-polygon",
+            Self::ArcTrack { .. } => "arc-track",
             Self::Unsupported { kind } => kind.as_str(),
         }
     }

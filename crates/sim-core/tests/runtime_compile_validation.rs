@@ -101,6 +101,61 @@ fn runtime_compile_validation_accepts_arc_tracks_without_entity_binding() {
 }
 
 #[test]
+fn runtime_compile_validation_accepts_arc_track_entities() {
+    let request: RuntimeCompileRequest = serde_json::from_value(json!({
+        "scene": {
+            "schemaVersion": 1,
+            "entities": [
+                {
+                    "id": "poly-1",
+                    "kind": "user-polygon",
+                    "points": [
+                        { "x": -1.0, "y": 0.0 },
+                        { "x": 1.0, "y": 0.0 },
+                        { "x": 1.0, "y": 2.0 },
+                        { "x": -1.0, "y": 2.0 }
+                    ]
+                },
+                {
+                    "id": "arc-track-1",
+                    "kind": "arc-track",
+                    "center": { "x": 0.0, "y": 2.0 },
+                    "radius": 3.0,
+                    "centralAngleDegrees": 135.0,
+                    "rotationDegrees": 180.0,
+                    "thickness": 0.18
+                }
+            ],
+            "constraints": [],
+            "forceSources": [
+                {
+                    "id": "gravity-1",
+                    "kind": "gravity",
+                    "acceleration": { "x": 0.0, "y": -9.81 }
+                }
+            ],
+            "analyzers": [],
+            "annotations": []
+        },
+        "dirtyScopes": [],
+        "rebuildRequired": false
+    }))
+    .expect("arc-track entity payload should deserialize");
+
+    let frame = SimulationBridge::new(1.0 / 60.0)
+        .compile_runtime_request(request)
+        .expect("arc-track entities should compile through the bridge");
+
+    assert_eq!(frame.frame_number, 0);
+    assert!(
+        frame
+            .entities
+            .iter()
+            .any(|entity| entity.entity_id == "poly-1")
+    );
+}
+
+#[test]
 fn runtime_compile_validation_rejects_legacy_arc_track_entity_binding_field() {
     let error = serde_json::from_value::<RuntimeCompileRequest>(json!({
         "scene": {
