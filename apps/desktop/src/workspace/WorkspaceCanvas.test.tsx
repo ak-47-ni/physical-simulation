@@ -47,6 +47,14 @@ function createArcTrackEntity(overrides: Record<string, unknown> = {}): EditorSc
   } as unknown as EditorSceneEntity;
 }
 
+function expectStraightEndArcTrackPath(pathTestId: string) {
+  const path = screen.getByTestId(pathTestId) as SVGPathElement;
+
+  expect(path.getAttribute("d")).toContain("Z");
+  expect(path.getAttribute("fill")).not.toBe("none");
+  expect(path.getAttribute("stroke-linejoin")).toBe("miter");
+}
+
 describe("WorkspaceCanvas", () => {
   it("mounts the center canvas and renders mock scene entities by id", () => {
     const state = createInitialEditorState();
@@ -213,7 +221,7 @@ describe("WorkspaceCanvas", () => {
     expect(screen.queryByTestId("scene-entity-lock-board-1")).toBeNull();
   });
 
-  it("renders arc-track entities with curved geometry, visual thickness, and selection behavior", () => {
+  it("renders arc-track entities as closed bands with straight radial end faces", () => {
     const selectedEntityIds: string[] = [];
     const arcTrackEntity = createArcTrackEntity();
 
@@ -241,7 +249,7 @@ describe("WorkspaceCanvas", () => {
 
     expect(entity.getAttribute("data-arc-track")).toBe("true");
     expect(entity.getAttribute("data-selected")).toBe("true");
-    expect(screen.getByTestId("scene-entity-arc-track-entity-1-path")).toBeDefined();
+    expectStraightEndArcTrackPath("scene-entity-arc-track-entity-1-path");
 
     fireEvent.click(entity);
 
@@ -859,6 +867,7 @@ describe("WorkspaceCanvas", () => {
     expect(preview.getAttribute("data-body-kind")).toBe("arc-track");
     expect(preview.getAttribute("data-preview-status")).toBe("free");
     expect(screen.getByTestId("workspace-stage-arc-track-preview")).toBeDefined();
+    expectStraightEndArcTrackPath("workspace-stage-arc-track-preview-path");
   });
 
   it("snaps arc-track body previews onto nearby board endpoints with tangent guides", () => {
@@ -884,6 +893,7 @@ describe("WorkspaceCanvas", () => {
     expect(preview.getAttribute("data-preview-status")).toBe("snap");
     expect(board.getAttribute("data-contact-target")).toBe("true");
     expect(screen.getByTestId("workspace-stage-arc-track-preview")).toBeDefined();
+    expectStraightEndArcTrackPath("workspace-stage-arc-track-preview-path");
     expect(screen.getByTestId("workspace-stage-arc-track-snap-guide")).toBeDefined();
   });
 
