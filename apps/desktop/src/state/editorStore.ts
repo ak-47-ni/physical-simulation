@@ -100,15 +100,15 @@ const BODY_LABELS: Record<LibraryBodyKind, string> = {
 const BODY_DEFAULTS = {
   ball: { radius: 24 },
   block: { width: 84, height: 52 },
-  board: { width: 120, height: 18 },
+  board: { width: 120, height: 14 },
   polygon: { width: 76, height: 76 },
-  "arc-track": { radius: 100, centralAngleDegrees: 90, thickness: 18 },
+  "arc-track": { radius: 100, centralAngleDegrees: 90, thickness: 14 },
 } as const;
 
 const BODY_PHYSICS_DEFAULTS: Record<Exclude<LibraryBodyKind, "arc-track">, EditorEntityPhysics> = {
   ball: {
     mass: 1.2,
-    friction: 0.14,
+    friction: 0,
     restitution: 1,
     locked: false,
     velocityX: 0,
@@ -116,7 +116,7 @@ const BODY_PHYSICS_DEFAULTS: Record<Exclude<LibraryBodyKind, "arc-track">, Edito
   },
   block: {
     mass: 2.8,
-    friction: 0.36,
+    friction: 0,
     restitution: 1,
     locked: false,
     velocityX: 0,
@@ -132,7 +132,7 @@ const BODY_PHYSICS_DEFAULTS: Record<Exclude<LibraryBodyKind, "arc-track">, Edito
   },
   polygon: {
     mass: 2.2,
-    friction: 0.28,
+    friction: 0,
     restitution: 1,
     locked: false,
     velocityX: 0,

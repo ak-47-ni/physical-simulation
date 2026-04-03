@@ -18,8 +18,19 @@ describe("editorStore", () => {
     }
   });
 
+  it("uses board-only non-zero default friction for new library bodies", () => {
+    expect(createPlacedBodyEntity([], "ball", { x: 12, y: 18 }).friction).toBe(0);
+    expect(createPlacedBodyEntity([], "block", { x: 12, y: 18 }).friction).toBe(0);
+    expect(createPlacedBodyEntity([], "board", { x: 12, y: 18 }).friction).toBe(0.42);
+    expect(createPlacedBodyEntity([], "polygon", { x: 12, y: 18 }).friction).toBe(0);
+  });
+
   it("seeds the initial scene with fully elastic restitution defaults", () => {
     expect(createInitialSceneEntities().map((entity) => entity.restitution)).toEqual([1, 1]);
+  });
+
+  it("seeds the initial scene with the board-only friction policy", () => {
+    expect(createInitialSceneEntities().map((entity) => entity.friction)).toEqual([0, 0.42]);
   });
 
   it("creates arc-track body entities with default geometry and board-thickness semantics", () => {
@@ -33,7 +44,7 @@ describe("editorStore", () => {
       radius: 100,
       centralAngleDegrees: 90,
       rotationDegrees: 0,
-      thickness: 18,
+      thickness: 14,
     });
   });
 
@@ -48,7 +59,7 @@ describe("editorStore", () => {
         radius: 100,
         centralAngleDegrees: 120,
         rotationDegrees: 15,
-        thickness: 18,
+        thickness: 14,
       },
     );
 
@@ -60,7 +71,7 @@ describe("editorStore", () => {
       radius: 100,
       centralAngleDegrees: 120,
       rotationDegrees: 15,
-      thickness: 18,
+      thickness: 14,
     });
   });
 });

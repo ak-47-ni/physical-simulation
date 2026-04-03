@@ -45,6 +45,19 @@ vi.mock("./panels/ObjectLibraryPanel", () => ({
         </button>
         <button
           type="button"
+          onClick={() => {
+            const session: LibraryDragSession = {
+              bodyKind: "arc-track",
+              pointerClientPx: { x: 24, y: 36 },
+            };
+
+            (props.onStartBodyDrag as undefined | ((session: unknown) => void))?.(session);
+          }}
+        >
+          Start arc-track drag
+        </button>
+        <button
+          type="button"
           onClick={() => (props.onSelectItem as (itemId: string) => void)("spring")}
         >
           Select spring
@@ -407,94 +420,50 @@ describe("App direct manipulation contracts", () => {
     expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-tool")).toBe("select");
   });
 
-  it("keeps arc-track placement on the locked-board flow and ignores balls or unlocked boards", () => {
+  it("keeps arc-track library selection on the normal body-placement flow", () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "Select arc track" }));
 
-    expect(screen.getByText("Select a locked board for the arc track")).toBeDefined();
-    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-tool")).toBe(
-      "place-constraint",
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Pick ball for constraint" }));
-
-    expect(screen.queryByTestId("scene-tree-constraint-arc-track-1")).toBeNull();
-    expect(screen.getByText("Select a locked board for the arc track")).toBeDefined();
-
-    fireEvent.click(screen.getByRole("button", { name: "Pick board for constraint" }));
-
-    expect(screen.queryByTestId("scene-tree-constraint-arc-track-1")).toBeNull();
-    expect(screen.getByText("Select a locked board for the arc track")).toBeDefined();
-  });
-
-  it("creates a board-anchored arc after a locked board, endpoint, and center pick", () => {
-    render(<App />);
-
-    fireEvent.click(screen.getByTestId("scene-tree-item-board-1"));
-    fireEvent.click(screen.getByLabelText("Locked in simulation"));
-    fireEvent.click(screen.getByRole("button", { name: "Select arc track" }));
-    fireEvent.click(screen.getByRole("button", { name: "Pick board for constraint" }));
-
-    expect(screen.getByText("Select the board endpoint for the arc junction")).toBeDefined();
-
-    fireEvent.click(screen.getByRole("button", { name: "Pick board endpoint start" }));
-
-    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-constraint-stage")).toBe(
-      "pick-radius",
-    );
-    expect(screen.getByText("Pick a point to set the arc radius")).toBeDefined();
-
-    fireEvent.click(screen.getByRole("button", { name: "Pick constraint point" }));
-
-    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-constraint-stage")).toBe(
-      "pick-span",
-    );
-    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-draft-radius")).toBe(
-      "1.6",
-    );
-    expect(screen.getAllByText("Choose an arc span preset to create the arc track")).not.toHaveLength(
-      0,
-    );
-    expect(screen.getByText("Radius 1.6 m")).toBeDefined();
-
-    fireEvent.click(screen.getByRole("button", { name: "Create 90° arc" }));
-
-    expect(screen.queryByText("Select the board endpoint for the arc junction")).toBeNull();
-    expect(screen.queryByText("Pick a point to set the arc radius")).toBeNull();
-    expect(screen.queryAllByText("Choose an arc span preset to create the arc track")).toHaveLength(
-      0,
-    );
-    expect(screen.getByTestId("scene-tree-constraint-arc-track-1")).toBeDefined();
+    expect(screen.queryByText("Select a locked board for the arc track")).toBeNull();
     expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-tool")).toBe("select");
 
-    fireEvent.click(screen.getByTestId("scene-tree-constraint-arc-track-1"));
+    fireEvent.click(screen.getByRole("button", { name: "Pick ball for constraint" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pick board for constraint" }));
 
-    const startAngleDegrees = Number(
-      (screen.getByLabelText("Start angle") as HTMLInputElement).value,
-    );
-    const endAngleDegrees = Number((screen.getByLabelText("End angle") as HTMLInputElement).value);
-
-    expect(endAngleDegrees - startAngleDegrees).toBeCloseTo(90, 5);
+    expect(screen.queryByTestId("scene-tree-constraint-arc-track-1")).toBeNull();
+    expect(screen.queryByText("Select a locked board for the arc track")).toBeNull();
   });
 
-  it("keeps a created arc-track after deleting the source board", () => {
+  it("creates an arc-track body from a body drag instead of the old constraint wizard", () => {
     render(<App />);
 
-    fireEvent.click(screen.getByTestId("scene-tree-item-board-1"));
-    fireEvent.click(screen.getByLabelText("Locked in simulation"));
-    fireEvent.click(screen.getByRole("button", { name: "Select arc track" }));
-    fireEvent.click(screen.getByRole("button", { name: "Pick board for constraint" }));
-    fireEvent.click(screen.getByRole("button", { name: "Pick board endpoint start" }));
-    fireEvent.click(screen.getByRole("button", { name: "Pick constraint point" }));
-    fireEvent.click(screen.getByRole("button", { name: "Create 180° arc" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start arc-track drag" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
+    fireEvent.pointerUp(window);
 
-    expect(screen.getByTestId("scene-tree-constraint-arc-track-1")).toBeDefined();
+    expect(screen.getByTestId("scene-tree-item-arc-track-1")).toBeDefined();
+    expect(screen.getByTestId("scene-tree-item-arc-track-1").getAttribute("data-selected")).toBe(
+      "true",
+    );
+    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-library-drag-active")).toBe(
+      "false",
+    );
+  });
+
+  it("keeps a placed arc-track body after deleting a board", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start arc-track drag" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
+    fireEvent.pointerUp(window);
+
+    expect(screen.getByTestId("scene-tree-item-arc-track-1")).toBeDefined();
 
     fireEvent.click(screen.getByTestId("scene-tree-item-board-1"));
     fireEvent.click(screen.getByRole("button", { name: /delete entity/i }));
 
     expect(screen.queryByTestId("scene-tree-item-board-1")).toBeNull();
-    expect(screen.getByTestId("scene-tree-constraint-arc-track-1")).toBeDefined();
+    expect(screen.getByTestId("scene-tree-item-arc-track-1")).toBeDefined();
   });
 });

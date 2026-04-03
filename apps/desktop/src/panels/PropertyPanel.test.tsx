@@ -70,7 +70,7 @@ function BoardSelectionHarness() {
 }
 
 describe("PropertyPanel", () => {
-  it("edits selected ball properties and exposes duplicate and delete actions", () => {
+  it("edits selected ball properties without exposing friction and keeps duplicate/delete actions", () => {
     const updates: Array<{ x: number; y: number }> = [];
     const labelUpdates: string[] = [];
     const radiusUpdates: number[] = [];
@@ -113,7 +113,7 @@ describe("PropertyPanel", () => {
           y: 176,
           radius: 26,
           mass: 1.2,
-          friction: 0.14,
+          friction: 0,
           restitution: 0.82,
           locked: false,
           velocityX: 4,
@@ -127,7 +127,7 @@ describe("PropertyPanel", () => {
     fireEvent.change(screen.getByLabelText("Position Y"), { target: { value: "214" } });
     fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "30" } });
     fireEvent.change(screen.getByLabelText("Mass"), { target: { value: "1.8" } });
-    fireEvent.change(screen.getByLabelText("Friction"), { target: { value: "0.2" } });
+    expect(screen.queryByLabelText("Friction")).toBeNull();
     fireEvent.change(screen.getByLabelText("Restitution"), { target: { value: "0.9" } });
     fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "12" } });
     fireEvent.change(screen.getByLabelText("Velocity Y"), { target: { value: "-8" } });
@@ -143,7 +143,6 @@ describe("PropertyPanel", () => {
     expect(radiusUpdates).toEqual([30]);
     expect(physicsUpdates).toEqual([
       { mass: 1.8 },
-      { friction: 0.2 },
       { restitution: 0.9 },
       { velocityX: 12 },
       { velocityY: -8 },

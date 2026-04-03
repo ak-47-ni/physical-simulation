@@ -307,12 +307,6 @@ export function App() {
     setLibraryDragHover(null);
     setLibraryDragSession(null);
 
-    if (itemId === "arc-track") {
-      handleToolChange("place-constraint");
-      setConstraintPlacement(createConstraintPlacementState(itemId));
-      return;
-    }
-
     if (isLibraryBodyKind(itemId)) {
       setConstraintPlacement(null);
       handleToolChange("select");

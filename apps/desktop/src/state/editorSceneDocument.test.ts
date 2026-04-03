@@ -203,7 +203,7 @@ describe("editorSceneDocument", () => {
         y: 17600,
         radius: 2400,
         mass: 1200,
-        friction: 0.14,
+        friction: 0,
         restitution: 1,
         locked: false,
         velocityX: 125,

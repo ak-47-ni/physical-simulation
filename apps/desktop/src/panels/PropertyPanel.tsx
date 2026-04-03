@@ -339,6 +339,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
           velocityY: selectedEntity.velocityY,
         })
     : null;
+  const showsEditableFriction = selectedEntity?.kind === "board";
 
   return (
     <div style={{ display: "grid", gap: "16px" }}>
@@ -785,12 +786,14 @@ export function PropertyPanel(props: PropertyPanelProps) {
                     value={selectedEntity.mass}
                     onChange={(mass) => onUpdateSelectedEntityPhysics({ mass })}
                   />
-                  <PositionInput
-                    disabled={authoringLocked}
-                    label="Friction"
-                    value={selectedEntity.friction}
-                    onChange={(friction) => onUpdateSelectedEntityPhysics({ friction })}
-                  />
+                  {showsEditableFriction ? (
+                    <PositionInput
+                      disabled={authoringLocked}
+                      label="Friction"
+                      value={selectedEntity.friction}
+                      onChange={(friction) => onUpdateSelectedEntityPhysics({ friction })}
+                    />
+                  ) : null}
                   <PositionInput
                     disabled={authoringLocked}
                     label="Restitution"
