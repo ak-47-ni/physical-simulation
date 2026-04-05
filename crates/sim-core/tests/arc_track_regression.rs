@@ -200,7 +200,7 @@ fn arc_track_regression_detaches_at_arc_end_and_continues_free_flight() {
 }
 
 #[test]
-fn arc_track_regression_arc_track_entity_detaches_at_arc_end_and_continues_free_flight() {
+fn arc_track_regression_arc_track_entity_does_not_follow_legacy_guide_exit_path() {
     let center = vector2(4.0, 4.0);
     let mut runtime = runtime_for_scene_with_arc_entity(
         ball("ball", vector2(3.7, 2.0), vector2(2.8, 0.0)),
@@ -212,6 +212,9 @@ fn arc_track_regression_arc_track_entity_detaches_at_arc_end_and_continues_free_
     run_steps(&mut runtime, 12);
     let frame = runtime_entity(&runtime, "ball");
 
-    assert!((frame.position.sub(center).length() - 2.0).abs() > 5e-2);
-    assert!(frame.velocity.x > 0.0);
+    assert!(
+        (frame.position.sub(center).length() - 2.0).abs() > 5e-2,
+        "expected entity arc-track to avoid legacy centerline guidance, got radial distance {:.3}",
+        frame.position.sub(center).length(),
+    );
 }

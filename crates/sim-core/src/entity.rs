@@ -109,6 +109,11 @@ pub enum CompiledShape {
     Ball { radius: f64 },
     Block { width: f64, height: f64 },
     ConvexPolygon { points: Vec<Vector2> },
+    ArcTrack {
+        radius: f64,
+        central_angle_degrees: f64,
+        thickness: f64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -14,7 +14,7 @@ pub fn inverse_inertia_for_body(
 
     match shape {
         RuntimeBodyShape::Ball => 0.0,
-        RuntimeBodyShape::Box => {
+        RuntimeBodyShape::Box | RuntimeBodyShape::ArcTrack => {
             let width = half_extents.x * 2.0;
             let height = half_extents.y * 2.0;
             let inertia = mass * (width * width + height * height) / 12.0;
