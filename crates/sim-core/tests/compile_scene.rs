@@ -1,5 +1,5 @@
 use sim_core::constraint::ConstraintDefinition;
-use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
+use sim_core::entity::{CompiledShape, EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::scene::{CompileSceneRequest, SceneCompileError, compile_scene};
 
@@ -95,7 +95,7 @@ fn compile_scene_rejects_unsupported_shapes() {
 }
 
 #[test]
-fn compile_scene_accepts_arc_track_entities_as_runtime_guides() {
+fn compile_scene_compiles_arc_track_entities_as_collidable_bodies() {
     let request = CompileSceneRequest {
         entities: vec![dynamic_entity(
             "arc-track-1",
@@ -115,7 +115,15 @@ fn compile_scene_accepts_arc_track_entities_as_runtime_guides() {
 
     let compiled = compile_scene(&request).expect("arc-track entities should compile");
 
-    assert_eq!(compiled.entities.len(), 0);
-    assert_eq!(compiled.arc_tracks.len(), 1);
-    assert_eq!(compiled.arc_tracks[0].id, "arc-track-1");
+    assert_eq!(compiled.entities.len(), 1);
+    assert!(compiled.arc_tracks.is_empty());
+    assert_eq!(compiled.entities[0].id, "arc-track-1");
+    assert_eq!(
+        compiled.entities[0].shape,
+        CompiledShape::ArcTrack {
+            radius: 2.5,
+            central_angle_degrees: 120.0,
+            thickness: 0.18,
+        }
+    );
 }

@@ -7,11 +7,11 @@ mod contact_substeps;
 use std::collections::HashMap;
 
 use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySample};
-use crate::arc_track::{CompiledArcTrack, compiled_arc_track_from_constraint};
+use crate::arc_track::{CompiledArcTrack, compiled_arc_track_from_constraint, validated_arc_start_and_span};
 use crate::entity::{CompiledShape, Vector2};
 use crate::scene::CompiledScene;
 use crate::solver::{
-    RuntimeBodyShape, RuntimeBodyState, inverse_inertia_for_body, project_track_bindings,
+    RuntimeArcTrackGeometry, RuntimeBodyShape, RuntimeBodyState, inverse_inertia_for_body, project_track_bindings,
     step_bodies,
 };
 use serde::{Deserialize, Serialize};
@@ -63,6 +63,7 @@ impl RuntimeScene {
             .map(|entity| RuntimeBodyState {
                 entity_id: entity.id,
                 shape: runtime_body_shape(&entity.shape),
+                arc_track: runtime_arc_track_geometry(&entity.shape, entity.rotation_radians),
                 position: entity.position,
                 half_extents: shape_half_extents(&entity.shape),
                 rotation_radians: entity.rotation_radians,
@@ -126,6 +127,7 @@ impl RuntimeScene {
             entities: self
                 .bodies
                 .iter()
+                .filter(|body| body.shape != RuntimeBodyShape::ArcTrack)
                 .map(|body| RuntimeEntityFrame {
                     entity_id: body.entity_id.clone(),
                     position: body.position,
@@ -208,7 +210,33 @@ fn runtime_body_shape(shape: &CompiledShape) -> RuntimeBodyShape {
     match shape {
         CompiledShape::Ball { .. } => RuntimeBodyShape::Ball,
         CompiledShape::Block { .. } | CompiledShape::ConvexPolygon { .. } => RuntimeBodyShape::Box,
+        CompiledShape::ArcTrack { .. } => RuntimeBodyShape::ArcTrack,
     }
+}
+
+fn runtime_arc_track_geometry(
+    shape: &CompiledShape,
+    rotation_radians: f64,
+) -> Option<RuntimeArcTrackGeometry> {
+    let CompiledShape::ArcTrack {
+        radius,
+        central_angle_degrees,
+        thickness,
+    } = shape
+    else {
+        return None;
+    };
+
+    let (start_angle_radians, end_angle_radians, span_radians) =
+        validated_arc_start_and_span(rotation_radians, *central_angle_degrees)?;
+
+    Some(RuntimeArcTrackGeometry {
+        radius: *radius,
+        half_thickness: *thickness * 0.5,
+        start_angle_radians,
+        end_angle_radians,
+        span_radians,
+    })
 }
 
 fn shape_half_extents(shape: &CompiledShape) -> Vector2 {
@@ -229,6 +257,14 @@ fn shape_half_extents(shape: &CompiledShape) -> Vector2 {
             }
 
             Vector2::new((max_x - min_x) * 0.5, (max_y - min_y) * 0.5)
+        }
+        CompiledShape::ArcTrack {
+            radius,
+            thickness,
+            ..
+        } => {
+            let outer_radius = *radius + *thickness * 0.5;
+            Vector2::new(outer_radius, outer_radius)
         }
     }
 }

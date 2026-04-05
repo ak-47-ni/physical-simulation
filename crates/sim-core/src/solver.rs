@@ -30,12 +30,23 @@ const IMPLICIT_BOUNDARY_RESTITUTION_COEFFICIENT: f64 = 0.0;
 pub enum RuntimeBodyShape {
     Ball,
     Box,
+    ArcTrack,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RuntimeArcTrackGeometry {
+    pub radius: f64,
+    pub half_thickness: f64,
+    pub start_angle_radians: f64,
+    pub end_angle_radians: f64,
+    pub span_radians: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeBodyState {
     pub entity_id: String,
     pub shape: RuntimeBodyShape,
+    pub arc_track: Option<RuntimeArcTrackGeometry>,
     pub position: Vector2,
     pub half_extents: Vector2,
     pub rotation_radians: f64,

@@ -1,4 +1,5 @@
 use crate::entity::Vector2;
+use crate::arc_track;
 
 use super::{RuntimeBodyShape, RuntimeBodyState};
 
@@ -18,6 +19,7 @@ pub fn contact_manifold(
     match (body_a.shape, body_b.shape) {
         (RuntimeBodyShape::Ball, RuntimeBodyShape::Ball) => ball_ball_contact(body_a, body_b),
         (RuntimeBodyShape::Ball, RuntimeBodyShape::Box) => ball_box_contact(body_a, body_b),
+        (RuntimeBodyShape::Ball, RuntimeBodyShape::ArcTrack) => ball_arc_track_contact(body_a, body_b),
         (RuntimeBodyShape::Box, RuntimeBodyShape::Ball) => {
             ball_box_contact(body_b, body_a).map(|contact| ContactManifold {
                 normal: contact.normal.scale(-1.0),
@@ -25,7 +27,15 @@ pub fn contact_manifold(
                 point: contact.point,
             })
         }
+        (RuntimeBodyShape::ArcTrack, RuntimeBodyShape::Ball) => {
+            ball_arc_track_contact(body_b, body_a).map(|contact| ContactManifold {
+                normal: contact.normal.scale(-1.0),
+                penetration: contact.penetration,
+                point: contact.point,
+            })
+        }
         (RuntimeBodyShape::Box, RuntimeBodyShape::Box) => box_box_contact(body_a, body_b),
+        _ => None,
     }
 }
 
@@ -56,7 +66,7 @@ pub fn boundary_contact_manifold(
 pub fn projected_extent(body: &RuntimeBodyState, axis: Vector2) -> f64 {
     match body.shape {
         RuntimeBodyShape::Ball => body.half_extents.x,
-        RuntimeBodyShape::Box => {
+        RuntimeBodyShape::Box | RuntimeBodyShape::ArcTrack => {
             let [axis_x, axis_y] = box_axes(body);
             body.half_extents.x * axis.dot(axis_x).abs()
                 + body.half_extents.y * axis.dot(axis_y).abs()
@@ -168,6 +178,42 @@ fn ball_box_contact(
             point,
         })
     }
+}
+
+fn ball_arc_track_contact(
+    ball: &RuntimeBodyState,
+    arc_track_body: &RuntimeBodyState,
+) -> Option<ContactManifold> {
+    let arc_track = arc_track_body.arc_track?;
+    let projection = arc_track::project_point_to_arc(
+        arc_track_body.position,
+        arc_track.radius,
+        arc_track.start_angle_radians,
+        arc_track.end_angle_radians,
+        arc_track.span_radians,
+        ball.position,
+    );
+    let offset = ball.position.sub(projection.position);
+    let distance = offset.length();
+    let allowed_distance = ball.half_extents.x + arc_track.half_thickness;
+
+    if distance > allowed_distance {
+        return None;
+    }
+
+    let normal = if distance > CONTACT_EPSILON {
+        offset.scale(1.0 / distance)
+    } else {
+        arc_track::radial_for_angle(projection.angle_radians)
+    };
+
+    Some(ContactManifold {
+        normal,
+        penetration: allowed_distance - distance,
+        point: projection
+            .position
+            .add(normal.scale(arc_track.half_thickness)),
+    })
 }
 
 fn box_box_contact(

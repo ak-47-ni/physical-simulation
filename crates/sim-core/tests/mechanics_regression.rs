@@ -226,6 +226,36 @@ fn mechanics_regression_prevents_a_falling_body_from_passing_through_ground() {
 }
 
 #[test]
+fn mechanics_regression_zero_friction_board_still_resolves_contact() {
+    let mut runtime = runtime_for_scene(vec![
+        block(
+            "ground",
+            vector2(0.0, 0.0),
+            (20.0, 1.0),
+            vector2(0.0, 0.0),
+            true,
+            0.0,
+            0.0,
+        ),
+        EntityDefinition {
+            friction_coefficient: 0.0,
+            ..ball("ball-1", vector2(0.0, 4.0), 0.5, vector2(0.0, 0.0), 0.0)
+        },
+    ]);
+
+    run_steps(&mut runtime, 80);
+    let frame = runtime.current_frame();
+    let ball = frame
+        .entities
+        .iter()
+        .find(|entity| entity.entity_id == "ball-1")
+        .expect("ball should exist");
+
+    assert!(ball.position.y >= 1.0 - 1e-6, "ball_y={}", ball.position.y);
+    assert!(ball.velocity.y.abs() < 0.5, "ball_vy={}", ball.velocity.y);
+}
+
+#[test]
 fn mechanics_regression_restitution_changes_bounce_response() {
     let mut low_restitution = runtime_for_scene(vec![
         block(

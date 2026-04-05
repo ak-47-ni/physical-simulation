@@ -49,7 +49,7 @@ pub fn contact_normal_and_penetration(
 fn projected_half_extent(body: &RuntimeBodyState, axis: Vector2) -> f64 {
     match body.shape {
         RuntimeBodyShape::Ball => body.half_extents.x,
-        RuntimeBodyShape::Box => {
+        RuntimeBodyShape::Box | RuntimeBodyShape::ArcTrack => {
             body.half_extents.x * axis.x.abs() + body.half_extents.y * axis.y.abs()
         }
     }
