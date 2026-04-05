@@ -3,9 +3,17 @@ import { describe, expect, it } from "vitest";
 import {
   applyConstraintUpdate,
   createConstraintPlacementState,
+  createInitialAuthoringState,
 } from "./appEditorHelpers";
 
 describe("appEditorHelpers", () => {
+  it("starts the authoring scene with a locked board for support-contact demos", () => {
+    const initialState = createInitialAuthoringState();
+    const board = initialState.entities.find((entity) => entity.kind === "board");
+
+    expect(board?.locked).toBe(true);
+  });
+
   it("starts arc-track placement on the locked-board picking step with empty draft fields", () => {
     expect(createConstraintPlacementState("arc-track")).toEqual({
       anchorEntityId: null,

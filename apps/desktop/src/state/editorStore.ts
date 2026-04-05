@@ -102,7 +102,7 @@ const BODY_DEFAULTS = {
   block: { width: 84, height: 52 },
   board: { width: 120, height: 14 },
   polygon: { width: 76, height: 76 },
-  "arc-track": { radius: 100, centralAngleDegrees: 90, thickness: 14 },
+  "arc-track": { radius: 100, centralAngleDegrees: 90, thickness: 18 },
 } as const;
 
 const BODY_PHYSICS_DEFAULTS: Record<Exclude<LibraryBodyKind, "arc-track">, EditorEntityPhysics> = {
@@ -126,7 +126,7 @@ const BODY_PHYSICS_DEFAULTS: Record<Exclude<LibraryBodyKind, "arc-track">, Edito
     mass: 5,
     friction: 0.42,
     restitution: 1,
-    locked: false,
+    locked: true,
     velocityX: 0,
     velocityY: 0,
   },

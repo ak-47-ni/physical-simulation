@@ -123,7 +123,7 @@ describe("runtimeCompileRequest", () => {
             mass: 5,
             friction: 0.42,
             restitution: 1,
-            locked: false,
+            locked: true,
             velocityX: 0,
             velocityY: 0,
           },
@@ -263,6 +263,7 @@ describe("runtimeCompileRequest", () => {
           width: 1.2,
           height: 0.18,
           mass: 5,
+          locked: true,
         },
       ],
     });
@@ -356,7 +357,7 @@ describe("runtimeCompileRequest", () => {
       radius: 100,
       centralAngleDegrees: 90,
       rotationDegrees: 0,
-      thickness: 14,
+      thickness: 18,
     });
   });
 

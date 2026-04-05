@@ -10,6 +10,12 @@ import {
 const ELASTIC_BODY_KINDS: LibraryBodyKind[] = ["ball", "block", "board", "polygon"];
 
 describe("editorStore", () => {
+  it("creates support boards locked by default for classroom collision scenes", () => {
+    const board = createPlacedBodyEntity([], "board", { x: 12, y: 18 });
+
+    expect(board.locked).toBe(true);
+  });
+
   it("creates new library bodies with fully elastic restitution defaults", () => {
     for (const kind of ELASTIC_BODY_KINDS) {
       const entity = createPlacedBodyEntity([], kind, { x: 12, y: 18 });
@@ -33,6 +39,12 @@ describe("editorStore", () => {
     expect(createInitialSceneEntities().map((entity) => entity.friction)).toEqual([0, 0.42]);
   });
 
+  it("seeds the initial scene with a locked support board", () => {
+    const board = createInitialSceneEntities().find((entity) => entity.kind === "board");
+
+    expect(board?.locked).toBe(true);
+  });
+
   it("creates arc-track body entities with default geometry and board-thickness semantics", () => {
     const entity = createPlacedBodyEntity([], "arc-track", { x: 12, y: 18 });
 
@@ -44,7 +56,7 @@ describe("editorStore", () => {
       radius: 100,
       centralAngleDegrees: 90,
       rotationDegrees: 0,
-      thickness: 14,
+      thickness: 18,
     });
   });
 
@@ -59,7 +71,7 @@ describe("editorStore", () => {
         radius: 100,
         centralAngleDegrees: 120,
         rotationDegrees: 15,
-        thickness: 14,
+        thickness: 18,
       },
     );
 
@@ -71,7 +83,7 @@ describe("editorStore", () => {
       radius: 100,
       centralAngleDegrees: 120,
       rotationDegrees: 15,
-      thickness: 14,
+      thickness: 18,
     });
   });
 });

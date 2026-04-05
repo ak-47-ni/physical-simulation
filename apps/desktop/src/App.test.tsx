@@ -155,10 +155,10 @@ describe("App selection sync", () => {
     const board = screen.getByTestId("scene-entity-board-1") as HTMLElement;
     const sceneTreeItem = screen.getByTestId("scene-tree-item-board-1");
 
-    expect(board.textContent).toBe("Ramp");
+    expect(board.textContent).toContain("Ramp");
     expect(board.style.width).toBe("148px");
     expect(board.style.height).toBe("24px");
-    expect(sceneTreeItem.textContent).toBe("Ramp");
+    expect(sceneTreeItem.textContent).toContain("Ramp");
   });
 
   it("shows block angle and snaps a modest rotation edit into contact", () => {
@@ -296,6 +296,9 @@ describe("App selection sync", () => {
     render(<App />);
 
     fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+    expect((screen.getByLabelText("Locked in simulation") as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByTestId("scene-entity-lock-board-1")).toBeDefined();
+
     fireEvent.change(screen.getByLabelText("Mass"), { target: { value: "7.5" } });
     fireEvent.change(screen.getByLabelText("Friction"), { target: { value: "0.58" } });
     fireEvent.change(screen.getByLabelText("Restitution"), { target: { value: "0.24" } });
@@ -308,8 +311,8 @@ describe("App selection sync", () => {
     expect((screen.getByLabelText("Restitution") as HTMLInputElement).value).toBe("0.24");
     expect((screen.getByLabelText("Velocity X") as HTMLInputElement).value).toBe("12");
     expect((screen.getByLabelText("Velocity Y") as HTMLInputElement).value).toBe("-6");
-    expect((screen.getByLabelText("Locked in simulation") as HTMLInputElement).checked).toBe(true);
-    expect(screen.getByTestId("scene-entity-lock-board-1")).toBeDefined();
+    expect((screen.getByLabelText("Locked in simulation") as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByTestId("scene-entity-lock-board-1")).toBeNull();
   });
 
   it("updates display toggles from the property panel and inspector controls", () => {
@@ -395,6 +398,7 @@ describe("App selection sync", () => {
     render(<App />);
 
     fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+    expect((screen.getByLabelText("Locked in simulation") as HTMLInputElement).checked).toBe(true);
     fireEvent.change(screen.getByLabelText("Mass"), { target: { value: "6.4" } });
     fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "15" } });
     fireEvent.click(screen.getByLabelText("Locked in simulation"));
@@ -403,8 +407,8 @@ describe("App selection sync", () => {
     expect(screen.getByTestId("scene-entity-board-2")).toBeDefined();
     expect((screen.getByLabelText("Mass") as HTMLInputElement).value).toBe("6.4");
     expect((screen.getByLabelText("Velocity X") as HTMLInputElement).value).toBe("15");
-    expect((screen.getByLabelText("Locked in simulation") as HTMLInputElement).checked).toBe(true);
-    expect(screen.getByTestId("scene-entity-lock-board-2")).toBeDefined();
+    expect((screen.getByLabelText("Locked in simulation") as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByTestId("scene-entity-lock-board-2")).toBeNull();
   });
 
   it("supports keyboard shortcuts for duplicate and delete", () => {

@@ -221,7 +221,7 @@ describe("editorSceneDocument", () => {
         mass: 5000,
         friction: 0.42,
         restitution: 1,
-        locked: false,
+        locked: true,
         velocityX: 0,
         velocityY: 0,
       },
