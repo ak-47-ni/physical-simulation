@@ -1,4 +1,4 @@
-import { getBoardArcEndpoints } from "../state/boardArcPlacement";
+import { resolveBoardArcSnapTarget } from "../state/boardArcPlacement";
 import type { EditorEntityPhysics, EditorSceneEntity } from "../state/editorStore";
 import {
   createArcOverlayGeometry,
@@ -28,7 +28,7 @@ export type ArcTrackPreviewResolution = {
 
 const DEFAULT_ARC_TRACK_RADIUS = 0.72;
 const DEFAULT_ARC_TRACK_SPAN_DEGREES = 90;
-export const DEFAULT_ARC_TRACK_THICKNESS = 0.14;
+export const DEFAULT_ARC_TRACK_THICKNESS = 0.18;
 const DEFAULT_ARC_TRACK_PHYSICS: EditorEntityPhysics = {
   friction: 0.42,
   locked: false,
@@ -93,10 +93,6 @@ function normalizeArcSweepDegrees(startAngleDegrees: number, endAngleDegrees: nu
   }
 
   return sweep;
-}
-
-function distanceBetweenPoints(a: Point2, b: Point2): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function getVectorAngleDegrees(vector: Point2): number {
@@ -297,39 +293,13 @@ export function resolveArcTrackBodyPreview(input: {
 }): ArcTrackPreviewResolution {
   const previewEntity = createArcTrackTemplate(input.position);
   const maxSnapDistance = input.maxSnapDistance ?? DEFAULT_ARC_TRACK_SNAP_DISTANCE;
-  let closestBoardEndpoint:
-    | {
-        boardId: string;
-        distance: number;
-        point: Point2;
-        tangent: Point2;
-      }
-    | null = null;
-
-  for (const entity of input.entities) {
-    if (entity.kind !== "board") {
-      continue;
-    }
-
-    const endpoints = getBoardArcEndpoints(entity);
-
-    for (const endpoint of [endpoints.start, endpoints.end]) {
-      const distance = distanceBetweenPoints(input.position, endpoint.point);
-
-      if (distance > maxSnapDistance) {
-        continue;
-      }
-
-      if (!closestBoardEndpoint || distance < closestBoardEndpoint.distance) {
-        closestBoardEndpoint = {
-          boardId: entity.id,
-          distance,
-          point: endpoint.point,
-          tangent: endpoint.tangent,
-        };
-      }
-    }
-  }
+  const closestBoardEndpoint = resolveBoardArcSnapTarget({
+    boards: input.entities.filter(
+      (entity): entity is Extract<EditorSceneEntity, { kind: "board" }> => entity.kind === "board",
+    ),
+    maxSnapDistance,
+    position: input.position,
+  });
 
   if (!closestBoardEndpoint) {
     return {
@@ -339,14 +309,14 @@ export function resolveArcTrackBodyPreview(input: {
   }
 
   const contactAngleDegrees = normalizeAngleDegrees(
-    270 - getVectorAngleDegrees(closestBoardEndpoint.tangent),
+    270 - getVectorAngleDegrees(closestBoardEndpoint.endpoint.tangent),
   );
   const radiusVector = projectRadiusVector(previewEntity.radius, contactAngleDegrees);
   const snappedEntity: ArcTrackBodyEntity = {
     ...previewEntity,
     center: {
-      x: closestBoardEndpoint.point.x - radiusVector.x,
-      y: closestBoardEndpoint.point.y - radiusVector.y,
+      x: closestBoardEndpoint.endpoint.point.x - radiusVector.x,
+      y: closestBoardEndpoint.endpoint.point.y - radiusVector.y,
     },
     rotationDegrees: normalizeAngleDegrees(
       contactAngleDegrees + previewEntity.centralAngleDegrees / 2,
@@ -363,10 +333,14 @@ export function resolveArcTrackBodyPreview(input: {
     status: "snap",
     tangentGuide: {
       end: {
-        x: closestBoardEndpoint.point.x + closestBoardEndpoint.tangent.x * tangentGuideLength,
-        y: closestBoardEndpoint.point.y + closestBoardEndpoint.tangent.y * tangentGuideLength,
+        x:
+          closestBoardEndpoint.endpoint.point.x +
+          closestBoardEndpoint.endpoint.tangent.x * tangentGuideLength,
+        y:
+          closestBoardEndpoint.endpoint.point.y +
+          closestBoardEndpoint.endpoint.tangent.y * tangentGuideLength,
       },
-      start: closestBoardEndpoint.point,
+      start: closestBoardEndpoint.endpoint.point,
     },
   };
 }

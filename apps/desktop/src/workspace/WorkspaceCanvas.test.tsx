@@ -36,7 +36,7 @@ function createArcTrackEntity(overrides: Record<string, unknown> = {}): EditorSc
     radius: 1,
     centralAngleDegrees: 90,
     rotationDegrees: 0,
-    thickness: 0.14,
+    thickness: 0.18,
     locked: false,
     mass: 1,
     friction: 0,
@@ -58,7 +58,7 @@ function createAuthoredArcTrackEntity(
     radius: 1,
     centralAngleDegrees: 90,
     rotationDegrees: 0,
-    thickness: 0.14,
+    thickness: 0.18,
     ...overrides,
   };
 }
@@ -921,19 +921,19 @@ describe("WorkspaceCanvas", () => {
     expectStraightEndArcTrackPath("workspace-stage-arc-track-preview-path");
   });
 
-  it("snaps arc-track body previews onto nearby board endpoints with tangent guides", () => {
+  it("snaps arc-track body previews when dragged across a board span with tangent guides", () => {
     render(
       <WorkspaceCanvasPanHarness
         libraryDragSession={{
           bodyKind: "arc-track" as never,
-          pointerClientPx: { x: 320, y: 272 },
+          pointerClientPx: { x: 380, y: 272 },
         }}
         entities={[authoredBoardInMeters]}
       />,
     );
 
     fireEvent.mouseMove(screen.getByTestId("workspace-stage"), {
-      clientX: 320,
+      clientX: 380,
       clientY: 272,
     });
 

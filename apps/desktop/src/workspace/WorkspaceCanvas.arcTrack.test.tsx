@@ -45,15 +45,33 @@ function createArcTrackPreviewConstraint(): Extract<EditorConstraint, { kind: "a
 }
 
 describe("WorkspaceCanvas arc-track overlays", () => {
-  it("uses the standardized 0.14 m default thickness for arc-track body previews", () => {
+  it("uses the standardized 0.18 m default thickness for arc-track body previews", () => {
     const freeTemplate = createArcTrackTemplate({ x: 2.4, y: 1.8 });
     const snappedPreview = resolveArcTrackBodyPreview({
       entities: [{ ...authoredBoardInMeters, locked: true }],
       position: { x: authoredBoardInMeters.x, y: authoredBoardInMeters.y + 0.12 },
     });
 
-    expect(freeTemplate.thickness).toBeCloseTo(0.14);
-    expect(snappedPreview.entity.thickness).toBeCloseTo(0.14);
+    expect(freeTemplate.thickness).toBeCloseTo(0.18);
+    expect(snappedPreview.entity.thickness).toBeCloseTo(0.18);
+  });
+
+  it("chooses the nearest board endpoint even when the drag is over the board span", () => {
+    const preview = resolveArcTrackBodyPreview({
+      entities: [{ ...authoredBoardInMeters, locked: true }],
+      position: {
+        x: authoredBoardInMeters.x + 0.6,
+        y: authoredBoardInMeters.y + authoredBoardInMeters.height / 2,
+      },
+    });
+
+    expect(preview.status).toBe("snap");
+    expect(preview.contactWithEntityId).toBe("board-1");
+    expect(preview.tangentGuide?.start.x).toBeCloseTo(authoredBoardInMeters.x, 6);
+    expect(preview.tangentGuide?.start.y).toBeCloseTo(
+      authoredBoardInMeters.y + authoredBoardInMeters.height / 2,
+      6,
+    );
   });
 
   it("builds arc-track profile geometry with radial start and end faces", () => {

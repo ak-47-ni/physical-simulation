@@ -49,4 +49,31 @@ describe("boardArcPlacement", () => {
     expect(endpoints.end.tangent.x).toBeCloseTo(0.866025, 6);
     expect(endpoints.end.tangent.y).toBeCloseTo(0.5, 6);
   });
+
+  it("resolves the nearest endpoint when the drag hovers over the board body", async () => {
+    const { resolveBoardArcSnapTarget } = await loadBoardArcPlacement();
+    const board = createBoard({
+      height: 0.24,
+      rotationDegrees: 0,
+      width: 1.48,
+      x: 3.2,
+      y: 2.6,
+    });
+
+    const snapTarget = resolveBoardArcSnapTarget({
+      boards: [board],
+      maxSnapDistance: 0.28,
+      position: {
+        x: 3.8,
+        y: 2.72,
+      },
+    });
+
+    expect(snapTarget).not.toBeNull();
+    expect(snapTarget?.boardId).toBe("board-1");
+    expect(snapTarget?.endpoint.key).toBe("start");
+    expect(snapTarget?.endpoint.point.x).toBeCloseTo(3.2, 6);
+    expect(snapTarget?.endpoint.point.y).toBeCloseTo(2.72, 6);
+    expect(snapTarget?.boardDistance).toBeCloseTo(0, 6);
+  });
 });
