@@ -286,3 +286,87 @@ fn fallback_normal(delta: Vector2, relative_velocity: Vector2) -> Vector2 {
         Vector2::new(0.0, 1.0)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::solver::RuntimeArcTrackGeometry;
+
+    fn runtime_body(
+        shape: RuntimeBodyShape,
+        position: Vector2,
+        half_extents: Vector2,
+        rotation_radians: f64,
+    ) -> RuntimeBodyState {
+        RuntimeBodyState {
+            entity_id: "body".to_string(),
+            shape,
+            arc_track: None,
+            position,
+            half_extents,
+            rotation_radians,
+            velocity: Vector2::ZERO,
+            angular_velocity_radians: 0.0,
+            acceleration: Vector2::ZERO,
+            mass: 1.0,
+            inverse_inertia: 0.0,
+            friction_coefficient: 0.0,
+            restitution_coefficient: 0.0,
+            is_static: false,
+        }
+    }
+
+    #[test]
+    fn contact_geometry_ball_box_contact_uses_surface_boundary_point() {
+        let ball = runtime_body(
+            RuntimeBodyShape::Ball,
+            Vector2::new(0.0, 0.9),
+            Vector2::new(0.5, 0.5),
+            0.0,
+        );
+        let mut surface = runtime_body(
+            RuntimeBodyShape::Box,
+            Vector2::new(0.0, 0.0),
+            Vector2::new(2.0, 0.5),
+            0.0,
+        );
+        surface.is_static = true;
+
+        let contact = contact_manifold(&ball, &surface).expect("ball should contact top boundary");
+
+        assert!((contact.point.x - 0.0).abs() < 1e-9, "point_x={}", contact.point.x);
+        assert!((contact.point.y - 0.5).abs() < 1e-9, "point_y={}", contact.point.y);
+        assert_eq!(contact.normal, Vector2::new(0.0, 1.0));
+    }
+
+    #[test]
+    fn contact_geometry_ball_arc_track_contact_uses_track_boundary_shell() {
+        let ball = runtime_body(
+            RuntimeBodyShape::Ball,
+            Vector2::new(2.25, 0.0),
+            Vector2::new(0.25, 0.25),
+            0.0,
+        );
+        let mut arc_track = runtime_body(
+            RuntimeBodyShape::ArcTrack,
+            Vector2::new(0.0, 0.0),
+            Vector2::new(2.2, 2.2),
+            0.0,
+        );
+        arc_track.is_static = true;
+        arc_track.arc_track = Some(RuntimeArcTrackGeometry {
+            radius: 2.0,
+            half_thickness: 0.2,
+            start_angle_radians: 0.0,
+            end_angle_radians: std::f64::consts::FRAC_PI_2,
+            span_radians: std::f64::consts::FRAC_PI_2,
+        });
+
+        let contact =
+            contact_manifold(&ball, &arc_track).expect("ball should contact arc-track boundary");
+
+        assert!((contact.point.x - 2.2).abs() < 1e-9, "point_x={}", contact.point.x);
+        assert!((contact.point.y - 0.0).abs() < 1e-9, "point_y={}", contact.point.y);
+        assert_eq!(contact.normal, Vector2::new(1.0, 0.0));
+    }
+}
