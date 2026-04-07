@@ -7,6 +7,8 @@ import type {
 } from "./index";
 
 import {
+  DEFORMABLE_CONSTRAINT_KINDS,
+  RIGID_BOUNDARY_SCENE_ENTITY_KINDS,
   SCENE_SCHEMA_VERSION,
   createEmptySceneDocument,
   createRuntimeCompileRequest,
@@ -14,6 +16,8 @@ import {
   createRuntimeFramePayload,
   createUserPolygonEntity,
   cloneSceneDocument,
+  isDeformableConstraintKind,
+  isRigidBoundarySceneEntityKind,
   requiresRuntimeRebuild,
 } from "./index";
 
@@ -63,6 +67,24 @@ describe("scene schema", () => {
 
   it("types arc-track entities as explicit editable body geometry", () => {
     expect(true).toBe(true);
+  });
+
+  it("publishes rigid-boundary entity kinds and spring as the only deformable constraint kind", () => {
+    expect(RIGID_BOUNDARY_SCENE_ENTITY_KINDS).toEqual([
+      "user-polygon",
+      "ball",
+      "block",
+      "board",
+      "polygon",
+      "arc-track",
+    ]);
+    expect(DEFORMABLE_CONSTRAINT_KINDS).toEqual(["spring"]);
+
+    expect(isRigidBoundarySceneEntityKind("ball")).toBe(true);
+    expect(isRigidBoundarySceneEntityKind("arc-track")).toBe(true);
+    expect(isRigidBoundarySceneEntityKind("spring")).toBe(false);
+    expect(isDeformableConstraintKind("spring")).toBe(true);
+    expect(isDeformableConstraintKind("track")).toBe(false);
   });
 
   it("creates an empty scene document with all top-level collections", () => {

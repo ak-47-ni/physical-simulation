@@ -1,7 +1,16 @@
 import type { EditorTool } from "../workspace/tools";
 import type { LibraryConstraintKind } from "./editorConstraints";
 
-export type LibraryBodyKind = "ball" | "block" | "board" | "polygon" | "arc-track";
+// Authoring-side body tools all create rigid boundary bodies rather than area-driven physics objects.
+export const RIGID_BOUNDARY_LIBRARY_BODY_KINDS = [
+  "ball",
+  "block",
+  "board",
+  "polygon",
+  "arc-track",
+] as const;
+
+export type LibraryBodyKind = (typeof RIGID_BOUNDARY_LIBRARY_BODY_KINDS)[number];
 export type LibraryItemKind = LibraryBodyKind | LibraryConstraintKind;
 
 export type EditorEntityPhysics = {

@@ -4,12 +4,23 @@ import {
   createDuplicatedEntity,
   createInitialSceneEntities,
   createPlacedBodyEntity,
+  RIGID_BOUNDARY_LIBRARY_BODY_KINDS,
   type LibraryBodyKind,
 } from "./editorStore";
 
 const ELASTIC_BODY_KINDS: LibraryBodyKind[] = ["ball", "block", "board", "polygon"];
 
 describe("editorStore", () => {
+  it("publishes rigid-boundary library body kinds for authoring", () => {
+    expect(RIGID_BOUNDARY_LIBRARY_BODY_KINDS).toEqual([
+      "ball",
+      "block",
+      "board",
+      "polygon",
+      "arc-track",
+    ]);
+  });
+
   it("creates support boards locked by default for classroom collision scenes", () => {
     const board = createPlacedBodyEntity([], "board", { x: 12, y: 18 });
 

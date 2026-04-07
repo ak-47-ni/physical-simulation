@@ -1,10 +1,14 @@
 export {
+  DEFORMABLE_CONSTRAINT_KINDS,
+  RIGID_BOUNDARY_SCENE_ENTITY_KINDS,
   SCENE_SCHEMA_VERSION,
   cloneSceneDocument,
   createEmptySceneDocument,
   createTrajectoryAnalyzer,
   createUserPolygonEntity,
+  isDeformableConstraintKind,
   isConvexPolygon,
+  isRigidBoundarySceneEntityKind,
   requiresRuntimeRebuild,
 } from "./schema";
 export type {
@@ -13,9 +17,11 @@ export type {
   ArcTrackConstraint,
   AnnotationStroke,
   BallSceneEntity,
+  DeformableConstraintKind,
   DirtyEditScope,
   ForceSource,
   GravityForceSource,
+  RigidBoundarySceneEntityKind,
   SceneConstraint,
   SceneDocument,
   SceneEntity,

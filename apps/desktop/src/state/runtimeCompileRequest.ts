@@ -79,6 +79,8 @@ export type RuntimeSceneEntity =
   | RuntimeSizedSceneEntity
   | RuntimeUserPolygonEntity;
 
+// Runtime compile payload keeps rigid bodies in the entity list; stretch-like behavior stays in
+// constraint entries such as spring.
 export type RuntimeSceneRecord = {
   id: string;
   kind: string;

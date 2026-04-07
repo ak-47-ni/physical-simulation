@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import {
+  isDeformableConstraintKind,
+  isRigidBoundarySceneEntityKind,
+} from "../../../../packages/scene-schema/src";
 
 import { createSceneAuthoringSettings } from "./sceneAuthoringSettings";
 import { createInitialSceneEntities, createPlacedBodyEntity } from "./editorStore";
@@ -8,6 +12,38 @@ import {
 } from "./runtimeCompileRequest";
 
 describe("runtimeCompileRequest", () => {
+  it("compiles non-spring bodies as rigid-boundary entities while spring stays in constraint data", () => {
+    const request = createRuntimeCompileRequestFromEditorState({
+      constraints: [
+        {
+          entityAId: "ball-1",
+          entityBId: "board-1",
+          id: "spring-1",
+          kind: "spring" as const,
+          label: "Spring 1",
+          restLength: 236,
+          stiffness: 24,
+        },
+      ],
+      entities: [
+        ...createInitialSceneEntities(),
+        createPlacedBodyEntity(createInitialSceneEntities(), "arc-track", { x: 360, y: 240 }),
+      ],
+    });
+
+    expect(request.scene.entities.every((entity) => isRigidBoundarySceneEntityKind(entity.kind))).toBe(
+      true,
+    );
+    expect(
+      request.scene.constraints.filter((constraint) => isDeformableConstraintKind(constraint.kind)),
+    ).toEqual([
+      expect.objectContaining({
+        id: "spring-1",
+        kind: "spring",
+      }),
+    ]);
+  });
+
   it("maps editor entities and annotation strokes into a richer runtime compile payload", () => {
     const entities = createInitialSceneEntities().map((entity, index) =>
       index === 0

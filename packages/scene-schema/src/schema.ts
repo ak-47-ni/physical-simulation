@@ -1,9 +1,24 @@
 export const SCENE_SCHEMA_VERSION = 1;
+// These scene entity kinds are rigid bodies whose contact is defined by boundary geometry.
+// Visual fill remains presentation only and does not introduce separate physics semantics.
+export const RIGID_BOUNDARY_SCENE_ENTITY_KINDS = [
+  "user-polygon",
+  "ball",
+  "block",
+  "board",
+  "polygon",
+  "arc-track",
+] as const;
+// Spring remains the only stretch-like exception in the shared TS contract.
+export const DEFORMABLE_CONSTRAINT_KINDS = ["spring"] as const;
 
 export type Vector2 = {
   x: number;
   y: number;
 };
+
+export type RigidBoundarySceneEntityKind = (typeof RIGID_BOUNDARY_SCENE_ENTITY_KINDS)[number];
+export type DeformableConstraintKind = (typeof DEFORMABLE_CONSTRAINT_KINDS)[number];
 
 export type SceneEntityPhysics = {
   mass?: number;
@@ -126,6 +141,18 @@ export type SceneDocument = {
 };
 
 export type DirtyEditScope = "structure" | "physics" | "analysis" | "annotation";
+
+export function isRigidBoundarySceneEntityKind(
+  kind: string,
+): kind is RigidBoundarySceneEntityKind {
+  return (RIGID_BOUNDARY_SCENE_ENTITY_KINDS as readonly string[]).includes(kind);
+}
+
+export function isDeformableConstraintKind(
+  kind: string,
+): kind is DeformableConstraintKind {
+  return (DEFORMABLE_CONSTRAINT_KINDS as readonly string[]).includes(kind);
+}
 
 export function createEmptySceneDocument(): SceneDocument {
   return {
