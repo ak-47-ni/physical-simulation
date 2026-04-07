@@ -211,8 +211,13 @@ describe("WorkspaceCanvas", () => {
     expect(polygon.style.width).toBe("76px");
     expect(polygon.style.height).toBe("76px");
     expect(polygon.style.borderRadius).toBe("0px");
+    expect(ball.style.boxShadow).toContain("inset");
+    expect(board.style.boxShadow).toContain("inset");
     expect(board.getAttribute("data-locked")).toBe("true");
     expect(screen.getByTestId("scene-entity-lock-board-1")).toBeDefined();
+    expect(
+      screen.getByText("Rigid contacts follow body boundaries. Fill shows shape only."),
+    ).toBeDefined();
   });
 
   it("shows no lock marker for movable entities", () => {

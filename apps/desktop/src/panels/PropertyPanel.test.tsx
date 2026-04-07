@@ -122,6 +122,11 @@ describe("PropertyPanel", () => {
       />,
     );
 
+    expect(
+      screen.getByText("Rigid-body contact follows body boundaries. Fill stays visual only."),
+    ).toBeDefined();
+    expect(screen.getByText("Springs are the only stretch-like exception.")).toBeDefined();
+
     fireEvent.change(screen.getByLabelText("Entity name"), { target: { value: "Projectile" } });
     fireEvent.change(screen.getByLabelText("Position X"), { target: { value: "164" } });
     fireEvent.change(screen.getByLabelText("Position Y"), { target: { value: "214" } });

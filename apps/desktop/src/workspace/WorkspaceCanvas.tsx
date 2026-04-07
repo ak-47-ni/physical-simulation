@@ -148,6 +148,8 @@ const actionButtonStyle: CSSProperties = {
 
 const authoringLockMessage =
   "Playback running. Move, placement, and constraint editing are temporarily locked.";
+const rigidBoundaryWorkspaceMessage =
+  "Rigid contacts follow body boundaries. Fill shows shape only.";
 
 function isArcTrackLocked(entity: ArcTrackBodyEntity): boolean {
   return entity.locked ?? false;
@@ -202,6 +204,8 @@ function getEntityVisualStyle(
   const rotationDegrees = getEntityRotationDegrees(entity);
   const boxShadows: string[] = [];
 
+  boxShadows.push("inset 0 0 0 1px rgba(255, 255, 255, 0.2)");
+
   if (entity.locked) {
     boxShadows.push("0 0 0 2px rgba(245, 181, 62, 0.45)");
   }
@@ -215,9 +219,13 @@ function getEntityVisualStyle(
     left: `${entity.x}px`,
     top: `${entity.y}px`,
     border: isContactTarget
-      ? "1px solid rgba(18, 117, 93, 0.42)"
-      : "1px solid rgba(17, 37, 64, 0.16)",
-    background: isSelected ? "#2457a6" : "rgba(17, 37, 64, 0.88)",
+      ? "2px solid rgba(18, 117, 93, 0.42)"
+      : isSelected
+        ? "2px solid rgba(36, 87, 166, 0.68)"
+        : "2px solid rgba(17, 37, 64, 0.28)",
+    background: isSelected
+      ? "linear-gradient(180deg, rgba(36, 87, 166, 0.42), rgba(36, 87, 166, 0.24))"
+      : "linear-gradient(180deg, rgba(17, 37, 64, 0.3), rgba(17, 37, 64, 0.16))",
     color: "#f7fbff",
     fontSize: entity.kind === "board" ? "10px" : "12px",
     cursor: "pointer",
@@ -1106,6 +1114,12 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             </>
           ) : null}
         </div>
+        <span
+          data-testid="workspace-rigid-boundary-note"
+          style={{ color: "#516276", fontSize: "13px", textAlign: "right" }}
+        >
+          {rigidBoundaryWorkspaceMessage}
+        </span>
       </div>
 
       <div
