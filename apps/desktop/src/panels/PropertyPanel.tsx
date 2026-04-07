@@ -136,6 +136,15 @@ const actionButtonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
+const semanticsNoteStyle: CSSProperties = {
+  display: "grid",
+  gap: "4px",
+  padding: "10px 12px",
+  borderRadius: "12px",
+  background: "#ffffff",
+  border: "1px solid rgba(108, 128, 173, 0.14)",
+};
+
 function ReadonlyField(props: { label: string; value: string }) {
   return (
     <div style={{ display: "grid", gap: "4px" }}>
@@ -396,6 +405,14 @@ export function PropertyPanel(props: PropertyPanelProps) {
 
       <section style={cardStyle}>
         <h2 style={sectionLabelStyle}>Selection</h2>
+        <div style={semanticsNoteStyle}>
+          <span style={{ color: "#17304f", fontSize: "13px", fontWeight: 600 }}>
+            Rigid-body contact follows body boundaries. Fill stays visual only.
+          </span>
+          <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+            Springs are the only stretch-like exception.
+          </span>
+        </div>
         {selectionLockReason ? (
           <span style={{ color: "#9a3412", fontSize: "13px", lineHeight: 1.5 }}>
             {selectionLockReason}

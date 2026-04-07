@@ -50,6 +50,10 @@ describe("AnalysisPanel", () => {
   it("toggles trajectory, vector overlays, and chart visibility", () => {
     render(<AnalysisPanel />);
 
+    expect(screen.getByTestId("rigid-boundary-overlay")).toBeDefined();
+    expect(
+      screen.getByText("Rigid-body contact follows body boundaries; fill stays visual."),
+    ).toBeDefined();
     expect(screen.queryByTestId("trajectory-overlay")).toBeNull();
     expect(screen.queryByTestId("velocity-vector-overlay")).toBeNull();
     expect(screen.queryByTestId("force-vector-overlay")).toBeNull();

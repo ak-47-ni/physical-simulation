@@ -20,6 +20,9 @@ export function OverlayLayer(props: OverlayLayerProps) {
 
   return (
     <div data-testid="overlay-layer" style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+      <span data-testid="rigid-boundary-overlay" style={badgeStyle}>
+        Rigid-body contact follows body boundaries; fill stays visual.
+      </span>
       {overlays.showTrajectories ? (
         <span data-testid="trajectory-overlay" style={badgeStyle}>
           Trajectories visible
