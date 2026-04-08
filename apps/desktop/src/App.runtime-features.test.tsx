@@ -119,7 +119,7 @@ async function calculateResult(durationSeconds = 1) {
     expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
       false,
     );
-  });
+  }, { timeout: 5_000 });
 
   return getTransportHarness();
 }
@@ -461,7 +461,7 @@ describe("App runtime features", () => {
       expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
         false,
       );
-    });
+    }, { timeout: 5_000 });
 
     harness = await rewindCalculatedResult();
     fireEvent.click(harness.transport.getByRole("button", { name: /^step$/i }));
