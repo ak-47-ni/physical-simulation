@@ -100,6 +100,42 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function getTransportHarness() {
+  const transport = within(screen.getByTestId("bottom-transport-bar"));
+  const topRow = within(screen.getByTestId("transport-compact-row"));
+
+  return { topRow, transport };
+}
+
+async function calculateResult(durationSeconds = 1) {
+  const { transport } = getTransportHarness();
+
+  fireEvent.change(screen.getByLabelText("Precompute duration"), {
+    target: { value: String(durationSeconds) },
+  });
+  fireEvent.click(transport.getByRole("button", { name: /^calculate$/i }));
+
+  await waitFor(() => {
+    expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
+      false,
+    );
+  });
+
+  return getTransportHarness();
+}
+
+async function rewindCalculatedResult() {
+  const { transport, topRow } = getTransportHarness();
+
+  fireEvent.click(transport.getByRole("button", { name: /^reset$/i }));
+
+  await waitFor(() => {
+    expect(topRow.getByText("0.00 s")).toBeDefined();
+  });
+
+  return getTransportHarness();
+}
+
 describe("App runtime features", () => {
   it("mounts scene physics controls with SI defaults and classroom world scale", () => {
     render(<App />);
@@ -120,31 +156,43 @@ describe("App runtime features", () => {
     expect(screen.getByTestId("annotation-layer")).toBeDefined();
   });
 
-  it("routes transport controls through app runtime state", () => {
+  it("routes transport controls through app runtime state", async () => {
     render(<App />);
-    const transport = within(screen.getByTestId("bottom-transport-bar"));
-    const topRow = within(screen.getByTestId("transport-compact-row"));
+    const { topRow } = getTransportHarness();
 
     expect(screen.getByText("0.00 s")).toBeDefined();
 
     fireEvent.change(topRow.getByRole("combobox", { name: /speed/i }), {
       target: { value: "2" },
     });
-    fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
-
-    expect(screen.getByText("0.03 s")).toBeDefined();
-
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
     expect((topRow.getByRole("combobox", { name: /speed/i }) as HTMLSelectElement).value).toBe(
       "2",
     );
 
-    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
-    expect(topRow.getByText("0.03 s")).toBeDefined();
+    let harness = await calculateResult();
+    harness = await rewindCalculatedResult();
+    fireEvent.click(harness.transport.getByRole("button", { name: /^step$/i }));
 
-    fireEvent.click(transport.getByRole("button", { name: /^reset$/i }));
-    expect(screen.getByText("0.00 s")).toBeDefined();
-    expect((topRow.getByRole("combobox", { name: /speed/i }) as HTMLSelectElement).value).toBe(
+    await waitFor(() => {
+      expect(screen.getByText("0.02 s")).toBeDefined();
+    });
+
+    fireEvent.click(harness.transport.getByRole("button", { name: /^play result$/i }));
+    harness = getTransportHarness();
+    await waitFor(() => {
+      expect(harness.topRow.queryByText("0.02 s")).toBeNull();
+    });
+
+    fireEvent.click(harness.transport.getByRole("button", { name: /^pause$/i }));
+    expect((harness.topRow.getByRole("combobox", { name: /speed/i }) as HTMLSelectElement).value).toBe(
+      "1",
+    );
+
+    fireEvent.click(harness.transport.getByRole("button", { name: /^reset$/i }));
+    await waitFor(() => {
+      expect(screen.getByText("0.00 s")).toBeDefined();
+    });
+    expect((harness.topRow.getByRole("combobox", { name: /speed/i }) as HTMLSelectElement).value).toBe(
       "1",
     );
   });
@@ -169,7 +217,6 @@ describe("App runtime features", () => {
 
   it("shows runtime analysis guidance before samples and updates the summary after stepping", async () => {
     render(<App />);
-    const transport = within(screen.getByTestId("bottom-transport-bar"));
 
     await waitFor(() => {
       expect(screen.getByText("Tracked entity: ball-1")).toBeDefined();
@@ -179,24 +226,25 @@ describe("App runtime features", () => {
       ).toBeDefined();
     });
 
-    fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
+    await calculateResult();
 
     await waitFor(() => {
       expect(screen.getByText("Tracked entity: ball-1")).toBeDefined();
-      expect(screen.getByText("Runtime sample count: 1")).toBeDefined();
+      expect(screen.getByText(/Runtime sample count: [1-9]\d*/)).toBeDefined();
     });
   });
 
   it("projects runtime step positions back into the workspace", async () => {
     render(<App />);
-    const transport = within(screen.getByTestId("bottom-transport-bar"));
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
     fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
 
     expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("132px");
 
-    fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
+    let harness = await calculateResult();
+    harness = await rewindCalculatedResult();
+    fireEvent.click(harness.transport.getByRole("button", { name: /^step$/i }));
 
     await waitFor(() => {
       expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("133px");
@@ -205,17 +253,18 @@ describe("App runtime features", () => {
 
   it("falls back to authored workspace positions after resetting the runtime", async () => {
     render(<App />);
-    const transport = within(screen.getByTestId("bottom-transport-bar"));
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
     fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
-    fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
+    let harness = await calculateResult();
+    harness = await rewindCalculatedResult();
+    fireEvent.click(harness.transport.getByRole("button", { name: /^step$/i }));
 
     await waitFor(() => {
       expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("133px");
     });
 
-    fireEvent.click(transport.getByRole("button", { name: /^reset$/i }));
+    fireEvent.click(harness.transport.getByRole("button", { name: /^reset$/i }));
 
     await waitFor(() => {
       expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("132px");
@@ -224,7 +273,6 @@ describe("App runtime features", () => {
 
   it("continues advancing workspace positions after starting runtime", async () => {
     render(<App />);
-    const transport = within(screen.getByTestId("bottom-transport-bar"));
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
     fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
@@ -233,7 +281,8 @@ describe("App runtime features", () => {
 
     expect(ball.style.left).toBe("132px");
 
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    const harness = await calculateResult();
+    fireEvent.click(harness.transport.getByRole("button", { name: /^play result$/i }));
 
     await waitFor(() => {
       expect(ball.style.left).not.toBe("132px");
@@ -245,25 +294,25 @@ describe("App runtime features", () => {
       expect(ball.style.left).not.toBe(firstRunningPosition);
     });
 
-    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+    fireEvent.click(harness.transport.getByRole("button", { name: /^pause$/i }));
   });
 
   it("freezes the visible runtime position after pausing playback", async () => {
     render(<App />);
-    const transport = within(screen.getByTestId("bottom-transport-bar"));
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
     fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
 
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
 
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    const harness = await calculateResult();
+    fireEvent.click(harness.transport.getByRole("button", { name: /^play result$/i }));
 
     await waitFor(() => {
       expect(ball.style.left).not.toBe("132px");
     });
 
-    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+    fireEvent.click(harness.transport.getByRole("button", { name: /^pause$/i }));
 
     const pausedPosition = ball.style.left;
 
@@ -276,20 +325,20 @@ describe("App runtime features", () => {
 
   it("restores the authored workspace position after resetting from playback", async () => {
     render(<App />);
-    const transport = within(screen.getByTestId("bottom-transport-bar"));
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
     fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
 
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
 
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    const harness = await calculateResult();
+    fireEvent.click(harness.transport.getByRole("button", { name: /^play result$/i }));
 
     await waitFor(() => {
       expect(ball.style.left).not.toBe("132px");
     });
 
-    fireEvent.click(transport.getByRole("button", { name: /^reset$/i }));
+    fireEvent.click(harness.transport.getByRole("button", { name: /^reset$/i }));
 
     await waitFor(() => {
       expect(ball.style.left).toBe("132px");
@@ -299,16 +348,16 @@ describe("App runtime features", () => {
 
   it("recompiles from frame zero after changing gravity while paused", async () => {
     render(<App />);
-    const transport = within(screen.getByTestId("bottom-transport-bar"));
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
 
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    let harness = await calculateResult();
+    fireEvent.click(harness.transport.getByRole("button", { name: /^play result$/i }));
 
     await waitFor(() => {
       expect(ball.style.top).not.toBe("176px");
     });
 
-    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+    fireEvent.click(harness.transport.getByRole("button", { name: /^pause$/i }));
 
     const pausedTop = ball.style.top;
 
@@ -322,29 +371,30 @@ describe("App runtime features", () => {
       expect(ball.style.top).toBe("176px");
     });
 
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    fireEvent.click(harness.transport.getByRole("button", { name: /^calculate$/i }));
 
     await waitFor(() => {
       expect(ball.style.top).not.toBe("176px");
     });
 
-    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+    harness = getTransportHarness();
+    fireEvent.click(harness.transport.getByRole("button", { name: /^pause$/i }));
   });
 
   it("passes paused runtime velocity to the canvas in authored cartesian semantics", async () => {
     render(<App />);
-    const transport = within(screen.getByTestId("bottom-transport-bar"));
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
 
     fireEvent.click(ball);
     fireEvent.change(screen.getByLabelText("Velocity Y"), { target: { value: "3" } });
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    const harness = await calculateResult();
+    fireEvent.click(harness.transport.getByRole("button", { name: /^play result$/i }));
 
     await waitFor(() => {
       expect(ball.style.top).not.toBe("176px");
     });
 
-    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+    fireEvent.click(harness.transport.getByRole("button", { name: /^pause$/i }));
 
     await waitFor(() => {
       expect(
@@ -377,7 +427,6 @@ describe("App runtime features", () => {
 
   it("converts authored values and clears visible runtime state after changing units while paused", async () => {
     render(<App />);
-    const transport = within(screen.getByTestId("bottom-transport-bar"));
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
@@ -386,13 +435,14 @@ describe("App runtime features", () => {
     expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("1.32");
     expect((screen.getByLabelText("Velocity X") as HTMLInputElement).value).toBe("0.6");
 
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    let harness = await calculateResult();
+    fireEvent.click(harness.transport.getByRole("button", { name: /^play result$/i }));
 
     await waitFor(() => {
       expect(ball.style.left).not.toBe("132px");
     });
 
-    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+    fireEvent.click(harness.transport.getByRole("button", { name: /^pause$/i }));
     fireEvent.change(screen.getByLabelText("Length unit"), { target: { value: "cm" } });
     fireEvent.change(screen.getByLabelText("Velocity unit"), { target: { value: "cm/s" } });
 
@@ -405,7 +455,16 @@ describe("App runtime features", () => {
       expect(ball.style.left).toBe("132px");
     });
 
-    fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
+    fireEvent.click(getTransportHarness().transport.getByRole("button", { name: /^calculate$/i }));
+
+    await waitFor(() => {
+      expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
+        false,
+      );
+    });
+
+    harness = await rewindCalculatedResult();
+    fireEvent.click(harness.transport.getByRole("button", { name: /^step$/i }));
 
     await waitFor(() => {
       expect(ball.style.left).toBe("133px");
@@ -425,38 +484,37 @@ describe("App runtime features", () => {
     expect(within(bottomPane).getByTestId("analysis-panel")).toBeDefined();
   });
 
-  it("defaults to realtime playback with disabled seek controls", () => {
+  it("defaults to calculate-first playback with disabled seek controls", () => {
     render(<App />);
 
-    expect((screen.getByLabelText("Playback mode") as HTMLSelectElement).value).toBe("realtime");
+    expect(screen.queryByLabelText("Playback mode")).toBeNull();
+    expect(screen.getByRole("button", { name: /^calculate$/i })).toBeDefined();
     expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByLabelText("Jump to time") as HTMLInputElement).disabled).toBe(true);
   });
 
   it("precomputes cached playback and seeks by timeline and time input", async () => {
     render(<App />);
-    const transport = within(screen.getByTestId("bottom-transport-bar"));
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
 
     fireEvent.click(ball);
     fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
-    fireEvent.change(screen.getByLabelText("Playback mode"), { target: { value: "precomputed" } });
 
     expect((screen.getByLabelText("Precompute duration") as HTMLInputElement).value).toBe("20");
 
     fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    fireEvent.click(getTransportHarness().transport.getByRole("button", { name: /^calculate$/i }));
 
     await waitFor(() => {
       expect(
         (
           within(screen.getByTestId("bottom-transport-bar")).getByRole("button", {
-            name: "Preparing…",
+            name: "Calculating…",
           }) as HTMLButtonElement
         ).disabled,
       ).toBe(true);
       expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
-        "Calculating cached playback frames.",
+        "Calculating the result.",
       );
       expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
         true,
@@ -476,7 +534,7 @@ describe("App runtime features", () => {
       /Runtime sample count: [1-9]/,
     );
 
-    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+    fireEvent.click(getTransportHarness().transport.getByRole("button", { name: /^pause$/i }));
     fireEvent.input(screen.getByRole("slider", { name: /playback timeline/i }), {
       target: { value: "0.5" },
     });
@@ -499,11 +557,9 @@ describe("App runtime features", () => {
     const animationFrame = createControlledAnimationFrame();
 
     render(<App />);
-    const transport = within(screen.getByTestId("bottom-transport-bar"));
 
-    fireEvent.change(screen.getByLabelText("Playback mode"), { target: { value: "precomputed" } });
     fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    fireEvent.click(getTransportHarness().transport.getByRole("button", { name: /^calculate$/i }));
 
     await act(async () => {
       await flushMicrotasks();
@@ -536,14 +592,12 @@ describe("App runtime features", () => {
 
   it("resets cached playback to time zero after changing duration while paused", async () => {
     render(<App />);
-    const transport = within(screen.getByTestId("bottom-transport-bar"));
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
 
     fireEvent.click(ball);
     fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
-    fireEvent.change(screen.getByLabelText("Playback mode"), { target: { value: "precomputed" } });
     fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    fireEvent.click(getTransportHarness().transport.getByRole("button", { name: /^calculate$/i }));
 
     await waitFor(() => {
       expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
@@ -551,7 +605,7 @@ describe("App runtime features", () => {
       );
     });
 
-    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+    fireEvent.click(getTransportHarness().transport.getByRole("button", { name: /^pause$/i }));
     fireEvent.input(screen.getByRole("slider", { name: /playback timeline/i }), {
       target: { value: "0.5" },
     });

@@ -42,7 +42,7 @@ describe("RuntimeStatusBanner", () => {
     expect(screen.queryByTestId("runtime-status-banner")).toBeNull();
   });
 
-  it("shows a rebuild-required hint before a blocked resume attempt", () => {
+  it("shows stale-result guidance before recalculation", () => {
     render(
       <RuntimeStatusBanner
         runtime={{
@@ -50,18 +50,18 @@ describe("RuntimeStatusBanner", () => {
           blockReason: "rebuild-required",
           lastErrorMessage: null,
           lastBlockedAction: null,
-          playbackMode: "realtime",
+          playbackMode: "precomputed",
           canSeek: false,
         }}
       />,
     );
 
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
-      "Rebuild required before starting runtime.",
+      "Results are out of date. Recalculate to review the latest motion.",
     );
   });
 
-  it("shows a classroom-friendly running explanation while the runtime is active", () => {
+  it("shows a calculate-first running explanation while the result is playing", () => {
     render(
       <RuntimeStatusBanner
         runtime={{
@@ -69,37 +69,37 @@ describe("RuntimeStatusBanner", () => {
           blockReason: null,
           lastErrorMessage: null,
           lastBlockedAction: null,
-          playbackMode: "realtime",
-          canSeek: false,
+          playbackMode: "precomputed",
+          canSeek: true,
         }}
       />,
     );
 
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
-      "Runtime is playing. Motion and live samples should keep updating.",
+      "Showing the calculated result. Pause to inspect or jump to another time.",
     );
   });
 
-  it("shows a paused explanation after the teacher stops playback", () => {
+  it("shows an uncomputed explanation before the first calculation", () => {
     render(
       <RuntimeStatusBanner
         runtime={{
-          status: "paused",
+          status: "idle",
           blockReason: null,
           lastErrorMessage: null,
           lastBlockedAction: null,
-          playbackMode: "realtime",
+          playbackMode: "precomputed",
           canSeek: false,
         }}
       />,
     );
 
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
-      "Runtime is paused. Use Step for one frame or Start to continue.",
+      "Calculate a result to enable play, seek, and time jump.",
     );
   });
 
-  it("shows cached-playback preparation guidance while frames are building", () => {
+  it("shows calculate-first preparation guidance while frames are building", () => {
     render(
       <RuntimeStatusBanner
         runtime={{
@@ -114,7 +114,7 @@ describe("RuntimeStatusBanner", () => {
     );
 
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
-      "Calculating cached playback frames. Timeline scrubbing unlocks after preparation finishes.",
+      "Calculating the result. Playback and time jump unlock when it finishes.",
     );
   });
 });

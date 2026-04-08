@@ -120,6 +120,7 @@ export function App() {
     }),
   );
   const [runtimeSnapshot, setRuntimeSnapshot] = useState(() => runtimePort.getSnapshot());
+  const [pendingCalculateStart, setPendingCalculateStart] = useState(false);
 
   useEffect(() => {
     entityCatalogRef.current = entities;
@@ -172,6 +173,39 @@ export function App() {
     runtimeSnapshot,
     sceneSettings,
   });
+
+  useEffect(() => {
+    if (!pendingCalculateStart || playbackMode !== "precomputed") {
+      return;
+    }
+
+    setPendingCalculateStart(false);
+    void handleTransportStart();
+  }, [handleTransportStart, pendingCalculateStart, playbackMode]);
+
+  function handleCalculateFirstTransportStart() {
+    if (playbackMode === "precomputed") {
+      void handleTransportStart();
+      return;
+    }
+
+    setPendingCalculateStart(true);
+    handlePlaybackModeChange("precomputed");
+  }
+
+  const transportDeckRuntime =
+    playbackMode === "precomputed"
+      ? {
+          ...transportRuntime,
+          blockReason:
+            transportRuntime.canSeek || runtimeSnapshot.bridge.blockReason !== "rebuild-required"
+              ? transportRuntime.blockReason
+              : "rebuild-required",
+        }
+      : {
+          ...transportRuntime,
+          playbackMode: "precomputed" as const,
+        };
 
   function handleToolChange(tool: EditorTool) {
     setEditorState((current) => ({
@@ -1051,21 +1085,21 @@ export function App() {
         <PlaybackTransportDeck
           currentTimeSeconds={currentPlaybackTimeSeconds}
           isPreparing={isPreparing}
-          mode={playbackMode}
+          mode="precomputed"
           onModeChange={handlePlaybackModeChange}
           onPause={handleTransportPause}
           onPrecomputeDurationChange={handlePrecomputeDurationChange}
           onReset={handleTransportReset}
           onSeek={seekPrecomputedPlayback}
-          onStart={handleTransportStart}
+          onStart={handleCalculateFirstTransportStart}
           onStep={handleTransportStep}
           onTimeScaleChange={handleTransportTimeScaleChange}
           precomputeDurationSeconds={precomputeDurationSeconds}
           preparationProgress={preparationProgress}
           realtimeCapSeconds={realtimeCapSeconds}
-          runtime={transportRuntime}
+          runtime={transportDeckRuntime}
           seekEnabled={seekEnabled}
-          timelineMaxSeconds={timelineMaxSeconds}
+          timelineMaxSeconds={precomputeDurationSeconds}
         />
 
         <WorkspaceCanvas

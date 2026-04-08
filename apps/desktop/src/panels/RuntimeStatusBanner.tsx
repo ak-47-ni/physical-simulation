@@ -36,6 +36,13 @@ function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
     };
   }
 
+  if (runtime.blockReason === "rebuild-required") {
+    return {
+      tone: "warning",
+      message: "Results are out of date. Recalculate to review the latest motion.",
+    };
+  }
+
   if (runtime.lastBlockedAction) {
     return {
       tone: "warning",
@@ -43,38 +50,52 @@ function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
     };
   }
 
-  if (runtime.blockReason === "rebuild-required") {
-    return {
-      tone: "warning",
-      message: "Rebuild required before starting runtime.",
-    };
-  }
-
   if (runtime.status === "preparing") {
     return {
       tone: "info",
-      message:
-        "Calculating cached playback frames. Timeline scrubbing unlocks after preparation finishes.",
+      message: "Calculating the result. Playback and time jump unlock when it finishes.",
+    };
+  }
+
+  if (runtime.playbackMode === "precomputed" && runtime.status === "running") {
+    return {
+      tone: "info",
+      message: "Showing the calculated result. Pause to inspect or jump to another time.",
+    };
+  }
+
+  if (runtime.playbackMode === "precomputed" && runtime.status === "preparing") {
+    return {
+      tone: "info",
+      message: "Calculating the result. Playback and time jump unlock when it finishes.",
+    };
+  }
+
+  if (runtime.playbackMode === "precomputed" && runtime.canSeek && runtime.status === "paused") {
+    return {
+      tone: "info",
+      message: "Calculated result ready. Press Play result or jump to a time.",
+    };
+  }
+
+  if (runtime.playbackMode === "precomputed" && !runtime.canSeek) {
+    return {
+      tone: "info",
+      message: "Calculate a result to enable play, seek, and time jump.",
     };
   }
 
   if (runtime.status === "running") {
     return {
       tone: "info",
-      message:
-        runtime.playbackMode === "precomputed"
-          ? "Cached playback is running. Pause to scrub or enter a target time."
-          : "Runtime is playing. Motion and live samples should keep updating.",
+      message: "Runtime is playing. Motion and live samples should keep updating.",
     };
   }
 
   if (runtime.status === "paused") {
     return {
       tone: "info",
-      message:
-        runtime.playbackMode === "precomputed" && runtime.canSeek
-          ? "Cached playback is paused. Drag the timeline or enter a time to inspect a moment."
-          : "Runtime is paused. Use Step for one frame or Start to continue.",
+      message: "Runtime is paused. Use Step for one frame or Start to continue.",
     };
   }
 

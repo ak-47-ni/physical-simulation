@@ -28,7 +28,7 @@ function renderDeck() {
     <PlaybackTransportDeck
       currentTimeSeconds={0}
       isPreparing={false}
-      mode="realtime"
+      mode="precomputed"
       onModeChange={() => undefined}
       onPause={() => undefined}
       onPrecomputeDurationChange={() => undefined}
@@ -40,29 +40,36 @@ function renderDeck() {
       precomputeDurationSeconds={20}
       preparationProgress={0}
       realtimeCapSeconds={40}
-      runtime={createRuntimeView()}
+      runtime={{
+        ...createRuntimeView(),
+        playbackMode: "precomputed",
+      }}
       seekEnabled={false}
-      timelineMaxSeconds={40}
+      timelineMaxSeconds={20}
     />,
   );
 }
 
 describe("PlaybackTransportDeck", () => {
-  it("renders compact top-row controls and keeps progress controls in a second row", () => {
+  it("renders a calculate-first compact transport with progress controls in a second row", () => {
     renderDeck();
 
     const deck = within(screen.getByTestId("playback-transport-deck"));
     const topRow = within(deck.getByTestId("transport-compact-row"));
     const progressRow = within(deck.getByTestId("transport-timeline-compact"));
 
-    expect(topRow.getByRole("combobox", { name: /playback mode/i })).toBeDefined();
-    expect(topRow.getByRole("button", { name: /start/i })).toBeDefined();
+    expect(topRow.queryByRole("combobox", { name: /playback mode/i })).toBeNull();
+    expect(topRow.getByRole("button", { name: /calculate/i })).toBeDefined();
     expect(topRow.getByRole("button", { name: /pause/i })).toBeDefined();
     expect(topRow.getByRole("button", { name: /step/i })).toBeDefined();
     expect(topRow.getByRole("button", { name: /reset/i })).toBeDefined();
     expect(topRow.getByRole("combobox", { name: /speed/i })).toBeDefined();
     expect(progressRow.getByRole("slider", { name: /playback timeline/i })).toBeDefined();
     expect(progressRow.getByLabelText("Jump to time")).toBeDefined();
+    expect((progressRow.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
+      true,
+    );
+    expect((progressRow.getByLabelText("Jump to time") as HTMLInputElement).disabled).toBe(true);
   });
 
   it("marks the progress row as left aligned and hides realtime helper copy", () => {
@@ -89,7 +96,10 @@ describe("PlaybackTransportDeck", () => {
         precomputeDurationSeconds={20}
         preparationProgress={0.1}
         realtimeCapSeconds={40}
-        runtime={createRuntimeView()}
+        runtime={{
+          ...createRuntimeView(),
+          playbackMode: "precomputed",
+        }}
         seekEnabled={false}
         timelineMaxSeconds={20}
       />,
@@ -98,7 +108,7 @@ describe("PlaybackTransportDeck", () => {
     expect(screen.getByTestId("transport-compact-preparing-badge").textContent).toContain(
       "Preparing 10%",
     );
-    expect(screen.getByRole("button", { name: "Preparing…" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Calculating…" })).toBeDefined();
 
     rerender(
       <PlaybackTransportDeck
@@ -116,7 +126,10 @@ describe("PlaybackTransportDeck", () => {
         precomputeDurationSeconds={20}
         preparationProgress={0.45}
         realtimeCapSeconds={40}
-        runtime={createRuntimeView()}
+        runtime={{
+          ...createRuntimeView(),
+          playbackMode: "precomputed",
+        }}
         seekEnabled={false}
         timelineMaxSeconds={20}
       />,

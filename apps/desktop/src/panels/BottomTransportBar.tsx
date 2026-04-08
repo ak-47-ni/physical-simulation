@@ -135,16 +135,20 @@ function readTransportStateCopy(runtime: BottomTransportRuntimeView): string {
     return "Runtime needs attention. Review the runtime message above.";
   }
 
-  if (runtime.lastBlockedAction || runtime.blockReason === "rebuild-required") {
-    return "Resume blocked until rebuild";
+  if (runtime.blockReason === "rebuild-required") {
+    return "Results are out of date. Recalculate to review the latest motion.";
+  }
+
+  if (runtime.lastBlockedAction) {
+    return runtime.lastBlockedAction.message;
   }
 
   if (runtime.status === "preparing") {
-    return "Cached playback is being calculated. Timeline scrubbing unlocks after preparation.";
+    return "Calculating the result. Playback and time jump unlock when it finishes.";
   }
 
   if (runtime.status === "running" && runtime.playbackMode === "precomputed") {
-    return "Cached playback is running. Pause to scrub or type a target time.";
+    return "Showing the calculated result. Pause to inspect or jump to another time.";
   }
 
   if (runtime.status === "running") {
@@ -152,7 +156,11 @@ function readTransportStateCopy(runtime: BottomTransportRuntimeView): string {
   }
 
   if (runtime.status === "paused" && runtime.playbackMode === "precomputed" && runtime.canSeek) {
-    return "Cached playback is paused. Drag the timeline or enter a time to inspect.";
+    return "Calculated result ready. Press Play result or jump to a time.";
+  }
+
+  if (runtime.playbackMode === "precomputed" && !runtime.canSeek) {
+    return "Calculate a result to enable play, seek, and time jump.";
   }
 
   if (runtime.status === "paused" && runtime.currentTimeSeconds > 0) {
@@ -190,7 +198,8 @@ function shouldShowCompactBanner(runtime: BottomTransportRuntimeView): boolean {
     runtime.lastErrorMessage !== null ||
     runtime.lastBlockedAction !== null ||
     runtime.blockReason === "rebuild-required" ||
-    runtime.status === "preparing"
+    runtime.status === "preparing" ||
+    (runtime.playbackMode === "precomputed" && !runtime.canSeek)
   );
 }
 
@@ -209,7 +218,6 @@ function readPreparingProgressLabel(runtime: BottomTransportRuntimeView): string
 export function BottomTransportBar(props: BottomTransportBarProps) {
   const {
     onPause,
-    onPlaybackModeChange,
     onPrecomputeDurationChange,
     onReset,
     onSeek,
@@ -223,10 +231,11 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
   const showPlaybackControls = props.showPlaybackControls ?? true;
   const playbackSettings = props.playbackSettings ?? createFallbackPlaybackSettings(runtime);
   const timeScalePresets = props.timeScalePresets ?? DEFAULT_TIME_SCALE_PRESETS;
+  const hasCalculatedResult = runtime.playbackMode === "precomputed" && runtime.canSeek;
   const blockedMessage =
     runtime.lastBlockedAction?.message ??
     (runtime.blockReason === "rebuild-required"
-      ? "Rebuild required before starting runtime."
+      ? "Results are out of date. Recalculate to review the latest motion."
       : undefined);
   const stepTitle =
     runtime.status === "running" || runtime.status === "preparing"
@@ -236,8 +245,14 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
   const timelineProgress = createTimelineProgress(runtime);
   const preparingProgressLabel = readPreparingProgressLabel(runtime);
   const primaryActionLabel =
-    runtime.status === "preparing" && runtime.playbackMode === "precomputed"
-      ? "Preparing…"
+    runtime.playbackMode === "precomputed"
+      ? runtime.status === "preparing"
+        ? "Calculating…"
+        : runtime.blockReason === "rebuild-required"
+          ? "Recalculate"
+          : hasCalculatedResult
+            ? "Play result"
+            : "Calculate"
       : "Start";
   const currentTimeReadout = (
     <strong
@@ -256,8 +271,13 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
       <button
         type="button"
         style={isCompactLayout ? compactButtonStyle : buttonStyle}
-        disabled={!runtime.canResume || runtime.status === "preparing"}
-        title={blockedMessage}
+        disabled={
+          runtime.status === "preparing" ||
+          (runtime.playbackMode === "realtime" && !runtime.canResume)
+        }
+        title={
+          runtime.playbackMode === "realtime" && !runtime.canResume ? blockedMessage : undefined
+        }
         onClick={onStart}
       >
         {primaryActionLabel}
@@ -276,7 +296,8 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
         disabled={
           runtime.status === "running" ||
           runtime.status === "preparing" ||
-          runtime.blockReason !== null
+          runtime.blockReason !== null ||
+          (runtime.playbackMode === "precomputed" && !hasCalculatedResult)
         }
         title={stepTitle}
         onClick={onStep}
@@ -295,26 +316,6 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
 
   const playbackFields = showPlaybackControls ? (
     <div style={fieldGroupStyle}>
-      <label style={fieldStyle}>
-        <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>Playback mode</span>
-        <select
-          aria-label="Playback mode"
-          style={{
-            ...inputStyle,
-            minWidth: isCompactLayout ? "120px" : "160px",
-            padding: isCompactLayout ? "7px 9px" : inputStyle.padding,
-            fontSize: isCompactLayout ? "12px" : inputStyle.fontSize,
-          }}
-          value={playbackSettings.mode}
-          onChange={(event) => {
-            onPlaybackModeChange?.(event.currentTarget.value as RuntimePlaybackMode);
-          }}
-        >
-          <option value="realtime">Realtime</option>
-          <option value="precomputed">Precomputed</option>
-        </select>
-      </label>
-
       {playbackSettings.mode === "precomputed" ? (
         <label style={fieldStyle}>
           <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
