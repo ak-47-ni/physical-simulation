@@ -84,6 +84,7 @@ function readRuntimeAnalysisFeedback(input: {
   error: string | null;
   lastBlockedActionMessage: string | null;
   lastErrorMessage: string | null;
+  playbackMode: "realtime" | "precomputed";
   sampleCount: number;
   status: ReturnType<typeof useRuntimeTrajectorySamples>["status"];
 }) {
@@ -104,7 +105,10 @@ function readRuntimeAnalysisFeedback(input: {
   if (input.blockReason === "rebuild-required") {
     return {
       tone: "warning" as const,
-      message: "Rebuild required before starting runtime.",
+      message:
+        input.sampleCount > 0
+          ? "Runtime samples are stale after scene edits. Recalculate playback to refresh analysis."
+          : "Scene edits changed the runtime setup. Recalculate playback before collecting analysis.",
     };
   }
 
@@ -118,7 +122,10 @@ function readRuntimeAnalysisFeedback(input: {
   if (input.sampleCount === 0 && input.status !== "idle") {
     return {
       tone: "info" as const,
-      message: "No runtime samples yet. Start or step the runtime to collect data.",
+      message:
+        input.playbackMode === "precomputed"
+          ? "No runtime samples yet. Calculate playback to collect data."
+          : "No runtime samples yet. Start or step the runtime to collect data.",
     };
   }
 
@@ -161,6 +168,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
     error: runtimeTrajectoryState.error,
     lastBlockedActionMessage: runtimeTrajectoryState.lastBlockedActionMessage,
     lastErrorMessage: runtimeTrajectoryState.lastErrorMessage,
+    playbackMode: runtimeSnapshot?.playbackMode ?? "realtime",
     sampleCount: trajectorySamples.length,
     status: runtimeTrajectoryState.status,
   });

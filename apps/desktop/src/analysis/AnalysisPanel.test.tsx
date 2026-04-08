@@ -47,6 +47,43 @@ describe("AnalysisPanel", () => {
     });
   });
 
+  it("shows calculate-first guidance when precomputed playback has no runtime samples yet", async () => {
+    const snapshot = createInitialRuntimeBridgePortSnapshot();
+    snapshot.bridge.playbackMode = "precomputed";
+    snapshot.lastCompileRequest = {
+      scene: {
+        ...createEmptySceneDocument(),
+        analyzers: [{ id: "traj-1", kind: "trajectory", entityId: "probe-1" }],
+      },
+      dirtyScopes: ["analysis"],
+      rebuildRequired: false,
+    };
+    const runtimePort: RuntimeBridgePort = {
+      getSnapshot: () => snapshot,
+      subscribe: (listener) => {
+        listener(snapshot);
+        return () => undefined;
+      },
+      compile: async () => snapshot,
+      start: async () => snapshot,
+      pause: async () => snapshot,
+      step: async () => snapshot,
+      reset: async () => snapshot,
+      setTimeScale: async () => snapshot,
+      readTrajectorySamples: async () => [],
+    };
+
+    render(<AnalysisPanel runtimePort={runtimePort} analyzerId="traj-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tracked entity: probe-1")).toBeDefined();
+      expect(screen.getByText("Runtime sample count: 0")).toBeDefined();
+      expect(
+        screen.getByText("No runtime samples yet. Calculate playback to collect data."),
+      ).toBeDefined();
+    });
+  });
+
   it("toggles trajectory, vector overlays, and chart visibility", () => {
     render(<AnalysisPanel />);
 
@@ -495,6 +532,64 @@ describe("AnalysisPanel", () => {
       expect(screen.getByText("Teaching samples stay available while runtime feedback updates.")).toBeDefined();
       expect(screen.getByText("Teacher note")).toBeDefined();
       expect(screen.getByText("9.81 m/s^2")).toBeDefined();
+    });
+  });
+
+  it("marks runtime trajectory results as stale after scene edits invalidate playback", async () => {
+    const snapshot = createInitialRuntimeBridgePortSnapshot();
+    snapshot.bridge.status = "paused";
+    snapshot.bridge.playbackMode = "precomputed";
+    snapshot.bridge.blockReason = "rebuild-required";
+    snapshot.bridge.rebuildRequired = true;
+    snapshot.bridge.currentTimeSeconds = 0.3;
+    snapshot.bridge.currentFrame = {
+      frameNumber: 3,
+      entities: [],
+    };
+    snapshot.lastCompileRequest = {
+      scene: {
+        ...createEmptySceneDocument(),
+        analyzers: [{ id: "traj-1", kind: "trajectory", entityId: "probe-1" }],
+      },
+      dirtyScopes: ["physics"],
+      rebuildRequired: true,
+    };
+    const runtimePort: RuntimeBridgePort = {
+      getSnapshot: () => snapshot,
+      subscribe: (listener) => {
+        listener(snapshot);
+        return () => undefined;
+      },
+      compile: async () => snapshot,
+      start: async () => snapshot,
+      pause: async () => snapshot,
+      step: async () => snapshot,
+      reset: async () => snapshot,
+      setTimeScale: async () => snapshot,
+      readTrajectorySamples: async () => [
+        {
+          frameNumber: 3,
+          timeSeconds: 0.3,
+          position: { x: 3, y: 2 },
+          velocity: { x: 2, y: 0 },
+          acceleration: { x: 0, y: -9.81 },
+        },
+      ],
+    };
+
+    render(<AnalysisPanel runtimePort={runtimePort} analyzerId="traj-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Tracked entity: probe-1")).toBeDefined();
+      expect(screen.getByText("Runtime sample count: 1")).toBeDefined();
+      expect(
+        screen.getByText(
+          "Runtime samples are stale after scene edits. Recalculate playback to refresh analysis.",
+        ),
+      ).toBeDefined();
+      expect(
+        screen.getByText("Teaching samples stay available while runtime feedback updates."),
+      ).toBeDefined();
     });
   });
 });

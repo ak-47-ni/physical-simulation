@@ -242,8 +242,8 @@ describe("App selection sync", () => {
           rebuildRequired: false,
           canResume: true,
           blockReason: null,
-          playbackMode: "realtime",
-          totalDurationSeconds: 40,
+          playbackMode: "precomputed",
+          totalDurationSeconds: 20,
           preparingProgress: null,
           canSeek: false,
         };

@@ -469,6 +469,13 @@ describe("App runtime features", () => {
       );
     });
 
+    expect(screen.getByTestId("analysis-runtime-summary").textContent).toContain(
+      "Tracked entity: ball-1",
+    );
+    expect(screen.getByTestId("analysis-runtime-summary").textContent).toMatch(
+      /Runtime sample count: [1-9]/,
+    );
+
     fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
     fireEvent.input(screen.getByRole("slider", { name: /playback timeline/i }), {
       target: { value: "0.5" },
