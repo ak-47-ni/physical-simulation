@@ -5,6 +5,7 @@ import {
   type SceneDocument,
   type Vector2,
 } from "../../../../packages/scene-schema/src";
+import type { RuntimeResultState as SharedRuntimeResultState } from "../../../../packages/scene-schema/src/runtime-contract";
 import {
   createRuntimeCompileRequest,
   type RuntimeCompileRequest,
@@ -13,6 +14,7 @@ import {
 export type RuntimeBridgeStatus = "idle" | "preparing" | "running" | "paused";
 export type RuntimeBridgeBlockReason = "rebuild-required" | null;
 export type RuntimePlaybackMode = "realtime" | "precomputed";
+export type RuntimeResultState = SharedRuntimeResultState;
 export type RuntimePlaybackConfig = {
   mode: RuntimePlaybackMode;
   precomputeDurationSeconds?: number;
@@ -75,6 +77,7 @@ export type RuntimeBridgeState = {
   totalDurationSeconds: number;
   preparingProgress: number | null;
   canSeek: boolean;
+  resultState: RuntimeResultState;
   lastErrorMessage: string | null;
   lastBlockedAction: RuntimeBridgeBlockedAction | null;
 };
@@ -92,6 +95,7 @@ export type RuntimeBridgeStatusSnapshot = {
   totalDurationSeconds: number;
   preparingProgress: number | null;
   canSeek: boolean;
+  resultState?: RuntimeResultState;
 };
 
 export type RuntimeBridgePortSnapshot = {
@@ -137,10 +141,11 @@ export function createInitialRuntimeBridgeState(): RuntimeBridgeState {
     rebuildRequired: false,
     canResume: true,
     blockReason: null,
-    playbackMode: "realtime",
-    totalDurationSeconds: DEFAULT_REALTIME_DURATION_CAP_SECONDS,
+    playbackMode: "precomputed",
+    totalDurationSeconds: DEFAULT_PRECOMPUTED_DURATION_SECONDS,
     preparingProgress: null,
     canSeek: false,
+    resultState: "uncomputed",
     lastErrorMessage: null,
     lastBlockedAction: null,
   };
@@ -199,6 +204,7 @@ export function applyRuntimeBridgeStatusSnapshot(
     totalDurationSeconds: snapshot.totalDurationSeconds,
     preparingProgress: snapshot.preparingProgress,
     canSeek: snapshot.canSeek,
+    resultState: readRuntimeResultStateFromSnapshot(state, snapshot),
   });
 
   if (!snapshot.currentFrame) {
@@ -226,6 +232,9 @@ export function markRuntimeBridgeSceneDirty(
     blockReason: rebuildRequired ? "rebuild-required" : null,
     preparingProgress: null,
     canSeek: rebuildRequired ? false : state.canSeek,
+    resultState: rebuildRequired
+      ? readInvalidatedRuntimeResultState(state.resultState)
+      : state.resultState,
   };
 }
 
@@ -236,6 +245,7 @@ export function markRuntimeBridgeRebuilt(state: RuntimeBridgeState): RuntimeBrid
     rebuildRequired: false,
     canResume: true,
     blockReason: null,
+    canSeek: state.resultState === "ready",
   });
 }
 
@@ -264,6 +274,7 @@ export function setRuntimeBridgePlaybackConfig(
     blockReason: state.rebuildRequired ? "rebuild-required" : null,
     playbackMode: config.mode,
     totalDurationSeconds,
+    resultState: readInvalidatedRuntimeResultState(state.resultState),
   });
 }
 
@@ -294,6 +305,7 @@ export function tickRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState
         currentTimeSeconds: 0,
         preparingProgress: null,
         canSeek: true,
+        resultState: "ready",
       });
     }
 
@@ -302,6 +314,7 @@ export function tickRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeState
       status: "preparing",
       preparingProgress,
       canSeek: false,
+      resultState: "calculating",
     });
   }
 
@@ -317,7 +330,8 @@ export function resetRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeStat
     ...createInitialRuntimeBridgeState(),
     playbackMode: state.playbackMode,
     totalDurationSeconds: state.totalDurationSeconds,
-    canSeek: state.playbackMode === "precomputed" ? state.canSeek : false,
+    canSeek: state.playbackMode === "precomputed" && state.resultState === "ready",
+    resultState: state.resultState,
   };
 }
 
@@ -335,13 +349,15 @@ export function resumeRuntimeBridge(state: RuntimeBridgeState): RuntimeBridgeSta
     );
   }
 
-  if (state.playbackMode === "precomputed" && !state.canSeek) {
+  if (state.playbackMode === "precomputed" && state.resultState !== "ready") {
     return clearRuntimeBridgeFeedback({
       ...state,
       status: "preparing",
       canResume: true,
       blockReason: null,
       preparingProgress: state.preparingProgress ?? 0,
+      canSeek: false,
+      resultState: "calculating",
     });
   }
 
@@ -357,7 +373,7 @@ export function seekRuntimeBridge(
   state: RuntimeBridgeState,
   timeSeconds: number,
 ): RuntimeBridgeState {
-  if (!state.canSeek) {
+  if (!state.canSeek || state.resultState !== "ready") {
     return setRuntimeBridgeBlockedAction(
       state,
       "seek",
@@ -637,6 +653,43 @@ function readNextRuntimeTimeSeconds(state: RuntimeBridgeState): number {
     state.currentTimeSeconds + RUNTIME_STEP_SECONDS * state.timeScale,
     state.totalDurationSeconds,
   );
+}
+
+function readInvalidatedRuntimeResultState(
+  resultState: RuntimeResultState,
+): RuntimeResultState {
+  if (resultState === "ready" || resultState === "calculating" || resultState === "stale") {
+    return "stale";
+  }
+
+  return "uncomputed";
+}
+
+function readRuntimeResultStateFromSnapshot(
+  state: RuntimeBridgeState,
+  snapshot: RuntimeBridgeStatusSnapshot,
+): RuntimeResultState {
+  if (snapshot.resultState) {
+    return snapshot.resultState;
+  }
+
+  if (snapshot.playbackMode === "realtime") {
+    return state.resultState;
+  }
+
+  if (snapshot.canSeek) {
+    return "ready";
+  }
+
+  if (snapshot.status === "preparing") {
+    return "calculating";
+  }
+
+  if (snapshot.rebuildRequired) {
+    return readInvalidatedRuntimeResultState(state.resultState);
+  }
+
+  return state.resultState;
 }
 
 function clampRuntimeTimeSeconds(timeSeconds: number, totalDurationSeconds: number): number {

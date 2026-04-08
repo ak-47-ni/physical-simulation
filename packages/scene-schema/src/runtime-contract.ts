@@ -9,6 +9,8 @@ import {
   type Vector2,
 } from "./schema";
 
+export type RuntimeResultState = "uncomputed" | "calculating" | "ready" | "stale";
+
 export type RuntimeEntityFrame = {
   entityId: string;
   position: Vector2;

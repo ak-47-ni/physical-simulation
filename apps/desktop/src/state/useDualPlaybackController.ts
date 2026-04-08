@@ -9,6 +9,7 @@ import {
   type RuntimeBridgePort,
   type RuntimeBridgePortSnapshot,
   type RuntimeFrameView,
+  type RuntimeResultState,
 } from "./runtimeBridge";
 import { createRuntimeCompileRequestFromEditorState } from "./runtimeCompileRequest";
 import type { SceneAuthoringSettings } from "./sceneAuthoringSettings";
@@ -30,6 +31,7 @@ type PrecomputedPlaybackState = {
   errorMessage: string | null;
   frames: PrecomputedFrame[];
   preparationProgress: number;
+  resultState: RuntimeResultState;
   status: "idle" | "paused" | "preparing" | "running";
 };
 
@@ -55,6 +57,7 @@ type UseDualPlaybackControllerResult = {
   isPreparing: boolean;
   playbackLocked: boolean;
   playbackMode: PlaybackMode;
+  playbackResultState: RuntimeResultState;
   precomputeDurationSeconds: number;
   preparationProgress: number;
   realtimeCapSeconds: number;
@@ -71,6 +74,7 @@ function createInitialPrecomputedPlaybackState(): PrecomputedPlaybackState {
     errorMessage: null,
     frames: [],
     preparationProgress: 0,
+    resultState: "uncomputed",
     status: "idle",
   };
 }
@@ -138,7 +142,7 @@ export function useDualPlaybackController(
     runtimeSnapshot,
     sceneSettings,
   } = input;
-  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>("realtime");
+  const [playbackMode, setPlaybackMode] = useState<PlaybackMode>("precomputed");
   const [precomputeDurationSeconds, setPrecomputeDurationSeconds] = useState(
     DEFAULT_PRECOMPUTE_DURATION_SECONDS,
   );
@@ -157,7 +161,11 @@ export function useDualPlaybackController(
 
   useEffect(() => {
     precomputeBuildTokenRef.current += 1;
-    setPrecomputedPlayback(createInitialPrecomputedPlaybackState());
+    invalidatePrecomputedPlaybackLoop();
+    setPrecomputedPlayback((current) => ({
+      ...createInitialPrecomputedPlaybackState(),
+      resultState: readInvalidatedPrecomputedResultState(current.resultState),
+    }));
   }, [annotationStrokes, constraints, entities, sceneSettings]);
 
   useEffect(() => {
@@ -295,6 +303,9 @@ export function useDualPlaybackController(
       errorMessage: null,
       frames: clearCache ? [] : current.frames,
       preparationProgress: 0,
+      resultState: clearCache
+        ? readInvalidatedPrecomputedResultState(current.resultState)
+        : current.resultState,
       status: "idle",
     }));
   }
@@ -307,7 +318,11 @@ export function useDualPlaybackController(
     invalidatePrecomputedPlaybackLoop();
 
     setPrecomputedPlayback((current) => {
-      if (current.frames.length === 0 || current.status === "preparing") {
+      if (
+        current.frames.length === 0 ||
+        current.status === "preparing" ||
+        current.resultState !== "ready"
+      ) {
         return current;
       }
 
@@ -323,6 +338,7 @@ export function useDualPlaybackController(
     const buildToken = precomputeBuildTokenRef.current + 1;
     const targetDurationSeconds = Math.max(PRECOMPUTE_STEP_SECONDS, durationSeconds);
     const totalSteps = Math.max(1, Math.round(targetDurationSeconds / PRECOMPUTE_STEP_SECONDS));
+    const previousResultState = precomputedPlayback.resultState;
 
     precomputeBuildTokenRef.current = buildToken;
     invalidatePrecomputedPlaybackLoop();
@@ -331,6 +347,7 @@ export function useDualPlaybackController(
       errorMessage: null,
       frames: [],
       preparationProgress: 0,
+      resultState: "calculating",
       status: "preparing",
     });
 
@@ -339,35 +356,49 @@ export function useDualPlaybackController(
       await runtimePort.start();
 
       const nextFrames: PrecomputedFrame[] = [{ frame: null, timeSeconds: 0 }];
+      let completedSteps = 0;
 
-      for (let stepIndex = 1; stepIndex <= totalSteps; stepIndex += 1) {
+      while (completedSteps < totalSteps) {
         if (precomputeBuildTokenRef.current !== buildToken) {
           return null;
         }
 
         const nextSnapshot = await runtimePort.tick();
-        nextFrames.push({
-          frame: nextSnapshot.bridge.currentFrame,
-          timeSeconds: clampPlaybackSeconds(
-            nextSnapshot.bridge.currentTimeSeconds,
-            targetDurationSeconds,
-          ),
-        });
+        const isPreparingResult =
+          nextSnapshot.bridge.playbackMode === "precomputed" &&
+          nextSnapshot.bridge.resultState !== "ready";
+        const nextFrameTimeSeconds = clampPlaybackSeconds(
+          nextSnapshot.bridge.currentTimeSeconds,
+          targetDurationSeconds,
+        );
+        const previousFrameTimeSeconds = nextFrames.at(-1)?.timeSeconds ?? -1;
+        const didAdvanceFrame = nextFrameTimeSeconds > previousFrameTimeSeconds;
+
+        if (!isPreparingResult && didAdvanceFrame) {
+          completedSteps += 1;
+          nextFrames.push({
+            frame: nextSnapshot.bridge.currentFrame,
+            timeSeconds: nextFrameTimeSeconds,
+          });
+        }
 
         if (
-          stepIndex === totalSteps ||
-          stepIndex % PRECOMPUTE_PROGRESS_BATCH_SIZE === 0
+          isPreparingResult ||
+          completedSteps === totalSteps ||
+          completedSteps % PRECOMPUTE_PROGRESS_BATCH_SIZE === 0
         ) {
           setPrecomputedPlayback((current) =>
             current.status === "preparing"
               ? {
                   ...current,
-                  preparationProgress: stepIndex / totalSteps,
+                  preparationProgress: isPreparingResult
+                    ? nextSnapshot.bridge.preparingProgress ?? current.preparationProgress
+                    : completedSteps / totalSteps,
                 }
               : current,
           );
 
-          if (stepIndex < totalSteps) {
+          if (completedSteps < totalSteps) {
             await yieldToBrowserFrame();
 
             if (precomputeBuildTokenRef.current !== buildToken) {
@@ -388,6 +419,7 @@ export function useDualPlaybackController(
         errorMessage: null,
         frames: nextFrames,
         preparationProgress: 1,
+        resultState: "ready",
         status: "idle",
       });
 
@@ -405,6 +437,7 @@ export function useDualPlaybackController(
         errorMessage,
         frames: [],
         preparationProgress: 0,
+        resultState: readFailedPrecomputedBuildState(previousResultState),
         status: "idle",
       });
 
@@ -428,7 +461,10 @@ export function useDualPlaybackController(
       return;
     }
 
-    if (precomputedPlayback.frames.length === 0) {
+    if (
+      precomputedPlayback.frames.length === 0 ||
+      precomputedPlayback.resultState !== "ready"
+    ) {
       const nextFrames = await buildPrecomputedFrames(precomputeDurationSeconds);
 
       if (!nextFrames || nextFrames.length === 0) {
@@ -469,7 +505,10 @@ export function useDualPlaybackController(
       return;
     }
 
-    if (precomputedPlayback.frames.length === 0) {
+    if (
+      precomputedPlayback.frames.length === 0 ||
+      precomputedPlayback.resultState !== "ready"
+    ) {
       const nextFrames = await buildPrecomputedFrames(precomputeDurationSeconds);
 
       if (!nextFrames || nextFrames.length === 0) {
@@ -525,17 +564,18 @@ export function useDualPlaybackController(
   const precomputedFrame = precomputedPlayback.frames[precomputedPlayback.currentFrameIndex] ?? null;
   const visibleRuntimeFrame =
     playbackMode === "precomputed"
-      ? (precomputedFrame?.frame ?? null)
+      ? (precomputedPlayback.resultState === "ready" ? (precomputedFrame?.frame ?? null) : null)
       : runtimeSnapshot.bridge.currentFrame;
   const currentPlaybackTimeSeconds =
     playbackMode === "precomputed"
-      ? precomputedFrame?.timeSeconds ?? 0
+      ? (precomputedPlayback.resultState === "ready" ? (precomputedFrame?.timeSeconds ?? 0) : 0)
       : clampPlaybackSeconds(
           runtimeSnapshot.bridge.currentTimeSeconds,
           REALTIME_MAX_DURATION_SECONDS,
         );
   const seekEnabled =
     playbackMode === "precomputed" &&
+    precomputedPlayback.resultState === "ready" &&
     precomputedPlayback.frames.length > 0 &&
     precomputedPlayback.status !== "preparing";
   const timelineMaxSeconds =
@@ -548,6 +588,7 @@ export function useDualPlaybackController(
           ...runtimeSnapshot.bridge,
           blockReason: null,
           canResume: precomputedPlayback.status !== "preparing",
+          canSeek: precomputedPlayback.resultState === "ready",
           currentTimeSeconds: currentPlaybackTimeSeconds,
           lastBlockedAction: null,
           lastErrorMessage: precomputedPlayback.errorMessage,
@@ -566,6 +607,10 @@ export function useDualPlaybackController(
     runtimeSnapshot.bridge.status === "running" ||
     precomputedPlayback.status === "preparing" ||
     (playbackMode === "precomputed" && precomputedPlayback.status === "running");
+  const playbackResultState =
+    playbackMode === "precomputed"
+      ? precomputedPlayback.resultState
+      : runtimeSnapshot.bridge.resultState;
 
   return {
     currentPlaybackTimeSeconds,
@@ -579,6 +624,7 @@ export function useDualPlaybackController(
     isPreparing: precomputedPlayback.status === "preparing",
     playbackLocked,
     playbackMode,
+    playbackResultState,
     precomputeDurationSeconds,
     preparationProgress: precomputedPlayback.preparationProgress,
     realtimeCapSeconds: REALTIME_MAX_DURATION_SECONDS,
@@ -588,4 +634,24 @@ export function useDualPlaybackController(
     transportRuntime,
     visibleRuntimeFrame,
   };
+}
+
+function readInvalidatedPrecomputedResultState(
+  resultState: RuntimeResultState,
+): RuntimeResultState {
+  if (resultState === "ready" || resultState === "calculating" || resultState === "stale") {
+    return "stale";
+  }
+
+  return "uncomputed";
+}
+
+function readFailedPrecomputedBuildState(
+  resultState: RuntimeResultState,
+): RuntimeResultState {
+  if (resultState === "stale") {
+    return "stale";
+  }
+
+  return "uncomputed";
 }

@@ -1,5 +1,5 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createInitialSceneEntities } from "./editorStore";
@@ -15,6 +15,9 @@ type QueuedAnimationFrame = {
   handle: number;
   ran: boolean;
 };
+
+const EMPTY_ANNOTATION_STROKES: [] = [];
+const EMPTY_CONSTRAINTS: [] = [];
 
 function createControlledAnimationFrame() {
   let nextHandle = 1;
@@ -98,24 +101,34 @@ function createControllerRuntimePort(): RuntimeBridgePort {
   });
 }
 
-function useDualPlaybackControllerHarness(runtimePort: RuntimeBridgePort) {
+type HarnessOverrides = {
+  annotationStrokes?: [];
+  constraints?: [];
+  entities?: ReturnType<typeof createInitialSceneEntities>;
+};
+
+function useDualPlaybackControllerHarness(
+  runtimePort: RuntimeBridgePort,
+  overrides: HarnessOverrides = {},
+) {
   const [runtimeSnapshot, setRuntimeSnapshot] = useState(() => runtimePort.getSnapshot());
-  const annotationStrokesRef = useRef([]);
-  const constraintsRef = useRef([]);
-  const entitiesRef = useRef(createInitialSceneEntities());
-  const sceneSettingsRef = useRef(createDefaultSceneAuthoringSettings());
+  const [defaultEntities] = useState(() => createInitialSceneEntities());
+  const [sceneSettings] = useState(() => createDefaultSceneAuthoringSettings());
+  const annotationStrokes = overrides.annotationStrokes ?? EMPTY_ANNOTATION_STROKES;
+  const constraints = overrides.constraints ?? EMPTY_CONSTRAINTS;
+  const entities = overrides.entities ?? defaultEntities;
 
   useEffect(() => runtimePort.subscribe(setRuntimeSnapshot), [runtimePort]);
 
   return {
     ...useDualPlaybackController({
       analyzerId: "traj-1",
-      annotationStrokes: annotationStrokesRef.current,
-      constraints: constraintsRef.current,
-      entities: entitiesRef.current,
+      annotationStrokes,
+      constraints,
+      entities,
       runtimePort,
       runtimeSnapshot,
-      sceneSettings: sceneSettingsRef.current,
+      sceneSettings,
     }),
     runtimePort,
   };
@@ -182,6 +195,16 @@ afterEach(() => {
 });
 
 describe("useDualPlaybackController", () => {
+  it("defaults new sessions to precomputed playback with an uncomputed result", () => {
+    const runtimePort = createControllerRuntimePort();
+    const { result } = renderHook(() => useDualPlaybackControllerHarness(runtimePort));
+
+    expect(result.current.playbackMode).toBe("precomputed");
+    expect(result.current.playbackResultState).toBe("uncomputed");
+    expect(result.current.seekEnabled).toBe(false);
+    expect(result.current.transportRuntime.canSeek).toBe(false);
+  });
+
   it("exposes intermediate preparation progress before a precomputed build finishes", async () => {
     const animationFrame = createControlledAnimationFrame();
     const runtimePort = createControllerRuntimePort();
@@ -205,6 +228,7 @@ describe("useDualPlaybackController", () => {
     });
 
     expect(result.current.isPreparing).toBe(true);
+    expect(result.current.playbackResultState).toBe("calculating");
     expect(result.current.preparationProgress).toBeGreaterThan(0);
     expect(result.current.preparationProgress).toBeLessThan(1);
     expect(result.current.seekEnabled).toBe(false);
@@ -225,6 +249,7 @@ describe("useDualPlaybackController", () => {
     });
 
     expect(result.current.transportRuntime.status).toBe("running");
+    expect(result.current.playbackResultState).toBe("ready");
     expect(result.current.seekEnabled).toBe(true);
   });
 
@@ -237,6 +262,7 @@ describe("useDualPlaybackController", () => {
 
     await waitFor(() => {
       expect(result.current.playbackMode).toBe("precomputed");
+      expect(result.current.playbackResultState).toBe("ready");
       expect(result.current.seekEnabled).toBe(true);
       expect(result.current.transportRuntime.status).toBe("running");
       expect(animationFrame.pendingCount()).toBe(1);
@@ -302,9 +328,48 @@ describe("useDualPlaybackController", () => {
     );
   });
 
+  it("marks cached playback stale after runtime-relevant edits and disables seek until recalculated", async () => {
+    const runtimePort = createControllerRuntimePort();
+    const initialEntities = createInitialSceneEntities();
+    const { result, rerender } = renderHook(
+      ({ entities }) => useDualPlaybackControllerHarness(runtimePort, { entities }),
+      {
+        initialProps: {
+          entities: initialEntities,
+        },
+      },
+    );
+
+    await startPrecomputedPlayback(result);
+
+    await waitFor(() => {
+      expect(result.current.playbackResultState).toBe("ready");
+      expect(result.current.seekEnabled).toBe(true);
+    });
+
+    const nextEntities = [...initialEntities];
+    nextEntities[0] = {
+      ...nextEntities[0],
+      x: nextEntities[0].x + 1,
+    };
+
+    rerender({
+      entities: nextEntities,
+    });
+
+    expect(result.current.playbackMode).toBe("precomputed");
+    expect(result.current.playbackResultState).toBe("stale");
+    expect(result.current.seekEnabled).toBe(false);
+    expect(result.current.visibleRuntimeFrame).toBeNull();
+  });
+
   it("ignores seek requests while realtime playback remains active", async () => {
     const runtimePort = createControllerRuntimePort();
     const { result } = renderHook(() => useDualPlaybackControllerHarness(runtimePort));
+
+    act(() => {
+      result.current.handlePlaybackModeChange("realtime");
+    });
 
     await act(async () => {
       await result.current.handleTransportStep();

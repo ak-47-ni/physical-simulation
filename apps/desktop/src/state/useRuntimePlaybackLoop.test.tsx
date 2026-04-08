@@ -103,6 +103,7 @@ function createControlledRuntimePort(options: { deferredTicks?: boolean } = {}) 
             status: "running",
             preparingProgress: null,
             canSeek: true,
+            resultState: "ready",
           },
         };
       }
@@ -114,6 +115,7 @@ function createControlledRuntimePort(options: { deferredTicks?: boolean } = {}) 
           status: "preparing",
           preparingProgress: nextProgress,
           canSeek: false,
+          resultState: "calculating",
         },
       };
     }
@@ -154,17 +156,22 @@ function createControlledRuntimePort(options: { deferredTicks?: boolean } = {}) 
         ...currentSnapshot.bridge,
         status:
           currentSnapshot.bridge.playbackMode === "precomputed" &&
-          !currentSnapshot.bridge.canSeek
+          currentSnapshot.bridge.resultState !== "ready"
             ? "preparing"
             : "running",
         preparingProgress:
           currentSnapshot.bridge.playbackMode === "precomputed" &&
-          !currentSnapshot.bridge.canSeek
+          currentSnapshot.bridge.resultState !== "ready"
             ? 0
             : currentSnapshot.bridge.preparingProgress,
         rebuildRequired: false,
         canResume: true,
         blockReason: null,
+        resultState:
+          currentSnapshot.bridge.playbackMode === "precomputed" &&
+          currentSnapshot.bridge.resultState !== "ready"
+            ? "calculating"
+            : currentSnapshot.bridge.resultState,
       })),
     pause: async () =>
       updateBridge((currentSnapshot) => ({
@@ -196,6 +203,7 @@ function createControlledRuntimePort(options: { deferredTicks?: boolean } = {}) 
             snapshot.bridge.playbackMode === "precomputed"
               ? snapshot.bridge.canSeek
               : false,
+          resultState: snapshot.bridge.resultState,
         },
         lastCompileRequest: snapshot.lastCompileRequest,
       }),
@@ -214,6 +222,7 @@ function createControlledRuntimePort(options: { deferredTicks?: boolean } = {}) 
         totalDurationSeconds: createRuntimeTotalDuration(config),
         preparingProgress: null,
         canSeek: false,
+        resultState: "uncomputed",
       })),
     seek: async (timeSeconds) =>
       updateBridge((currentSnapshot) => ({
@@ -284,6 +293,7 @@ describe("useRuntimePlaybackLoop", () => {
     });
 
     expect(control.port.getSnapshot().bridge.status).toBe("preparing");
+    expect(control.port.getSnapshot().bridge.resultState).toBe("calculating");
     expect(scheduler.pendingCount()).toBe(1);
 
     await scheduler.flushNextFrame();
@@ -291,6 +301,7 @@ describe("useRuntimePlaybackLoop", () => {
     expect(control.getTickCalls()).toBe(1);
     expect(control.port.getSnapshot().bridge.status).toBe("preparing");
     expect(control.port.getSnapshot().bridge.preparingProgress).toBe(0.25);
+    expect(control.port.getSnapshot().bridge.resultState).toBe("calculating");
     expect(scheduler.pendingCount()).toBe(1);
   });
 
@@ -301,6 +312,9 @@ describe("useRuntimePlaybackLoop", () => {
     render(<RuntimePlaybackHarness runtimePort={control.port} scheduler={scheduler} />);
 
     await act(async () => {
+      await control.port.setPlaybackConfig({
+        mode: "realtime",
+      });
       await control.port.start();
     });
 
@@ -325,6 +339,9 @@ describe("useRuntimePlaybackLoop", () => {
     expect(scheduler.pendingCount()).toBe(0);
 
     await act(async () => {
+      await control.port.setPlaybackConfig({
+        mode: "realtime",
+      });
       await control.port.start();
     });
     expect(scheduler.pendingCount()).toBe(1);
@@ -363,6 +380,9 @@ describe("useRuntimePlaybackLoop", () => {
     render(<RuntimePlaybackHarness runtimePort={control.port} scheduler={scheduler} />);
 
     await act(async () => {
+      await control.port.setPlaybackConfig({
+        mode: "realtime",
+      });
       await control.port.start();
     });
     expect(scheduler.pendingCount()).toBe(1);
@@ -412,6 +432,37 @@ describe("useRuntimePlaybackLoop", () => {
     expect(control.getTickCalls()).toBe(0);
   });
 
+  it("does not schedule ticks while precomputed results are stale or uncomputed", async () => {
+    const scheduler = createFrameScheduler();
+    const control = createControlledRuntimePort();
+
+    render(<RuntimePlaybackHarness runtimePort={control.port} scheduler={scheduler} />);
+
+    await act(async () => {
+      control.publishBridge((bridge) => ({
+        ...bridge,
+        status: "running",
+        playbackMode: "precomputed",
+        resultState: "stale",
+        canSeek: false,
+      }));
+    });
+
+    expect(scheduler.pendingCount()).toBe(0);
+
+    await act(async () => {
+      control.publishBridge((bridge) => ({
+        ...bridge,
+        status: "running",
+        playbackMode: "precomputed",
+        resultState: "uncomputed",
+        canSeek: false,
+      }));
+    });
+
+    expect(scheduler.pendingCount()).toBe(0);
+  });
+
   it("stops scheduling after realtime playback reaches the capped terminal state", async () => {
     const scheduler = createFrameScheduler();
     const control = createControlledRuntimePort();
@@ -419,6 +470,9 @@ describe("useRuntimePlaybackLoop", () => {
     render(<RuntimePlaybackHarness runtimePort={control.port} scheduler={scheduler} />);
 
     await act(async () => {
+      await control.port.setPlaybackConfig({
+        mode: "realtime",
+      });
       control.publishBridge((bridge) => ({
         ...bridge,
         totalDurationSeconds: 1 / 60,

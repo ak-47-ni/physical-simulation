@@ -34,9 +34,20 @@ function shouldPollRuntime(snapshot: RuntimeBridgePortSnapshot | undefined): boo
     return false;
   }
 
+  if (
+    (snapshot.bridge.status !== "running" && snapshot.bridge.status !== "preparing") ||
+    snapshot.bridge.rebuildRequired
+  ) {
+    return false;
+  }
+
+  if (snapshot.bridge.playbackMode === "realtime") {
+    return true;
+  }
+
   return (
-    (snapshot.bridge.status === "running" || snapshot.bridge.status === "preparing") &&
-    !snapshot.bridge.rebuildRequired
+    snapshot.bridge.resultState === "calculating" ||
+    snapshot.bridge.resultState === "ready"
   );
 }
 

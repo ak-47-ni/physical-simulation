@@ -17,6 +17,7 @@ import {
   resetRuntimeBridge,
   resumeRuntimeBridge,
   setRuntimeBridgeErrorMessage,
+  setRuntimeBridgePlaybackConfig,
   setRuntimeBridgeTimeScale,
   stepRuntimeBridge,
   DEFAULT_PRECOMPUTED_DURATION_SECONDS,
@@ -37,10 +38,11 @@ function createStatusSnapshot(
     rebuildRequired: false,
     canResume: true,
     blockReason: null,
-    playbackMode: "realtime",
-    totalDurationSeconds: DEFAULT_REALTIME_DURATION_CAP_SECONDS,
+    playbackMode: "precomputed",
+    totalDurationSeconds: DEFAULT_PRECOMPUTED_DURATION_SECONDS,
     preparingProgress: null,
     canSeek: false,
+    resultState: "uncomputed",
     ...overrides,
   };
 }
@@ -72,13 +74,14 @@ describe("runtimeBridge", () => {
     expect(request.scene.entities[0]).toEqual(scene.entities[0]);
   });
 
-  it("defaults to realtime playback with a fixed 40 second duration cap", () => {
+  it("defaults to precomputed playback with an uncomputed result state", () => {
     expect(createInitialRuntimeBridgeState()).toMatchObject({
       status: "idle",
-      playbackMode: "realtime",
-      totalDurationSeconds: DEFAULT_REALTIME_DURATION_CAP_SECONDS,
+      playbackMode: "precomputed",
+      totalDurationSeconds: DEFAULT_PRECOMPUTED_DURATION_SECONDS,
       preparingProgress: null,
       canSeek: false,
+      resultState: "uncomputed",
     });
   });
 
@@ -128,6 +131,7 @@ describe("runtimeBridge", () => {
         totalDurationSeconds: 24,
         preparingProgress: 0.35,
         canSeek: false,
+        resultState: "calculating",
       }),
     );
 
@@ -144,6 +148,7 @@ describe("runtimeBridge", () => {
       totalDurationSeconds: 24,
       preparingProgress: 0.35,
       canSeek: false,
+      resultState: "calculating",
     });
   });
 
@@ -166,15 +171,22 @@ describe("runtimeBridge", () => {
     expect(recovered.lastBlockedAction).toBeNull();
   });
 
-  it("blocks resume after structural or physical edits until rebuild completes", () => {
-    const initial = createInitialRuntimeBridgeState();
-    const running = resumeRuntimeBridge(initial);
-    const paused = pauseRuntimeBridge(running);
-    const dirty = markRuntimeBridgeSceneDirty(paused, ["physics"]);
+  it("marks ready precomputed results stale after runtime-relevant edits and recalculates after rebuild", () => {
+    const initial = applyRuntimeBridgeStatusSnapshot(
+      createInitialRuntimeBridgeState(),
+      createStatusSnapshot({
+        status: "paused",
+        canSeek: true,
+        resultState: "ready",
+      }),
+    );
+    const dirty = markRuntimeBridgeSceneDirty(initial, ["physics"]);
 
     expect(dirty.status).toBe("paused");
     expect(dirty.canResume).toBe(false);
     expect(dirty.blockReason).toBe("rebuild-required");
+    expect(dirty.canSeek).toBe(false);
+    expect(dirty.resultState).toBe("stale");
 
     const blockedResume = resumeRuntimeBridge(dirty);
 
@@ -192,11 +204,15 @@ describe("runtimeBridge", () => {
     expect(rebuilt.canResume).toBe(true);
     expect(rebuilt.blockReason).toBe(null);
     expect(rebuilt.lastBlockedAction).toBeNull();
-    expect(resumed.status).toBe("running");
+    expect(rebuilt.resultState).toBe("stale");
+    expect(resumed.status).toBe("preparing");
+    expect(resumed.resultState).toBe("calculating");
   });
 
   it("tracks time scale, single-step progress, and reset through the bridge state", () => {
-    const initial = createInitialRuntimeBridgeState();
+    const initial = setRuntimeBridgePlaybackConfig(createInitialRuntimeBridgeState(), {
+      mode: "realtime",
+    });
     const scaled = setRuntimeBridgeTimeScale(initial, 2);
     const stepped = stepRuntimeBridge(scaled);
     const resumed = resumeRuntimeBridge(stepped);
@@ -242,6 +258,9 @@ describe("runtimeBridge", () => {
     });
 
     await port.compile(request);
+    await port.setPlaybackConfig({
+      mode: "realtime",
+    });
     await port.setTimeScale(0.5);
     await port.start();
     await port.step();
@@ -282,6 +301,7 @@ describe("runtimeBridge", () => {
       currentFrame: null,
       playbackMode: "realtime",
       totalDurationSeconds: DEFAULT_REALTIME_DURATION_CAP_SECONDS,
+      resultState: "uncomputed",
     });
   });
 
@@ -309,11 +329,13 @@ describe("runtimeBridge", () => {
       playbackMode: "precomputed",
       totalDurationSeconds: 6,
       canSeek: false,
+      resultState: "uncomputed",
     });
 
     await port.start();
     expect(port.getSnapshot().bridge.status).toBe("preparing");
     expect(port.getSnapshot().bridge.preparingProgress).toBe(0);
+    expect(port.getSnapshot().bridge.resultState).toBe("calculating");
 
     for (let index = 0; index < 10 && !port.getSnapshot().bridge.canSeek; index += 1) {
       await port.tick();
@@ -324,6 +346,7 @@ describe("runtimeBridge", () => {
       playbackMode: "precomputed",
       totalDurationSeconds: 6,
       canSeek: true,
+      resultState: "ready",
     });
 
     const soughtSnapshot = await port.seek(4);
@@ -365,6 +388,9 @@ describe("runtimeBridge", () => {
     });
 
     await port.compile(request);
+    await port.setPlaybackConfig({
+      mode: "realtime",
+    });
 
     const idleTick = await port.tick();
     expect(idleTick.bridge.currentFrame).toBeNull();

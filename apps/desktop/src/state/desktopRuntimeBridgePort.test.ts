@@ -7,6 +7,7 @@ import {
 import {
   createMockRuntimeBridgePort,
   createRuntimeCompileRequest,
+  DEFAULT_PRECOMPUTED_DURATION_SECONDS,
   DEFAULT_REALTIME_DURATION_CAP_SECONDS,
   type RuntimeBridgePortSnapshot,
   type RuntimeBridgeStatusSnapshot,
@@ -28,10 +29,11 @@ function createStatusSnapshot(
     rebuildRequired: false,
     canResume: true,
     blockReason: null,
-    playbackMode: "realtime",
-    totalDurationSeconds: DEFAULT_REALTIME_DURATION_CAP_SECONDS,
+    playbackMode: "precomputed",
+    totalDurationSeconds: DEFAULT_PRECOMPUTED_DURATION_SECONDS,
     preparingProgress: null,
     canSeek: false,
+    resultState: "uncomputed",
     ...overrides,
   };
 }
@@ -199,6 +201,7 @@ describe("desktopRuntimeBridgePort", () => {
           playbackMode: "precomputed",
           totalDurationSeconds: 12,
           canSeek: true,
+          resultState: "ready",
           currentFrame: createRuntimeFramePayload({
             frameNumber: 240,
             entities: [
@@ -230,6 +233,7 @@ describe("desktopRuntimeBridgePort", () => {
       totalDurationSeconds: 12,
       currentTimeSeconds: 4,
       canSeek: true,
+      resultState: "ready",
     });
     expect(snapshot.bridge.currentFrame).toEqual({
       frameNumber: 240,
@@ -379,5 +383,30 @@ describe("desktopRuntimeBridgePort", () => {
       "seek failed: cached playback is not ready",
     );
     expect(port.getSnapshot().bridge.lastBlockedAction).toBeNull();
+  });
+
+  it("preserves explicit result validity states from backend status snapshots", async () => {
+    const fallbackPort = createMockRuntimeBridgePort();
+    const port = createDesktopRuntimeBridgePort({
+      fallbackPort,
+      invoke: async <T>(command: string) => {
+        if (command === "compile_scene") {
+          return createStatusSnapshot({
+            resultState: "stale",
+            rebuildRequired: true,
+            canResume: false,
+            blockReason: "rebuild-required",
+          }) as T;
+        }
+
+        throw new Error(`unexpected command: ${command}`);
+      },
+    });
+
+    await port.compile(createRuntimeCompileRequest(createEmptySceneDocument(), ["physics"]));
+
+    expect(port.getSnapshot().bridge.resultState).toBe("stale");
+    expect(port.getSnapshot().bridge.rebuildRequired).toBe(true);
+    expect(port.getSnapshot().bridge.canSeek).toBe(false);
   });
 });
