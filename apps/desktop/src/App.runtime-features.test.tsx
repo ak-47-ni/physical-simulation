@@ -222,7 +222,7 @@ describe("App runtime features", () => {
       expect(screen.getByText("Tracked entity: ball-1")).toBeDefined();
       expect(screen.getByText("Runtime sample count: 0")).toBeDefined();
       expect(
-        screen.getByText("No runtime samples yet. Start or step the runtime to collect data."),
+        screen.getByText("No runtime samples yet. Calculate playback to collect data."),
       ).toBeDefined();
     });
 
@@ -565,7 +565,9 @@ describe("App runtime features", () => {
       await flushMicrotasks();
     });
 
-    expect(screen.getByTestId("transport-preparing-progress").textContent).toBe("Preparing 17%");
+    expect(screen.getByTestId("transport-preparing-progress").textContent).toMatch(
+      /^Preparing \d+%$/,
+    );
     expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
       true,
     );

@@ -42,7 +42,7 @@ describe("AnalysisPanel", () => {
       expect(screen.getByText("No live data yet.")).toBeDefined();
       expect(screen.getByText("Frame: --")).toBeDefined();
       expect(
-        screen.getByText("No runtime samples yet. Start or step the runtime to collect data."),
+        screen.getByText("No runtime samples yet. Calculate playback to collect data."),
       ).toBeDefined();
     });
   });
