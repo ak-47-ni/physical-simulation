@@ -491,6 +491,16 @@ describe("App selection sync", () => {
 
     fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
     fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
+    fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
+    fireEvent.click(transport.getByRole("button", { name: /^calculate$/i }));
+
+    await waitFor(() => {
+      expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
+        false,
+      );
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^reset$/i }));
     fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
 
     await waitFor(() => {
@@ -506,7 +516,7 @@ describe("App selection sync", () => {
     render(<App />);
     const transport = within(screen.getByTestId("bottom-transport-bar"));
 
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    fireEvent.click(transport.getByRole("button", { name: /^calculate$/i }));
     fireEvent.mouseDown(screen.getByTestId("scene-entity-ball-1"), { clientX: 132, clientY: 176 });
     fireEvent.mouseMove(window, { clientX: 180, clientY: 228 });
     fireEvent.mouseUp(window);
@@ -524,7 +534,7 @@ describe("App selection sync", () => {
     render(<App />);
     const transport = within(screen.getByTestId("bottom-transport-bar"));
 
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    fireEvent.click(transport.getByRole("button", { name: /^calculate$/i }));
     fireEvent.click(screen.getByTestId("scene-entity-board-1"));
 
     expect(screen.getByTestId("scene-entity-board-1").getAttribute("data-selected")).toBe("true");
@@ -539,7 +549,7 @@ describe("App selection sync", () => {
     render(<App />);
     const transport = within(screen.getByTestId("bottom-transport-bar"));
 
-    fireEvent.click(transport.getByRole("button", { name: /^start$/i }));
+    fireEvent.click(transport.getByRole("button", { name: /^calculate$/i }));
 
     expect(screen.getByText("Scene physics is locked while runtime is playing.")).toBeDefined();
     expect((screen.getByLabelText("Gravity") as HTMLInputElement).disabled).toBe(true);
