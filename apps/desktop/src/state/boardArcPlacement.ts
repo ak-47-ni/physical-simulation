@@ -2,6 +2,8 @@ import type { Vector2 } from "../../../../packages/scene-schema/src";
 
 import type { EditorSceneEntity } from "./editorStore";
 
+type BoardArcAnchorEntity = Extract<EditorSceneEntity, { kind: "block" | "board" }>;
+
 export type BoardArcEndpointKey = "start" | "end";
 
 export type BoardArcEndpoint = {
@@ -22,14 +24,14 @@ type BoardArcEndpointMap = {
   start: BoardArcEndpoint;
 };
 
-function getBoardCenter(board: Extract<EditorSceneEntity, { kind: "board" }>): Vector2 {
+function getBoardCenter(board: BoardArcAnchorEntity): Vector2 {
   return {
     x: board.x + board.width / 2,
     y: board.y + board.height / 2,
   };
 }
 
-function getBoardAxisX(board: Extract<EditorSceneEntity, { kind: "board" }>): Vector2 {
+function getBoardAxisX(board: BoardArcAnchorEntity): Vector2 {
   const rotationRadians = ((board.rotationDegrees ?? 0) * Math.PI) / 180;
 
   return {
@@ -38,7 +40,7 @@ function getBoardAxisX(board: Extract<EditorSceneEntity, { kind: "board" }>): Ve
   };
 }
 
-function getBoardAxisY(board: Extract<EditorSceneEntity, { kind: "board" }>): Vector2 {
+function getBoardAxisY(board: BoardArcAnchorEntity): Vector2 {
   const axisX = getBoardAxisX(board);
 
   return {
@@ -77,7 +79,7 @@ function distanceBetweenPoints(a: Vector2, b: Vector2): number {
 }
 
 function getBoardDistanceFromPoint(
-  board: Extract<EditorSceneEntity, { kind: "board" }>,
+  board: BoardArcAnchorEntity,
   position: Vector2,
 ): number {
   const center = getBoardCenter(board);
@@ -93,35 +95,36 @@ function getBoardDistanceFromPoint(
 }
 
 export function getBoardArcEndpoints(
-  board: Extract<EditorSceneEntity, { kind: "board" }>,
+  board: BoardArcAnchorEntity,
 ): BoardArcEndpointMap {
   const center = getBoardCenter(board);
   const axisX = getBoardAxisX(board);
+  const topEdgeMidpoint = add(center, scale(getBoardAxisY(board), -board.height / 2));
   const halfWidthOffset = scale(axisX, board.width / 2);
 
   return {
     start: {
       key: "start",
-      point: add(center, scale(halfWidthOffset, -1)),
+      point: add(topEdgeMidpoint, scale(halfWidthOffset, -1)),
       tangent: scale(axisX, -1),
     },
     end: {
       key: "end",
-      point: add(center, halfWidthOffset),
+      point: add(topEdgeMidpoint, halfWidthOffset),
       tangent: axisX,
     },
   };
 }
 
 export function getBoardArcEndpoint(
-  board: Extract<EditorSceneEntity, { kind: "board" }>,
+  board: BoardArcAnchorEntity,
   key: BoardArcEndpointKey,
 ): BoardArcEndpoint {
   return getBoardArcEndpoints(board)[key];
 }
 
 export function resolveBoardArcSnapTarget(input: {
-  boards: Array<Extract<EditorSceneEntity, { kind: "board" }>>;
+  boards: BoardArcAnchorEntity[];
   maxSnapDistance: number;
   position: Vector2;
 }): BoardArcSnapTarget | null {

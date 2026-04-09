@@ -2,17 +2,17 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { EditorConstraint } from "../state/editorConstraints";
-import { createInitialEditorState } from "../state/editorStore";
+import {
+  createInitialEditorState,
+  type EditorSceneEntity,
+} from "../state/editorStore";
 import { createBoardAnchoredArcTrackConstraint } from "../state/createBoardAnchoredArcTrackConstraint";
 import { WorkspaceCanvas } from "./WorkspaceCanvas";
+import { resolveArcTrackBodyPreview } from "./arcTrackBodyEntity";
 import {
-  createArcTrackProfileGeometry,
-  createArcTrackTemplate,
-  resolveArcTrackBodyPreview,
-} from "./arcTrackBodyEntity";
-import {
-  authoredBoardInMeters,
   authoredBallInMeters,
+  authoredBoardInMeters,
+  createAuthoredBlockEntity,
   createDisplaySettings,
   meterViewport,
 } from "./WorkspaceCanvas.testSupport";
@@ -39,24 +39,45 @@ function createArcTrackConstraint(): EditorConstraint {
 
 function createArcTrackPreviewConstraint(): Extract<EditorConstraint, { kind: "arc-track" }> {
   return {
-    ...createArcTrackConstraint(),
+    id: "arc-preview",
+    kind: "arc-track",
     label: "Arc preview",
+    center: { x: 2.2, y: 3.24 },
+    radius: 1.2,
+    startAngleDegrees: 180,
+    endAngleDegrees: 270,
+    side: "inside",
+    entryEndpoint: "start",
   };
 }
 
+function createAuthoredArcTrackEntity(
+  overrides: Partial<Extract<EditorSceneEntity, { kind: "arc-track" }>> = {},
+): Extract<EditorSceneEntity, { kind: "arc-track" }> {
+  return {
+    id: "arc-track-authored-1",
+    kind: "arc-track",
+    label: "Arc Track Authored 1",
+    center: { x: 4, y: 2 },
+    radius: 1,
+    centralAngleDegrees: 90,
+    rotationDegrees: 0,
+    thickness: 0.18,
+    ...overrides,
+  };
+}
+
+function expectArcGuidePath(pathTestId: string) {
+  const path = screen.getByTestId(pathTestId) as SVGPathElement;
+
+  expect(path.getAttribute("d")).not.toBe("");
+  expect(path.getAttribute("d")).not.toContain("Z");
+  expect(path.getAttribute("fill")).toBe("none");
+  expect(path.getAttribute("stroke-linecap")).toBe("round");
+}
+
 describe("WorkspaceCanvas arc-track overlays", () => {
-  it("uses the standardized 0.18 m default thickness for arc-track body previews", () => {
-    const freeTemplate = createArcTrackTemplate({ x: 2.4, y: 1.8 });
-    const snappedPreview = resolveArcTrackBodyPreview({
-      entities: [{ ...authoredBoardInMeters, locked: true }],
-      position: { x: authoredBoardInMeters.x, y: authoredBoardInMeters.y + 0.12 },
-    });
-
-    expect(freeTemplate.thickness).toBeCloseTo(0.18);
-    expect(snappedPreview.entity.thickness).toBeCloseTo(0.18);
-  });
-
-  it("chooses the nearest board endpoint even when the drag is over the board span", () => {
+  it("chooses the nearest board top-edge endpoint even when the drag is over the board span", () => {
     const preview = resolveArcTrackBodyPreview({
       entities: [{ ...authoredBoardInMeters, locked: true }],
       position: {
@@ -68,43 +89,28 @@ describe("WorkspaceCanvas arc-track overlays", () => {
     expect(preview.status).toBe("snap");
     expect(preview.contactWithEntityId).toBe("board-1");
     expect(preview.tangentGuide?.start.x).toBeCloseTo(authoredBoardInMeters.x, 6);
-    expect(preview.tangentGuide?.start.y).toBeCloseTo(
-      authoredBoardInMeters.y + authoredBoardInMeters.height / 2,
-      6,
-    );
+    expect(preview.tangentGuide?.start.y).toBeCloseTo(authoredBoardInMeters.y, 6);
   });
 
-  it("builds arc-track profile geometry with radial start and end faces", () => {
-    const geometry = createArcTrackProfileGeometry({
-      center: { x: 400, y: 220 },
-      centralAngleDegrees: 90,
-      friction: 0.42,
-      id: "arc-track-geometry",
-      kind: "arc-track",
-      label: "Arc Track Geometry",
-      locked: false,
-      mass: 5,
-      radius: 96,
-      restitution: 1,
-      rotationDegrees: 0,
-      thickness: 24,
-      velocityX: 0,
-      velocityY: 0,
+  it("snaps arc-track previews to locked block top-edge endpoints", () => {
+    const block = createAuthoredBlockEntity({
+      id: "block-2",
+      locked: true,
+      x: 2.12,
+      y: 2.36,
     });
-    const startCross =
-      (geometry.outerStartPoint.x - geometry.center.x) *
-        (geometry.innerStartPoint.y - geometry.center.y) -
-      (geometry.outerStartPoint.y - geometry.center.y) *
-        (geometry.innerStartPoint.x - geometry.center.x);
-    const endCross =
-      (geometry.outerEndPoint.x - geometry.center.x) *
-        (geometry.innerEndPoint.y - geometry.center.y) -
-      (geometry.outerEndPoint.y - geometry.center.y) *
-        (geometry.innerEndPoint.x - geometry.center.x);
+    const preview = resolveArcTrackBodyPreview({
+      entities: [block],
+      position: {
+        x: block.x + 0.28,
+        y: block.y + block.height / 2,
+      },
+    });
 
-    expect(Math.abs(startCross)).toBeLessThan(0.001);
-    expect(Math.abs(endCross)).toBeLessThan(0.001);
-    expect(geometry.pathData).toContain("Z");
+    expect(preview.status).toBe("snap");
+    expect(preview.contactWithEntityId).toBe("block-2");
+    expect(preview.tangentGuide?.start.x).toBeCloseTo(block.x, 6);
+    expect(preview.tangentGuide?.start.y).toBeCloseTo(block.y, 6);
   });
 
   it("renders a curved arc-track overlay from authored arc data", () => {
@@ -200,6 +206,35 @@ describe("WorkspaceCanvas arc-track overlays", () => {
     expect(selectedEntityIds).toEqual([]);
   });
 
+  it("renders committed arc-track entities as stroked guide lines", () => {
+    const arcTrack = createAuthoredArcTrackEntity();
+
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        displayEntities={projectRuntimeSceneEntities({
+          editorEntities: [arcTrack],
+          runtimeFrame: null,
+          viewport: meterViewport,
+        })}
+        entities={[arcTrack]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          selectedEntityId: arcTrack.id,
+        }}
+        viewport={meterViewport}
+      />,
+    );
+
+    expect(screen.getByTestId(`scene-entity-${arcTrack.id}`).getAttribute("data-arc-track")).toBe("true");
+    expectArcGuidePath(`scene-entity-${arcTrack.id}-path`);
+  });
+
   it("shows a live quantized radius readout during arc-track radius picking", () => {
     const board = { ...authoredBoardInMeters, locked: true };
     const projectedBoard = projectRuntimeSceneEntities({
@@ -272,13 +307,13 @@ describe("WorkspaceCanvas arc-track overlays", () => {
   });
 
   it("shows span preset buttons and reports the selected preset during arc-track creation", () => {
-    const board = { ...authoredBoardInMeters, locked: true };
+    const block = createAuthoredBlockEntity({ locked: true });
     const selectedPresetDegrees: number[] = [];
 
     render(
       <WorkspaceCanvas
         constraintPlacement={{
-          anchorEntityId: board.id,
+          anchorEntityId: block.id,
           boardEndpointKey: "start",
           hint: "Choose the arc span",
           kind: "arc-track",
@@ -290,11 +325,11 @@ describe("WorkspaceCanvas arc-track overlays", () => {
         }}
         display={createDisplaySettings()}
         displayEntities={projectRuntimeSceneEntities({
-          editorEntities: [board],
+          editorEntities: [block],
           runtimeFrame: null,
           viewport: meterViewport,
         })}
-        entities={[board]}
+        entities={[block]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         onSelectArcTrackSpanPreset={(spanDegrees) => {
@@ -311,6 +346,7 @@ describe("WorkspaceCanvas arc-track overlays", () => {
       />,
     );
 
+    expect(screen.getByTestId(`scene-constraint-arc-endpoint-start-${block.id}`)).toBeDefined();
     expect(screen.getByTestId("workspace-arc-track-span-preset-90")).toBeDefined();
     expect(
       screen.getByTestId("workspace-arc-track-span-preset-180").getAttribute("data-selected"),
@@ -323,12 +359,12 @@ describe("WorkspaceCanvas arc-track overlays", () => {
   });
 
   it("renders tangent-continuous preview guides during arc-track creation", () => {
-    const board = { ...authoredBoardInMeters, locked: true };
+    const block = createAuthoredBlockEntity({ locked: true });
 
     render(
       <WorkspaceCanvas
         constraintPlacement={{
-          anchorEntityId: board.id,
+          anchorEntityId: block.id,
           boardEndpointKey: "start",
           hint: "Choose the arc span",
           kind: "arc-track",
@@ -340,11 +376,11 @@ describe("WorkspaceCanvas arc-track overlays", () => {
         }}
         display={createDisplaySettings()}
         displayEntities={projectRuntimeSceneEntities({
-          editorEntities: [board],
+          editorEntities: [block],
           runtimeFrame: null,
           viewport: meterViewport,
         })}
-        entities={[board]}
+        entities={[block]}
         onCreateEntity={() => undefined}
         onMoveEntity={() => undefined}
         onGridVisibleChange={() => undefined}
@@ -359,11 +395,7 @@ describe("WorkspaceCanvas arc-track overlays", () => {
     );
 
     expect(screen.getByTestId("workspace-arc-track-preview")).toBeDefined();
-    const previewPath = screen.getByTestId("workspace-arc-track-preview-path") as SVGPathElement;
-
-    expect(previewPath.getAttribute("d")).toContain("Z");
-    expect(previewPath.getAttribute("fill")).not.toBe("none");
-    expect(previewPath.getAttribute("stroke-linejoin")).toBe("miter");
+    expectArcGuidePath("workspace-arc-track-preview-path");
     expect(screen.getByTestId("workspace-arc-track-preview-radius-guide")).toBeDefined();
     expect(screen.getByTestId("workspace-arc-track-preview-tangent-guide")).toBeDefined();
   });

@@ -63,12 +63,13 @@ function createAuthoredArcTrackEntity(
   };
 }
 
-function expectStraightEndArcTrackPath(pathTestId: string) {
+function expectArcTrackGuidePath(pathTestId: string) {
   const path = screen.getByTestId(pathTestId) as SVGPathElement;
 
-  expect(path.getAttribute("d")).toContain("Z");
-  expect(path.getAttribute("fill")).not.toBe("none");
-  expect(path.getAttribute("stroke-linejoin")).toBe("miter");
+  expect(path.getAttribute("d")).not.toBe("");
+  expect(path.getAttribute("d")).not.toContain("Z");
+  expect(path.getAttribute("fill")).toBe("none");
+  expect(path.getAttribute("stroke-linecap")).toBe("round");
 }
 
 describe("WorkspaceCanvas", () => {
@@ -242,7 +243,7 @@ describe("WorkspaceCanvas", () => {
     expect(screen.queryByTestId("scene-entity-lock-board-1")).toBeNull();
   });
 
-  it("renders arc-track entities as closed bands with straight radial end faces", () => {
+  it("renders arc-track entities as stroked guide lines", () => {
     const selectedEntityIds: string[] = [];
     const arcTrackEntity = createArcTrackEntity();
 
@@ -270,7 +271,7 @@ describe("WorkspaceCanvas", () => {
 
     expect(entity.getAttribute("data-arc-track")).toBe("true");
     expect(entity.getAttribute("data-selected")).toBe("true");
-    expectStraightEndArcTrackPath("scene-entity-arc-track-entity-1-path");
+    expectArcTrackGuidePath("scene-entity-arc-track-entity-1-path");
 
     fireEvent.click(entity);
 
@@ -305,7 +306,7 @@ describe("WorkspaceCanvas", () => {
 
     expect(entity.getAttribute("data-arc-track")).toBe("true");
     expect(entity.getAttribute("data-selected")).toBe("true");
-    expectStraightEndArcTrackPath("scene-entity-arc-track-authored-1-path");
+    expectArcTrackGuidePath("scene-entity-arc-track-authored-1-path");
 
     fireEvent.click(entity);
 
@@ -923,7 +924,7 @@ describe("WorkspaceCanvas", () => {
     expect(preview.getAttribute("data-body-kind")).toBe("arc-track");
     expect(preview.getAttribute("data-preview-status")).toBe("free");
     expect(screen.getByTestId("workspace-stage-arc-track-preview")).toBeDefined();
-    expectStraightEndArcTrackPath("workspace-stage-arc-track-preview-path");
+    expectArcTrackGuidePath("workspace-stage-arc-track-preview-path");
   });
 
   it("snaps arc-track body previews when dragged across a board span with tangent guides", () => {
@@ -949,7 +950,7 @@ describe("WorkspaceCanvas", () => {
     expect(preview.getAttribute("data-preview-status")).toBe("snap");
     expect(board.getAttribute("data-contact-target")).toBe("true");
     expect(screen.getByTestId("workspace-stage-arc-track-preview")).toBeDefined();
-    expectStraightEndArcTrackPath("workspace-stage-arc-track-preview-path");
+    expectArcTrackGuidePath("workspace-stage-arc-track-preview-path");
     expect(screen.getByTestId("workspace-stage-arc-track-snap-guide")).toBeDefined();
   });
 

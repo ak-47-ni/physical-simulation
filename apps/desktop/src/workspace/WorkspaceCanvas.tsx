@@ -4,7 +4,7 @@ import type { SceneDisplaySettings } from "../io/sceneFile";
 import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
 import type { EditorSceneEntity } from "../state/editorStore";
 import {
-  createArcTrackProfileGeometry,
+  createArcTrackGuideGeometry,
   getArcTrackCenter,
   isArcTrackBodyKind,
   isArcTrackEntity,
@@ -175,7 +175,7 @@ function getEntityVisualStyle(
   isContactTarget: boolean,
 ): CSSProperties {
   if (isArcTrackEntity(entity)) {
-    const overlay = createArcTrackProfileGeometry(entity);
+    const overlay = createArcTrackGuideGeometry(entity);
     const strokeColor = isSelected ? "#2457a6" : "#112540";
     const haloColor = isContactTarget
       ? "0 0 0 4px rgba(27, 167, 132, 0.18)"
@@ -445,7 +445,7 @@ function getPlacementPreviewPalette(
 
 function createPlacementPreviewStyle(preview: ProjectedPlacementPreview): CSSProperties {
   if (isArcTrackEntity(preview.entity)) {
-    const overlay = createArcTrackProfileGeometry(preview.entity);
+    const overlay = createArcTrackGuideGeometry(preview.entity);
 
     return {
       position: "absolute",
@@ -526,21 +526,6 @@ function createArcTrackStrokeColor(
   }
 
   return isSelected ? "#2457a6" : "#17304f";
-}
-
-function createArcTrackFillColor(
-  status: WorkspaceCanvasAuthoringPlacementStatus,
-  isSelected: boolean,
-): string {
-  if (status === "snap") {
-    return isSelected ? "rgba(15, 118, 110, 0.32)" : "rgba(18, 117, 93, 0.18)";
-  }
-
-  if (status === "blocked") {
-    return "rgba(185, 28, 28, 0.14)";
-  }
-
-  return isSelected ? "rgba(36, 87, 166, 0.22)" : "rgba(23, 48, 79, 0.12)";
 }
 
 function createArcTrackGuideStyle(start: { x: number; y: number }, end: { x: number; y: number }): CSSProperties {
@@ -859,9 +844,9 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
         constraintPlacement.mode === "pick-span") &&
         constraintPlacement.boardEndpointKey))
       ? entities.find(
-          (entity): entity is Extract<EditorSceneEntity, { kind: "board" }> =>
+          (entity): entity is Extract<EditorSceneEntity, { kind: "block" | "board" }> =>
             entity.id === constraintPlacement.anchorEntityId &&
-            entity.kind === "board" &&
+            (entity.kind === "board" || entity.kind === "block") &&
             entity.locked,
         ) ?? null
       : null;
@@ -1004,10 +989,9 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     testId: string,
     pathTestId: string,
   ) {
-    const overlay = createArcTrackProfileGeometry(entity);
+    const overlay = createArcTrackGuideGeometry(entity);
     const isSelected = state.selectedEntityId === entity.id && testId.startsWith("scene-entity-");
     const strokeColor = createArcTrackStrokeColor(status, isSelected);
-    const fillColor = createArcTrackFillColor(status, isSelected);
 
     return (
       <svg
@@ -1021,10 +1005,11 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
         <path
           d={overlay.pathData}
           data-testid={pathTestId}
-          fill={fillColor}
+          fill="none"
           stroke={strokeColor}
-          strokeLinejoin="miter"
-          strokeWidth={overlay.outlineWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={isSelected ? overlay.strokeThickness + 1 : overlay.strokeThickness}
         />
       </svg>
     );

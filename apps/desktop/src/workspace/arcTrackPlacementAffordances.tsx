@@ -4,6 +4,8 @@ import { getBoardArcEndpoints } from "../state/boardArcPlacement";
 import type { EditorSceneEntity } from "../state/editorStore";
 import { projectAuthoringPointToScreen, type UnitViewport } from "./unitViewport";
 
+type ArcTrackAnchorEntity = Extract<EditorSceneEntity, { kind: "block" | "board" }>;
+
 function createArcEndpointAffordanceStyle(
   center: { x: number; y: number },
   selected: boolean,
@@ -26,7 +28,7 @@ function createArcEndpointAffordanceStyle(
 }
 
 export function renderArcTrackPlacementAffordances(input: {
-  board: Extract<EditorSceneEntity, { kind: "board" }>;
+  board: ArcTrackAnchorEntity;
   onSelectEndpoint?: (endpointKey: "start" | "end") => void;
   selectedEndpointKey?: "start" | "end" | null;
   viewport: UnitViewport;

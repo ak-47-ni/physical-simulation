@@ -57,6 +57,8 @@ export type ArcTrackProfileGeometry = {
   pathData: string;
 };
 
+export type ArcTrackGuideGeometry = ArcOverlayGeometry;
+
 type ArcTrackProfileGeometryInput = {
   center: Point2;
   endAngleDegrees: number;
@@ -286,6 +288,31 @@ export function createArcTrackProfileGeometry(
   });
 }
 
+export function createArcTrackGuideGeometryFromAngles(input: {
+  center: Point2;
+  endAngleDegrees: number;
+  radius: number;
+  startAngleDegrees: number;
+}): ArcTrackGuideGeometry {
+  return createArcOverlayGeometry({
+    center: input.center,
+    endAngleDegrees: input.endAngleDegrees,
+    radius: input.radius,
+    startAngleDegrees: input.startAngleDegrees,
+  });
+}
+
+export function createArcTrackGuideGeometry(entity: ArcTrackBodyEntity): ArcTrackGuideGeometry {
+  const angles = getArcTrackAngleRange(entity);
+
+  return createArcTrackGuideGeometryFromAngles({
+    center: entity.center,
+    endAngleDegrees: angles.endAngleDegrees,
+    radius: entity.radius,
+    startAngleDegrees: angles.startAngleDegrees,
+  });
+}
+
 export function resolveArcTrackBodyPreview(input: {
   entities: EditorSceneEntity[];
   maxSnapDistance?: number;
@@ -295,7 +322,10 @@ export function resolveArcTrackBodyPreview(input: {
   const maxSnapDistance = input.maxSnapDistance ?? DEFAULT_ARC_TRACK_SNAP_DISTANCE;
   const closestBoardEndpoint = resolveBoardArcSnapTarget({
     boards: input.entities.filter(
-      (entity): entity is Extract<EditorSceneEntity, { kind: "board" }> => entity.kind === "board",
+      (
+        entity,
+      ): entity is Extract<EditorSceneEntity, { kind: "block" | "board" }> =>
+        entity.kind === "board" || entity.kind === "block",
     ),
     maxSnapDistance,
     position: input.position,
@@ -324,7 +354,7 @@ export function resolveArcTrackBodyPreview(input: {
   };
   const tangentGuideLength = Math.max(
     previewEntity.radius * 0.45,
-    previewEntity.thickness * 2.5,
+    0.3,
   );
 
   return {
