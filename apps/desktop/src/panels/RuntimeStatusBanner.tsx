@@ -25,7 +25,8 @@ const bannerStyle: CSSProperties = {
   lineHeight: 1.5,
 };
 
-const elasticCollisionNote = "Rigid collisions stay elastic; friction only changes sliding.";
+const elasticCollisionNote =
+  "Rigid collisions stay elastic, so bounce height should stay consistent. Friction only changes sliding.";
 
 function withElasticCollisionNote(message: string) {
   return `${message} ${elasticCollisionNote}`;

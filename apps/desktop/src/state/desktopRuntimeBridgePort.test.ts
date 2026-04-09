@@ -9,6 +9,7 @@ import {
   createRuntimeCompileRequest,
   DEFAULT_PRECOMPUTED_DURATION_SECONDS,
   DEFAULT_REALTIME_DURATION_CAP_SECONDS,
+  type RuntimeTrajectorySample,
   type RuntimeBridgePortSnapshot,
   type RuntimeBridgeStatusSnapshot,
 } from "./runtimeBridge";
@@ -36,6 +37,63 @@ function createStatusSnapshot(
     resultState: "uncomputed",
     ...overrides,
   };
+}
+
+function createElasticBounceRequest(boardFriction: number) {
+  const scene = createEmptySceneDocument();
+  scene.entities.push(
+    {
+      id: "ball-1",
+      kind: "ball",
+      x: 1.32,
+      y: 1.12,
+      radius: 0.24,
+      mass: 1,
+      friction: 0,
+      restitution: 1,
+      locked: false,
+      velocityX: 0,
+      velocityY: 0,
+    },
+    {
+      id: "board-1",
+      kind: "board",
+      x: 2.4,
+      y: 3.12,
+      width: 1.6,
+      height: 0.18,
+      rotationDegrees: 0,
+      mass: 5,
+      friction: boardFriction,
+      restitution: 1,
+      locked: true,
+      velocityX: 0,
+      velocityY: 0,
+    },
+  );
+  scene.analyzers.push({
+    id: "traj-1",
+    kind: "trajectory",
+    entityId: "ball-1",
+  });
+
+  return createRuntimeCompileRequest(scene, ["physics", "analysis"]);
+}
+
+function readReboundPeakHeights(samples: RuntimeTrajectorySample[]) {
+  const peaks: number[] = [];
+
+  for (let index = 1; index < samples.length - 1; index += 1) {
+    const previousY = samples[index - 1].position.y;
+    const currentY = samples[index].position.y;
+    const nextY = samples[index + 1].position.y;
+
+    if (currentY < previousY && currentY < nextY) {
+      peaks.push(currentY);
+    }
+  }
+
+  return peaks;
 }
 
 describe("desktopRuntimeBridgePort", () => {
@@ -408,5 +466,130 @@ describe("desktopRuntimeBridgePort", () => {
     expect(port.getSnapshot().bridge.resultState).toBe("stale");
     expect(port.getSnapshot().bridge.rebuildRequired).toBe(true);
     expect(port.getSnapshot().bridge.canSeek).toBe(false);
+  });
+
+  it("preserves backend rebound peaks across friction-only recompiles", async () => {
+    const lowFrictionRequest = createElasticBounceRequest(0);
+    const highFrictionRequest = createElasticBounceRequest(0.9);
+    let activeFriction = 0;
+    const samplesByFriction: Record<number, RuntimeTrajectorySample[]> = {
+      0: [
+        {
+          frameNumber: 10,
+          timeSeconds: 0.16,
+          position: { x: 1.56, y: 2.78 },
+          velocity: { x: 0, y: 6.2 },
+          acceleration: { x: 0, y: 9.8 },
+        },
+        {
+          frameNumber: 18,
+          timeSeconds: 0.3,
+          position: { x: 1.56, y: 1.14 },
+          velocity: { x: 0, y: -6.1 },
+          acceleration: { x: 0, y: 9.8 },
+        },
+        {
+          frameNumber: 26,
+          timeSeconds: 0.43,
+          position: { x: 1.56, y: 2.8 },
+          velocity: { x: 0, y: 6.15 },
+          acceleration: { x: 0, y: 9.8 },
+        },
+        {
+          frameNumber: 34,
+          timeSeconds: 0.57,
+          position: { x: 1.56, y: 1.15 },
+          velocity: { x: 0, y: -6.05 },
+          acceleration: { x: 0, y: 9.8 },
+        },
+        {
+          frameNumber: 42,
+          timeSeconds: 0.7,
+          position: { x: 1.56, y: 2.81 },
+          velocity: { x: 0, y: 6.1 },
+          acceleration: { x: 0, y: 9.8 },
+        },
+      ],
+      0.9: [
+        {
+          frameNumber: 10,
+          timeSeconds: 0.16,
+          position: { x: 1.56, y: 2.78 },
+          velocity: { x: 0, y: 6.2 },
+          acceleration: { x: 0, y: 9.8 },
+        },
+        {
+          frameNumber: 18,
+          timeSeconds: 0.3,
+          position: { x: 1.56, y: 1.14 },
+          velocity: { x: 0.4, y: -6.1 },
+          acceleration: { x: 0, y: 9.8 },
+        },
+        {
+          frameNumber: 26,
+          timeSeconds: 0.43,
+          position: { x: 1.61, y: 2.8 },
+          velocity: { x: 0.35, y: 6.15 },
+          acceleration: { x: 0, y: 9.8 },
+        },
+        {
+          frameNumber: 34,
+          timeSeconds: 0.57,
+          position: { x: 1.66, y: 1.15 },
+          velocity: { x: 0.3, y: -6.05 },
+          acceleration: { x: 0, y: 9.8 },
+        },
+        {
+          frameNumber: 42,
+          timeSeconds: 0.7,
+          position: { x: 1.7, y: 2.81 },
+          velocity: { x: 0.25, y: 6.1 },
+          acceleration: { x: 0, y: 9.8 },
+        },
+      ],
+    };
+    const port = createDesktopRuntimeBridgePort({
+      fallbackPort: createMockRuntimeBridgePort(),
+      invoke: async <T>(command: string, payload?: Record<string, unknown>) => {
+        if (command === "compile_scene") {
+          const request = payload as {
+            request: {
+              scene: {
+                entities: Array<{ kind: string; friction?: number }>;
+              };
+            };
+          };
+          activeFriction =
+            request.request.scene.entities.find((entity) => entity.kind === "board")?.friction ?? 0;
+
+          return createStatusSnapshot({
+            status: "paused",
+            playbackMode: "precomputed",
+            canSeek: true,
+            resultState: "ready",
+          }) as T;
+        }
+
+        if (command === "read_trajectory_samples") {
+          expect(payload).toEqual({ analyzerId: "traj-1" });
+          return samplesByFriction[activeFriction] as T;
+        }
+
+        throw new Error(`unexpected command: ${command}`);
+      },
+    });
+
+    await port.compile(lowFrictionRequest);
+    const lowFrictionSamples = await port.readTrajectorySamples("traj-1");
+    await port.compile(highFrictionRequest);
+    const highFrictionSamples = await port.readTrajectorySamples("traj-1");
+
+    const lowFrictionPeaks = readReboundPeakHeights(lowFrictionSamples);
+    const highFrictionPeaks = readReboundPeakHeights(highFrictionSamples);
+
+    expect(lowFrictionPeaks).toEqual([1.14, 1.15]);
+    expect(highFrictionPeaks).toEqual([1.14, 1.15]);
+    expect(Math.abs(lowFrictionPeaks[0] - lowFrictionPeaks[1])).toBeLessThanOrEqual(0.02);
+    expect(Math.abs(highFrictionPeaks[0] - highFrictionPeaks[1])).toBeLessThanOrEqual(0.02);
   });
 });

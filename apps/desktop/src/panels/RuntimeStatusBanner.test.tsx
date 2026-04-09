@@ -60,7 +60,7 @@ describe("RuntimeStatusBanner", () => {
       "Results are out of date. Recalculate to review the latest motion.",
     );
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
-      "Rigid collisions stay elastic; friction only changes sliding.",
+      "Rigid collisions stay elastic, so bounce height should stay consistent. Friction only changes sliding.",
     );
   });
 
@@ -82,7 +82,7 @@ describe("RuntimeStatusBanner", () => {
       "Showing the calculated result. Pause to inspect or jump to another time.",
     );
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
-      "Rigid collisions stay elastic; friction only changes sliding.",
+      "Rigid collisions stay elastic, so bounce height should stay consistent. Friction only changes sliding.",
     );
   });
 
@@ -104,7 +104,7 @@ describe("RuntimeStatusBanner", () => {
       "Calculate a result to enable play, seek, and time jump.",
     );
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
-      "Rigid collisions stay elastic; friction only changes sliding.",
+      "Rigid collisions stay elastic, so bounce height should stay consistent. Friction only changes sliding.",
     );
   });
 
@@ -126,7 +126,7 @@ describe("RuntimeStatusBanner", () => {
       "Calculating the result. Playback and time jump unlock when it finishes.",
     );
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
-      "Rigid collisions stay elastic; friction only changes sliding.",
+      "Rigid collisions stay elastic, so bounce height should stay consistent. Friction only changes sliding.",
     );
   });
 });

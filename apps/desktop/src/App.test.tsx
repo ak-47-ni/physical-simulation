@@ -512,6 +512,28 @@ describe("App selection sync", () => {
     });
   });
 
+  it("keeps runtime bounce guidance aligned with elastic friction semantics after board edits", async () => {
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
+      "Rigid collisions stay elastic, so bounce height should stay consistent. Friction only changes sliding.",
+    );
+
+    fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+    fireEvent.change(screen.getByLabelText("Friction"), { target: { value: "0.9" } });
+    fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "0.1" } });
+    fireEvent.click(transport.getByRole("button", { name: /^calculate$/i }));
+
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled,
+      ).toBe(false);
+    });
+
+    expect(document.body.textContent ?? "").not.toMatch(/damp|lower bounce|reduce bounce/i);
+  });
+
   it("blocks dragging and shows a workspace hint while the runtime is running", async () => {
     render(<App />);
     const transport = within(screen.getByTestId("bottom-transport-bar"));
