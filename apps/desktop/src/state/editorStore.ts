@@ -46,10 +46,17 @@ export type ArcTrackSceneEntity = {
   id: string;
   kind: "arc-track";
   label: string;
+  anchorEntityId: string;
+  anchorEntityKind: "board" | "block";
+  anchorEndpoint: "start" | "end";
   center: { x: number; y: number };
+  entryEndpoint: "start" | "end";
   radius: number;
-  centralAngleDegrees: number;
+  sweepAngleDegrees: number;
   rotationDegrees: number;
+  // Workspace rendering still consumes the legacy span/thickness fields until Worker A lands
+  // the line-guide presentation change.
+  centralAngleDegrees: number;
   thickness: number;
 };
 
@@ -121,7 +128,7 @@ const BODY_DEFAULTS = {
   block: { width: 84, height: 52 },
   board: { width: 120, height: 14 },
   polygon: { width: 76, height: 76 },
-  "arc-track": { radius: 100, centralAngleDegrees: 90, thickness: 18 },
+  "arc-track": { radius: 100, sweepAngleDegrees: 90, thickness: 18 },
 } as const;
 
 const BODY_PHYSICS_DEFAULTS: Record<Exclude<LibraryBodyKind, "arc-track">, EditorEntityPhysics> = {
@@ -200,10 +207,15 @@ export function createPlacedBodyEntity(
       id,
       kind: "arc-track",
       label,
+      anchorEntityId: "board-1",
+      anchorEntityKind: "board",
+      anchorEndpoint: "start",
       center: { x: position.x, y: position.y },
+      entryEndpoint: "start",
       radius: BODY_DEFAULTS["arc-track"].radius,
-      centralAngleDegrees: BODY_DEFAULTS["arc-track"].centralAngleDegrees,
+      sweepAngleDegrees: BODY_DEFAULTS["arc-track"].sweepAngleDegrees,
       rotationDegrees: 0,
+      centralAngleDegrees: BODY_DEFAULTS["arc-track"].sweepAngleDegrees,
       thickness: BODY_DEFAULTS["arc-track"].thickness,
     };
   }

@@ -43,11 +43,14 @@ type _AssertExpectedExtendsArcTrackConstraint = Assert<
 type ExpectedArcTrackSceneEntity = {
   id: string;
   kind: "arc-track";
+  anchorEntityId: string;
+  anchorEntityKind: "board" | "block";
+  anchorEndpoint: "start" | "end";
   center: { x: number; y: number };
+  entryEndpoint: "start" | "end";
   radius: number;
-  centralAngleDegrees: number;
+  sweepAngleDegrees: number;
   rotationDegrees: number;
-  thickness: number;
 };
 type _AssertArcTrackSceneEntityExtendsExpected = Assert<
   ArcTrackSceneEntity extends ExpectedArcTrackSceneEntity ? true : false
@@ -65,7 +68,7 @@ describe("scene schema", () => {
     expect(true).toBe(true);
   });
 
-  it("types arc-track entities as explicit editable body geometry", () => {
+  it("types arc-track entities as anchored guide geometry", () => {
     expect(true).toBe(true);
   });
 
@@ -270,11 +273,14 @@ describe("scene schema", () => {
       id: "arc-track-entity-1",
       kind: "arc-track",
       label: "Arc Track 1",
+      anchorEntityId: "board-1",
+      anchorEntityKind: "board",
+      anchorEndpoint: "start",
       center: { x: 6, y: 4 },
+      entryEndpoint: "start",
       radius: 1,
-      centralAngleDegrees: 90,
+      sweepAngleDegrees: 90,
       rotationDegrees: 30,
-      thickness: 0.18,
     };
 
     scene.entities.push(arcTrack);
@@ -293,6 +299,7 @@ describe("scene schema", () => {
     originalEntity.center.x = 999;
 
     expect(clonedEntity.center).toEqual({ x: 6, y: 4 });
+    expect(clonedEntity).not.toHaveProperty("thickness");
   });
 
   it("creates runtime compile requests from cloned scene state and dirty scopes", () => {
@@ -340,11 +347,14 @@ describe("scene schema", () => {
       id: "arc-track-entity-1",
       kind: "arc-track",
       label: "Arc Track 1",
+      anchorEntityId: "block-1",
+      anchorEntityKind: "block",
+      anchorEndpoint: "end",
       center: { x: 3.2, y: 2.4 },
+      entryEndpoint: "end",
       radius: 1.4,
-      centralAngleDegrees: 135,
+      sweepAngleDegrees: 135,
       rotationDegrees: -20,
-      thickness: 0.18,
     };
 
     scene.entities.push(arcTrack);
@@ -358,6 +368,7 @@ describe("scene schema", () => {
 
     expect(compiledEntity).toEqual(arcTrack);
     expect(compiledEntity.center).not.toBe(arcTrack.center);
+    expect(compiledEntity).not.toHaveProperty("thickness");
   });
 
   it("deep-clones typed constraint and force-source payload vectors", () => {

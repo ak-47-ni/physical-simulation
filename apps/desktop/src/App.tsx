@@ -77,6 +77,238 @@ type PendingEntityDragPlacement = {
   position: { x: number; y: number };
 };
 
+type ArcTrackEntity = Extract<EditorSceneEntity, { kind: "arc-track" }>;
+type ArcTrackAnchorableEntity = Extract<EditorSceneEntity, { kind: "board" | "block" }>;
+type ArcTrackAnchorTarget = {
+  endpoint: "start" | "end";
+  entityId: string;
+  entityKind: "board" | "block";
+  point: { x: number; y: number };
+  tangent: { x: number; y: number };
+};
+
+function addVectors(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return {
+    x: a.x + b.x,
+    y: a.y + b.y,
+  };
+}
+
+function subtractVectors(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return {
+    x: a.x - b.x,
+    y: a.y - b.y,
+  };
+}
+
+function scaleVector(vector: { x: number; y: number }, scalar: number) {
+  return {
+    x: vector.x * scalar,
+    y: vector.y * scalar,
+  };
+}
+
+function dotProduct(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return a.x * b.x + a.y * b.y;
+}
+
+function roundArcTrackValue(value: number) {
+  return Number(value.toFixed(6));
+}
+
+function normalizeSignedAngleDegrees(angleDegrees: number) {
+  const normalized = ((angleDegrees + 180) % 360 + 360) % 360 - 180;
+
+  return roundArcTrackValue(normalized === -180 ? 180 : normalized);
+}
+
+function readAngularDistanceDegrees(a: number, b: number) {
+  return Math.abs(normalizeSignedAngleDegrees(a - b));
+}
+
+function readRadiusVector(radius: number, angleDegrees: number) {
+  const angleRadians = (angleDegrees * Math.PI) / 180;
+
+  return {
+    x: radius * Math.cos(angleRadians),
+    y: -radius * Math.sin(angleRadians),
+  };
+}
+
+function readIncreasingArcTangent(angleDegrees: number) {
+  const angleRadians = (angleDegrees * Math.PI) / 180;
+
+  return {
+    x: -Math.sin(angleRadians),
+    y: -Math.cos(angleRadians),
+  };
+}
+
+function readAngleForEntryTangent(
+  tangent: { x: number; y: number },
+  entryEndpoint: "start" | "end",
+) {
+  return normalizeSignedAngleDegrees(
+    (Math.atan2(
+      entryEndpoint === "start" ? -tangent.x : tangent.x,
+      entryEndpoint === "start" ? -tangent.y : tangent.y,
+    ) *
+      180) /
+      Math.PI,
+  );
+}
+
+function readArcTrackRectangleAxes(entity: ArcTrackAnchorableEntity) {
+  const rotationRadians = ((entity.rotationDegrees ?? 0) * Math.PI) / 180;
+  const axisX = {
+    x: Math.cos(rotationRadians),
+    y: Math.sin(rotationRadians),
+  };
+  const axisY = {
+    x: -axisX.y,
+    y: axisX.x,
+  };
+
+  return { axisX, axisY };
+}
+
+function readArcTrackAnchorTargetsForEntity(
+  entity: ArcTrackAnchorableEntity,
+): [ArcTrackAnchorTarget, ArcTrackAnchorTarget] {
+  const center = getEntityCenter(entity);
+  const { axisX, axisY } = readArcTrackRectangleAxes(entity);
+  const topCenter = addVectors(center, scaleVector(axisY, -entity.height / 2));
+  const halfWidthOffset = scaleVector(axisX, entity.width / 2);
+
+  return [
+    {
+      endpoint: "start",
+      entityId: entity.id,
+      entityKind: entity.kind,
+      point: addVectors(topCenter, scaleVector(halfWidthOffset, -1)),
+      tangent: scaleVector(axisX, -1),
+    },
+    {
+      endpoint: "end",
+      entityId: entity.id,
+      entityKind: entity.kind,
+      point: addVectors(topCenter, halfWidthOffset),
+      tangent: axisX,
+    },
+  ];
+}
+
+function readDistanceToAnchorableEntity(
+  entity: ArcTrackAnchorableEntity,
+  position: { x: number; y: number },
+) {
+  const center = getEntityCenter(entity);
+  const { axisX, axisY } = readArcTrackRectangleAxes(entity);
+  const offset = subtractVectors(position, center);
+  const localX = dotProduct(offset, axisX);
+  const localY = dotProduct(offset, axisY);
+  const outsideX = Math.max(Math.abs(localX) - entity.width / 2, 0);
+  const outsideY = Math.max(Math.abs(localY) - entity.height / 2, 0);
+
+  return Math.hypot(outsideX, outsideY);
+}
+
+function resolveArcTrackAnchorTarget(input: {
+  entities: EditorSceneEntity[];
+  maxSnapDistance: number;
+  position: { x: number; y: number };
+}): ArcTrackAnchorTarget | null {
+  let closest:
+    | (ArcTrackAnchorTarget & { endpointDistance: number; entityDistance: number })
+    | null = null;
+
+  for (const entity of input.entities) {
+    if (entity.kind !== "board" && entity.kind !== "block") {
+      continue;
+    }
+
+    const entityDistance = readDistanceToAnchorableEntity(entity, input.position);
+
+    if (entityDistance > input.maxSnapDistance) {
+      continue;
+    }
+
+    for (const target of readArcTrackAnchorTargetsForEntity(entity)) {
+      const endpointDistance = Math.hypot(
+        input.position.x - target.point.x,
+        input.position.y - target.point.y,
+      );
+
+      if (
+        !closest ||
+        entityDistance < closest.entityDistance ||
+        (entityDistance === closest.entityDistance &&
+          endpointDistance < closest.endpointDistance) ||
+        (entityDistance === closest.entityDistance &&
+          endpointDistance === closest.endpointDistance &&
+          target.entityId.localeCompare(closest.entityId) < 0) ||
+        (entityDistance === closest.entityDistance &&
+          endpointDistance === closest.endpointDistance &&
+          target.entityId === closest.entityId &&
+          target.endpoint.localeCompare(closest.endpoint) < 0)
+      ) {
+        closest = {
+          ...target,
+          endpointDistance,
+          entityDistance,
+        };
+      }
+    }
+  }
+
+  return closest;
+}
+
+function createAnchoredArcTrackEntity(input: {
+  anchorTarget: ArcTrackAnchorTarget;
+  baseEntity: ArcTrackEntity;
+  preferredEntryEndpoint?: "start" | "end";
+  radius?: number;
+  requestedRotationDegrees?: number;
+  sweepAngleDegrees?: number;
+}): ArcTrackEntity {
+  const radius = input.radius ?? input.baseEntity.radius;
+  const sweepAngleDegrees = input.sweepAngleDegrees ?? input.baseEntity.sweepAngleDegrees;
+  const startRotationDegrees =
+    readAngleForEntryTangent(input.anchorTarget.tangent, "start") + sweepAngleDegrees / 2;
+  const endRotationDegrees =
+    readAngleForEntryTangent(input.anchorTarget.tangent, "end") - sweepAngleDegrees / 2;
+  const entryEndpoint =
+    input.requestedRotationDegrees !== undefined
+      ? readAngularDistanceDegrees(input.requestedRotationDegrees, startRotationDegrees) <=
+        readAngularDistanceDegrees(input.requestedRotationDegrees, endRotationDegrees)
+        ? "start"
+        : "end"
+      : (input.preferredEntryEndpoint ?? input.baseEntity.entryEndpoint ?? "start");
+  const entryAngleDegrees = readAngleForEntryTangent(input.anchorTarget.tangent, entryEndpoint);
+  const rotationDegrees =
+    entryEndpoint === "start"
+      ? normalizeSignedAngleDegrees(entryAngleDegrees + sweepAngleDegrees / 2)
+      : normalizeSignedAngleDegrees(entryAngleDegrees - sweepAngleDegrees / 2);
+  const radiusVector = readRadiusVector(radius, entryAngleDegrees);
+
+  return {
+    ...input.baseEntity,
+    anchorEntityId: input.anchorTarget.entityId,
+    anchorEntityKind: input.anchorTarget.entityKind,
+    anchorEndpoint: input.anchorTarget.endpoint,
+    center: {
+      x: roundArcTrackValue(input.anchorTarget.point.x - radiusVector.x),
+      y: roundArcTrackValue(input.anchorTarget.point.y - radiusVector.y),
+    },
+    entryEndpoint,
+    radius,
+    rotationDegrees,
+    sweepAngleDegrees,
+    centralAngleDegrees: sweepAngleDegrees,
+  };
+}
+
 export function App() {
   const initialAuthoringState = createInitialAuthoringState();
   const [editorState, setEditorState] = useState(createInitialEditorState);
@@ -260,13 +492,21 @@ export function App() {
       return false;
     }
 
-    setEntities((current) => replaceEntityInCollection(current, nextEntity));
+    setEntities((current) =>
+      reconcileAnchoredArcTrackEntities(replaceEntityInCollection(current, nextEntity)),
+    );
     handleSelectEntity(entityId);
 
     return true;
   }
 
   function handleMoveEntity(entityId: string, position: { x: number; y: number }) {
+    const entity = entities.find((candidate) => candidate.id === entityId);
+
+    if (entity?.kind === "arc-track") {
+      return;
+    }
+
     setPendingEntityDragPlacement({
       entityId,
       position,
@@ -285,6 +525,80 @@ export function App() {
     );
   }
 
+  function createArcTrackBaseEntity(position: { x: number; y: number }): ArcTrackEntity {
+    const created = convertLegacyCreatedEntityToSceneUnits(
+      createPlacedBodyEntity(entities, "arc-track", position),
+      sceneSettings,
+      position,
+    );
+
+    if (created.kind !== "arc-track") {
+      throw new Error("Arc-track creation returned a non arc-track entity.");
+    }
+
+    return created;
+  }
+
+  function resolveStoredArcTrackAnchorTarget(entity: ArcTrackEntity, catalog: EditorSceneEntity[]) {
+    const anchorEntity = catalog.find(
+      (candidate): candidate is ArcTrackAnchorableEntity =>
+        candidate.id === entity.anchorEntityId && candidate.kind === entity.anchorEntityKind,
+    );
+
+    if (!anchorEntity) {
+      return null;
+    }
+
+    return readArcTrackAnchorTargetsForEntity(anchorEntity).find(
+      (target) => target.endpoint === entity.anchorEndpoint,
+    ) ?? null;
+  }
+
+  function reconcileAnchoredArcTrackEntities(catalog: EditorSceneEntity[]) {
+    return catalog.map((entity) => {
+      if (entity.kind !== "arc-track") {
+        return entity;
+      }
+
+      const anchorTarget = resolveStoredArcTrackAnchorTarget(entity, catalog);
+
+      if (!anchorTarget) {
+        return entity;
+      }
+
+      return createAnchoredArcTrackEntity({
+        anchorTarget,
+        baseEntity: entity,
+        preferredEntryEndpoint: entity.entryEndpoint,
+      });
+    });
+  }
+
+  function resolveArcTrackPlacementPreview(position: { x: number; y: number }) {
+    const baseEntity = createArcTrackBaseEntity(position);
+    const anchorTarget = resolveArcTrackAnchorTarget({
+      entities,
+      maxSnapDistance: authoringSnapDistance,
+      position,
+    });
+
+    if (!anchorTarget) {
+      return {
+        entity: baseEntity,
+        status: "blocked" as const,
+      };
+    }
+
+    return {
+      contactWithEntityId: anchorTarget.entityId,
+      entity: createAnchoredArcTrackEntity({
+        anchorTarget,
+        baseEntity,
+      }),
+      status: "snap" as const,
+    };
+  }
+
   function updateSelectedEntity(
     updater: (entity: EditorSceneEntity) => EditorSceneEntity,
   ) {
@@ -293,8 +607,10 @@ export function App() {
     }
 
     setEntities((current) =>
-      current.map((entity) =>
-        entity.id === editorState.selectedEntityId ? updater(entity) : entity,
+      reconcileAnchoredArcTrackEntities(
+        current.map((entity) =>
+          entity.id === editorState.selectedEntityId ? updater(entity) : entity,
+        ),
       ),
     );
   }
@@ -312,6 +628,18 @@ export function App() {
     kind: LibraryBodyKind,
     position: { x: number; y: number },
   ) {
+    if (kind === "arc-track") {
+      const preview = resolveArcTrackPlacementPreview(position);
+
+      if (preview.status !== "snap") {
+        return;
+      }
+
+      setEntities((current) => [...current, preview.entity]);
+      handleSelectEntity(preview.entity.id);
+      return;
+    }
+
     const nextEntity = createPlacedEntityCandidate(kind, position);
     const resolution = resolveAuthoringPlacementForCommit({
       candidate: nextEntity,
@@ -390,9 +718,20 @@ export function App() {
         )
         .map((constraint) => constraint.id),
     );
+    const removedArcTrackIds = new Set(
+      entities
+        .filter(
+          (entity): entity is ArcTrackEntity =>
+            entity.kind === "arc-track" && entity.anchorEntityId === deletedEntityId,
+        )
+        .map((entity) => entity.id),
+    );
 
     setEntities((current) =>
-      current.filter((entity) => entity.id !== deletedEntityId),
+      current.filter(
+        (entity) =>
+          entity.id !== deletedEntityId && !removedArcTrackIds.has(entity.id),
+      ),
     );
     setConstraints((current) =>
       current.filter((constraint) => !removedConstraintIds.has(constraint.id)),
@@ -403,7 +742,11 @@ export function App() {
         current.selectedConstraintId && removedConstraintIds.has(current.selectedConstraintId)
           ? null
           : current.selectedConstraintId,
-      selectedEntityId: current.selectedEntityId === deletedEntityId ? null : current.selectedEntityId,
+      selectedEntityId:
+        current.selectedEntityId === deletedEntityId ||
+        (current.selectedEntityId !== null && removedArcTrackIds.has(current.selectedEntityId))
+          ? null
+          : current.selectedEntityId,
     }));
   }
 
@@ -434,8 +777,17 @@ export function App() {
   const authoringSnapDistance = getDefaultAuthoringSnapDistance(sceneSettings.lengthUnit);
   const authoringLocked = playbackLocked;
   const scenePhysicsState = createScenePhysicsPanelState(sceneSettings, authoringLocked);
+  const libraryDragArcTrackPreview =
+    libraryDragSession?.bodyKind === "arc-track" &&
+    libraryDragHover?.isOverStage &&
+    libraryDragHover.authoringPosition
+      ? resolveArcTrackPlacementPreview(libraryDragHover.authoringPosition)
+      : null;
   const libraryDragCandidate =
-    libraryDragSession && libraryDragHover?.isOverStage && libraryDragHover.authoringPosition
+    libraryDragSession &&
+    libraryDragSession.bodyKind !== "arc-track" &&
+    libraryDragHover?.isOverStage &&
+    libraryDragHover.authoringPosition
       ? createPlacedEntityCandidate(libraryDragSession.bodyKind, libraryDragHover.authoringPosition)
       : null;
   const libraryDragResolution = libraryDragCandidate
@@ -457,6 +809,10 @@ export function App() {
             return null;
           }
 
+          if (currentEntity.kind === "arc-track") {
+            return null;
+          }
+
           const candidate = {
             ...currentEntity,
             x: pendingEntityDragPlacement.position.x,
@@ -473,9 +829,10 @@ export function App() {
         })()
       : null;
   const authoringPlacementPreview =
-    libraryDragCandidate && libraryDragResolution
+    libraryDragArcTrackPreview ??
+    (libraryDragCandidate && libraryDragResolution
       ? createAuthoringPlacementPreview(libraryDragCandidate, libraryDragResolution)
-      : pendingEntityDragPreview;
+      : pendingEntityDragPreview);
   const workspaceAuthoringPlacementPreview = authoringPlacementPreview;
   const libraryDragBlocked = authoringPlacementPreview?.status === "blocked";
 
@@ -533,7 +890,11 @@ export function App() {
       });
 
       if (resolution.status !== "blocked") {
-        setEntities((current) => replaceEntityInCollection(current, resolution.entity));
+        setEntities((current) =>
+          reconcileAnchoredArcTrackEntities(
+            replaceEntityInCollection(current, resolution.entity),
+          ),
+        );
       }
 
       setPendingEntityDragPlacement(null);
@@ -630,7 +991,9 @@ export function App() {
       return;
     }
 
-    setEntities((current) => replaceEntityInCollection(current, resolution.entity));
+    setEntities((current) =>
+      reconcileAnchoredArcTrackEntities(replaceEntityInCollection(current, resolution.entity)),
+    );
   }
 
   function handleUpdateSelectedEntityPhysics(physics: Partial<EditorEntityPhysics>) {
@@ -647,28 +1010,33 @@ export function App() {
   }
 
   function handleUpdateSelectedArcTrack(update: {
-    center?: { x: number; y: number };
-    centralAngleDegrees?: number;
     radius?: number;
     rotationDegrees?: number;
-    thickness?: number;
+    sweepAngleDegrees?: number;
   }) {
     updateSelectedEntity((entity) => {
       if (entity.kind !== "arc-track") {
         return entity;
       }
 
-      return {
-        ...entity,
-        center: update.center ?? entity.center,
+      const anchorTarget = resolveStoredArcTrackAnchorTarget(entity, entities);
+
+      if (!anchorTarget) {
+        return entity;
+      }
+
+      return createAnchoredArcTrackEntity({
+        anchorTarget,
+        baseEntity: entity,
+        preferredEntryEndpoint:
+          update.rotationDegrees === undefined ? entity.entryEndpoint : undefined,
         radius:
           update.radius === undefined
             ? entity.radius
             : quantizeArcTrackRadiusForLengthUnit(update.radius, sceneSettings.lengthUnit),
-        centralAngleDegrees: update.centralAngleDegrees ?? entity.centralAngleDegrees,
-        rotationDegrees: update.rotationDegrees ?? entity.rotationDegrees,
-        thickness: update.thickness ?? entity.thickness,
-      };
+        requestedRotationDegrees: update.rotationDegrees,
+        sweepAngleDegrees: update.sweepAngleDegrees ?? entity.sweepAngleDegrees,
+      });
     });
   }
 

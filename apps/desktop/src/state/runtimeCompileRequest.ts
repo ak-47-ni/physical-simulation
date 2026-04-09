@@ -57,11 +57,14 @@ export type RuntimeBallSceneEntity = RuntimeBaseSceneEntity & {
 
 export type RuntimeArcTrackSceneEntity = RuntimeBaseSceneEntity & {
   kind: "arc-track";
+  anchorEntityId: string;
+  anchorEntityKind: "board" | "block";
+  anchorEndpoint: "start" | "end";
   center: Vector2;
+  entryEndpoint: "start" | "end";
   radius: number;
-  centralAngleDegrees: number;
+  sweepAngleDegrees: number;
   rotationDegrees: number;
-  thickness: number;
 };
 
 export type RuntimeSizedSceneEntity = RuntimeBaseSceneEntity & {
@@ -155,20 +158,24 @@ export function createRuntimeCompileRequestFromEditorState(
   input: CreateRuntimeCompileRequestFromEditorStateInput,
 ): RuntimeCompileRequest {
   const settings = input.settings ?? createDefaultSceneAuthoringSettings();
+  const authoredScene = createSceneDocumentFromEditorState({
+    analyzerEntityId: input.analyzerEntityId,
+    analyzerId: input.analyzerId,
+    annotations: input.annotations,
+    constraints: input.constraints,
+    entities: input.entities,
+    gravity: {
+      x: 0,
+      y: settings.gravity,
+    },
+  });
 
   return createRuntimeCompileRequest(
     normalizeRuntimeSceneDocumentToSi(
-      createSceneDocumentFromEditorState({
-        analyzerEntityId: input.analyzerEntityId,
-        analyzerId: input.analyzerId,
-        annotations: input.annotations,
-        constraints: input.constraints,
-        entities: input.entities,
-        gravity: {
-          x: 0,
-          y: settings.gravity,
-        },
-      }),
+      {
+        ...authoredScene,
+        entities: input.entities.map(mapEditorEntityToRuntimeSceneEntity),
+      },
       settings,
     ),
     input.dirtyScopes,
@@ -209,11 +216,17 @@ function cloneRuntimeSceneEntity(
       id: entity.id,
       kind: "arc-track",
       ...(label !== undefined ? { label } : {}),
+      anchorEntityId: entity.anchorEntityId,
+      anchorEntityKind: entity.anchorEntityKind,
+      anchorEndpoint: entity.anchorEndpoint,
       center: { ...entity.center },
+      entryEndpoint: entity.entryEndpoint,
       radius: entity.radius,
-      centralAngleDegrees: entity.centralAngleDegrees,
+      sweepAngleDegrees:
+        readOptionalNumber(entity, "sweepAngleDegrees") ??
+        readOptionalNumber(entity, "centralAngleDegrees") ??
+        0,
       rotationDegrees: entity.rotationDegrees,
-      thickness: entity.thickness,
     };
   }
 
@@ -394,7 +407,6 @@ function normalizeRuntimeSceneEntityToSi(
         y: normalizeLengthToSi(entity.center.y, settings.lengthUnit),
       },
       radius: normalizeLengthToSi(entity.radius, settings.lengthUnit),
-      thickness: normalizeLengthToSi(entity.thickness, settings.lengthUnit),
     };
   }
 
@@ -506,4 +518,55 @@ function readEntityRotationRadians(
   }
 
   return 0;
+}
+
+function mapEditorEntityToRuntimeSceneEntity(entity: EditorSceneEntity): RuntimeSceneEntity {
+  if (entity.kind === "arc-track") {
+    return {
+      id: entity.id,
+      kind: "arc-track",
+      label: entity.label,
+      anchorEntityId: entity.anchorEntityId,
+      anchorEntityKind: entity.anchorEntityKind,
+      anchorEndpoint: entity.anchorEndpoint,
+      center: { ...entity.center },
+      entryEndpoint: entity.entryEndpoint,
+      radius: entity.radius,
+      rotationDegrees: entity.rotationDegrees,
+      sweepAngleDegrees: entity.sweepAngleDegrees,
+    };
+  }
+
+  const physics = {
+    friction: entity.friction,
+    locked: entity.locked,
+    mass: entity.mass,
+    restitution: entity.restitution,
+    velocityX: entity.velocityX,
+    velocityY: entity.velocityY,
+  };
+
+  if (entity.kind === "ball") {
+    return {
+      ...physics,
+      id: entity.id,
+      kind: "ball",
+      label: entity.label,
+      radius: entity.radius,
+      x: entity.x,
+      y: entity.y,
+    };
+  }
+
+  return {
+    ...physics,
+    height: entity.height,
+    id: entity.id,
+    kind: entity.kind,
+    label: entity.label,
+    rotationRadians: ((entity.rotationDegrees ?? 0) * Math.PI) / 180,
+    width: entity.width,
+    x: entity.x,
+    y: entity.y,
+  };
 }

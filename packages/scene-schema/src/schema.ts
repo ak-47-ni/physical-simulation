@@ -53,11 +53,14 @@ export type BallSceneEntity = BaseSceneEntity &
 
 export type ArcTrackSceneEntity = BaseSceneEntity & {
   kind: "arc-track";
+  anchorEntityId: string;
+  anchorEntityKind: "board" | "block";
+  anchorEndpoint: "start" | "end";
   center: Vector2;
+  entryEndpoint: "start" | "end";
   radius: number;
-  centralAngleDegrees: number;
+  sweepAngleDegrees: number;
   rotationDegrees: number;
-  thickness: number;
 };
 
 export type SizedSceneEntity = BaseSceneEntity &

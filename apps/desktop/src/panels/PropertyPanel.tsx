@@ -29,11 +29,9 @@ type ConstraintPanelUpdate = {
 };
 
 type ArcTrackPanelUpdate = {
-  center?: { x: number; y: number };
-  centralAngleDegrees?: number;
   radius?: number;
   rotationDegrees?: number;
-  thickness?: number;
+  sweepAngleDegrees?: number;
 };
 
 type ScenePhysicsPanelState = {
@@ -650,6 +648,14 @@ export function PropertyPanel(props: PropertyPanelProps) {
             />
             {selectedEntity.kind === "arc-track" ? (
               <>
+                <ReadonlyField
+                  label="Anchor"
+                  value={`${selectedEntity.anchorEntityKind}:${selectedEntity.anchorEntityId} (${selectedEntity.anchorEndpoint})`}
+                />
+                <ReadonlyField
+                  label="Entry endpoint"
+                  value={selectedEntity.entryEndpoint}
+                />
                 <div
                   style={{
                     display: "grid",
@@ -659,34 +665,6 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 >
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Center X"
-                    suffix={lengthUnitLabel ?? undefined}
-                    value={selectedEntity.center.x}
-                    onChange={(x) =>
-                      onUpdateSelectedArcTrack({
-                        center: {
-                          x,
-                          y: selectedEntity.center.y,
-                        },
-                      })
-                    }
-                  />
-                  <PositionInput
-                    disabled={authoringLocked}
-                    label="Center Y"
-                    suffix={lengthUnitLabel ?? undefined}
-                    value={selectedEntity.center.y}
-                    onChange={(y) =>
-                      onUpdateSelectedArcTrack({
-                        center: {
-                          x: selectedEntity.center.x,
-                          y,
-                        },
-                      })
-                    }
-                  />
-                  <PositionInput
-                    disabled={authoringLocked}
                     label="Radius"
                     suffix={lengthUnitLabel ?? undefined}
                     value={selectedEntity.radius}
@@ -694,17 +672,17 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   />
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Central angle"
+                    label="Sweep angle"
                     suffix="°"
-                    value={selectedEntity.centralAngleDegrees}
-                    onChange={(centralAngleDegrees) =>
-                      onUpdateSelectedArcTrack({ centralAngleDegrees })
+                    value={selectedEntity.sweepAngleDegrees}
+                    onChange={(sweepAngleDegrees) =>
+                      onUpdateSelectedArcTrack({ sweepAngleDegrees })
                     }
                   />
                 </div>
                 <PositionInput
                   disabled={authoringLocked}
-                  label="Angle"
+                  label="Rotation"
                   suffix="°"
                   value={selectedEntity.rotationDegrees}
                   onChange={(rotationDegrees) =>

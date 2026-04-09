@@ -272,6 +272,26 @@ afterEach(() => {
   mockWorkspaceState.latestProps = null;
 });
 
+function readLatestWorkspaceProps() {
+  return mockWorkspaceState.latestProps as {
+    authoringPlacementPreview?: { entity?: { kind?: string }; status?: string } | null;
+    displayEntities?: Array<Record<string, unknown>>;
+    entities?: Array<Record<string, unknown>>;
+  } | null;
+}
+
+function readLatestArcTrackEntity() {
+  const entity = readLatestWorkspaceProps()?.entities?.find(
+    (candidate) => candidate.id === "arc-track-1",
+  );
+
+  if (!entity) {
+    throw new Error("expected latest workspace arc-track entity");
+  }
+
+  return entity;
+}
+
 describe("App direct manipulation contracts", () => {
   it("creates exactly one body when a dragged library body is released over the stage", () => {
     render(<App />);
@@ -352,38 +372,76 @@ describe("App direct manipulation contracts", () => {
     expect(screen.getByText("3.36 m, 2.2 m")).toBeDefined();
   });
 
-  it("passes arc-track placement previews through to the workspace canvas during body drag", () => {
+  it("publishes a blocked arc-track preview when the drag is away from a board or block endpoint", () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "Start arc-track drag" }));
     fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
 
-    const placementPreview = (
-      mockWorkspaceState.latestProps as {
-        authoringPlacementPreview?: { entity?: { kind?: string } } | null;
-      } | null
-    )?.authoringPlacementPreview;
+    const placementPreview = readLatestWorkspaceProps()?.authoringPlacementPreview;
 
     expect(placementPreview).not.toBeNull();
     expect(placementPreview?.entity?.kind).toBe("arc-track");
+    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-placement-preview-status")).toBe(
+      "blocked",
+    );
+
+    fireEvent.pointerUp(window);
+
+    expect(screen.queryByTestId("scene-tree-item-arc-track-1")).toBeNull();
   });
 
-  it("keeps committed arc-track bodies in workspace entity payloads after drag release", () => {
+  it("creates a board-anchored arc-track guide when a body drag release lands on a valid endpoint", () => {
     render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start arc-track drag" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hover occupied stage" }));
+
+    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-placement-preview-status")).toBe(
+      "snap",
+    );
+
+    fireEvent.pointerUp(window);
+
+    expect(screen.getByTestId("scene-tree-item-arc-track-1").getAttribute("data-selected")).toBe(
+      "true",
+    );
+
+    const entity = readLatestArcTrackEntity();
+
+    expect(entity).toMatchObject({
+      anchorEntityId: "board-1",
+      anchorEntityKind: "board",
+      anchorEndpoint: "start",
+      center: { x: 3.18, y: 3.72 },
+      entryEndpoint: "start",
+      radius: 1,
+      rotationDegrees: 135,
+      sweepAngleDegrees: 90,
+    });
+    expect(
+      readLatestWorkspaceProps()?.displayEntities?.some((displayEntity) => displayEntity.id === "arc-track-1"),
+    ).toBe(true);
+  });
+
+  it("creates a block-anchored arc-track guide after a block is placed on the stage", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start block drag" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
+    fireEvent.pointerUp(window);
 
     fireEvent.click(screen.getByRole("button", { name: "Start arc-track drag" }));
     fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
     fireEvent.pointerUp(window);
 
-    const workspaceProps = mockWorkspaceState.latestProps as {
-      displayEntities?: Array<{ id: string; kind: string }>;
-      entities?: Array<{ id: string; kind: string }>;
-    } | null;
-
-    expect(workspaceProps?.entities?.some((entity) => entity.id === "arc-track-1")).toBe(true);
-    expect(workspaceProps?.displayEntities?.some((entity) => entity.id === "arc-track-1")).toBe(
-      true,
-    );
+    expect(screen.getByTestId("scene-tree-item-arc-track-1")).toBeDefined();
+    expect(readLatestArcTrackEntity()).toMatchObject({
+      anchorEntityId: "block-1",
+      anchorEntityKind: "block",
+      anchorEndpoint: "start",
+      entryEndpoint: "start",
+    });
   });
 
   it("commits a snapped block pose when a drag release lands near a board face", () => {
@@ -469,27 +527,57 @@ describe("App direct manipulation contracts", () => {
     expect(screen.queryByText("Select a locked board for the arc track")).toBeNull();
   });
 
-  it("creates an arc-track body from a body drag instead of the old constraint wizard", () => {
+  it("recomputes anchored arc-track geometry from radius, sweep, and rotation edits while preserving attachment", () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "Start arc-track drag" }));
-    fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hover occupied stage" }));
     fireEvent.pointerUp(window);
 
-    expect(screen.getByTestId("scene-tree-item-arc-track-1")).toBeDefined();
-    expect(screen.getByTestId("scene-tree-item-arc-track-1").getAttribute("data-selected")).toBe(
-      "true",
-    );
-    expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-library-drag-active")).toBe(
-      "false",
-    );
+    expect(screen.queryByLabelText("Center X")).toBeNull();
+    expect(screen.getByLabelText("Radius")).toBeDefined();
+    expect(screen.getByLabelText("Sweep angle")).toBeDefined();
+    expect(screen.getByLabelText("Rotation")).toBeDefined();
+
+    fireEvent.change(screen.getByLabelText("Rotation"), { target: { value: "-140" } });
+
+    expect(readLatestArcTrackEntity()).toMatchObject({
+      anchorEntityId: "board-1",
+      anchorEndpoint: "start",
+      center: { x: 3.18, y: 1.72 },
+      entryEndpoint: "end",
+      rotationDegrees: -135,
+    });
+
+    fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "1.23" } });
+
+    expect(readLatestArcTrackEntity()).toMatchObject({
+      anchorEntityId: "board-1",
+      center: { x: 3.18, y: 1.52 },
+      entryEndpoint: "end",
+      radius: 1.2,
+      rotationDegrees: -135,
+    });
+
+    fireEvent.change(screen.getByLabelText("Sweep angle"), { target: { value: "120" } });
+
+    expect(readLatestArcTrackEntity()).toMatchObject({
+      anchorEntityId: "board-1",
+      anchorEntityKind: "board",
+      anchorEndpoint: "start",
+      center: { x: 3.18, y: 1.52 },
+      entryEndpoint: "end",
+      radius: 1.2,
+      rotationDegrees: -150,
+      sweepAngleDegrees: 120,
+    });
   });
 
-  it("keeps a placed arc-track body after deleting a board", () => {
+  it("removes anchored arc-track guides when their anchor body is deleted", () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "Start arc-track drag" }));
-    fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hover occupied stage" }));
     fireEvent.pointerUp(window);
 
     expect(screen.getByTestId("scene-tree-item-arc-track-1")).toBeDefined();
@@ -498,6 +586,6 @@ describe("App direct manipulation contracts", () => {
     fireEvent.click(screen.getByRole("button", { name: /delete entity/i }));
 
     expect(screen.queryByTestId("scene-tree-item-board-1")).toBeNull();
-    expect(screen.getByTestId("scene-tree-item-arc-track-1")).toBeDefined();
+    expect(screen.queryByTestId("scene-tree-item-arc-track-1")).toBeNull();
   });
 });

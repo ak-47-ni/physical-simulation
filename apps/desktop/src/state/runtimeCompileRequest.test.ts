@@ -6,12 +6,28 @@ import {
 } from "../../../../packages/scene-schema/src";
 
 import { createSceneAuthoringSettings } from "./sceneAuthoringSettings";
-import { createInitialSceneEntities, createPlacedBodyEntity } from "./editorStore";
+import { createInitialSceneEntities } from "./editorStore";
 import { createEditorSceneStateFromSceneDocument } from "./editorSceneDocument";
 import {
   createRuntimeCompileRequest,
   createRuntimeCompileRequestFromEditorState,
 } from "./runtimeCompileRequest";
+
+function createAnchoredArcTrackEntity() {
+  return {
+    id: "arc-track-1",
+    kind: "arc-track" as const,
+    label: "Arc Track 1",
+    anchorEntityId: "board-1",
+    anchorEntityKind: "board" as const,
+    anchorEndpoint: "start" as const,
+    center: { x: 3.18, y: 3.72 },
+    entryEndpoint: "start" as const,
+    radius: 1,
+    rotationDegrees: 135,
+    sweepAngleDegrees: 90,
+  };
+}
 
 describe("runtimeCompileRequest", () => {
   it("compiles non-spring bodies as rigid-boundary entities while spring stays in constraint data", () => {
@@ -29,7 +45,7 @@ describe("runtimeCompileRequest", () => {
       ],
       entities: [
         ...createInitialSceneEntities(),
-        createPlacedBodyEntity(createInitialSceneEntities(), "arc-track", { x: 360, y: 240 }),
+        createAnchoredArcTrackEntity(),
       ],
     });
 
@@ -433,7 +449,7 @@ describe("runtimeCompileRequest", () => {
     const request = createRuntimeCompileRequestFromEditorState({
       entities: [
         ...createInitialSceneEntities(),
-        createPlacedBodyEntity(createInitialSceneEntities(), "arc-track", { x: 360, y: 240 }),
+        createAnchoredArcTrackEntity(),
       ],
     });
 
@@ -441,11 +457,14 @@ describe("runtimeCompileRequest", () => {
       id: "arc-track-1",
       kind: "arc-track",
       label: "Arc Track 1",
-      center: { x: 360, y: 240 },
-      radius: 100,
-      centralAngleDegrees: 90,
-      rotationDegrees: 0,
-      thickness: 18,
+      anchorEntityId: "board-1",
+      anchorEntityKind: "board",
+      anchorEndpoint: "start",
+      center: { x: 3.18, y: 3.72 },
+      entryEndpoint: "start",
+      radius: 1,
+      rotationDegrees: 135,
+      sweepAngleDegrees: 90,
     });
   });
 
