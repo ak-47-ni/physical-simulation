@@ -343,15 +343,25 @@ describe("runtimeCompileRequest", () => {
   it("compiles restored legacy boards with board friction defaults and elastic restitution", () => {
     const legacyScene = createEmptySceneDocument();
 
-    legacyScene.entities.push({
-      id: "board-legacy",
-      kind: "board",
-      label: "Legacy Board",
-      width: 1.2,
-      height: 0.18,
-      x: 3.18,
-      y: 2.72,
-    });
+    legacyScene.entities.push(
+      {
+        id: "ball-legacy",
+        kind: "ball",
+        label: "Legacy Ball",
+        radius: 0.24,
+        x: 1.32,
+        y: 1.76,
+      },
+      {
+        id: "board-legacy",
+        kind: "board",
+        label: "Legacy Board",
+        width: 1.2,
+        height: 0.18,
+        x: 3.18,
+        y: 2.72,
+      },
+    );
 
     const restored = createEditorSceneStateFromSceneDocument({
       scene: legacyScene,
@@ -362,9 +372,20 @@ describe("runtimeCompileRequest", () => {
 
     expect(request.scene.entities).toContainEqual(
       expect.objectContaining({
+        id: "ball-legacy",
+        mass: 1.2,
+        friction: 0,
+        restitution: 1,
+        locked: false,
+      }),
+    );
+    expect(request.scene.entities).toContainEqual(
+      expect.objectContaining({
         id: "board-legacy",
+        mass: 5,
         friction: 0.42,
         restitution: 1,
+        locked: true,
       }),
     );
   });

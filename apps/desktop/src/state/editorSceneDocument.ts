@@ -24,7 +24,7 @@ import {
 } from "./sceneUnits";
 import {
   DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION,
-  readDefaultRigidBodyFriction,
+  readDefaultRigidBodyPhysics,
   type EditorSceneEntity,
 } from "./editorStore";
 
@@ -377,17 +377,15 @@ function mapSceneEntityToEditorEntity(entity: SceneEntity): EditorSceneEntity[] 
     ];
   }
 
+  const defaultPhysics = readDefaultRigidBodyPhysics(entity.kind);
   const physics = {
-    friction:
-      entity.friction ??
-      (entity.kind === "ball"
-        ? readDefaultRigidBodyFriction("ball")
-        : readDefaultRigidBodyFriction(entity.kind)),
-    locked: entity.locked ?? false,
-    mass: entity.mass ?? 0,
+    ...defaultPhysics,
+    friction: entity.friction ?? defaultPhysics.friction,
+    locked: entity.locked ?? defaultPhysics.locked,
+    mass: entity.mass ?? defaultPhysics.mass,
     restitution: entity.restitution ?? DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION,
-    velocityX: entity.velocityX ?? 0,
-    velocityY: entity.velocityY ?? 0,
+    velocityX: entity.velocityX ?? defaultPhysics.velocityX,
+    velocityY: entity.velocityY ?? defaultPhysics.velocityY,
   };
 
   if ("radius" in entity) {

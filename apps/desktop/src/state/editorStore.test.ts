@@ -6,6 +6,7 @@ import {
   createInitialSceneEntities,
   createPlacedBodyEntity,
   RIGID_BOUNDARY_LIBRARY_BODY_KINDS,
+  readDefaultRigidBodyPhysics,
   readDefaultRigidBodyFriction,
   type LibraryBodyKind,
 } from "./editorStore";
@@ -43,6 +44,21 @@ describe("editorStore", () => {
     expect(readDefaultRigidBodyFriction("block")).toBe(0);
     expect(readDefaultRigidBodyFriction("board")).toBe(0.42);
     expect(readDefaultRigidBodyFriction("polygon")).toBe(0);
+  });
+
+  it("publishes per-body classroom rigid defaults that preserve ideal elastic board support scenes", () => {
+    expect(readDefaultRigidBodyPhysics("ball")).toMatchObject({
+      mass: 1.2,
+      friction: 0,
+      restitution: 1,
+      locked: false,
+    });
+    expect(readDefaultRigidBodyPhysics("board")).toMatchObject({
+      mass: 5,
+      friction: 0.42,
+      restitution: 1,
+      locked: true,
+    });
   });
 
   it("uses board-only non-zero default friction for new library bodies", () => {

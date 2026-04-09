@@ -63,6 +63,8 @@ export type EditorState = {
 };
 
 const DUPLICATE_OFFSET = 24;
+// Classroom rigid bodies use ideal elastic restitution so repeated rebounds stay solver-driven,
+// not product-default damping driven.
 export const DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION = 1;
 
 const DEFAULT_RIGID_BODY_FRICTION_BY_KIND = {
@@ -161,6 +163,14 @@ export function readDefaultRigidBodyFriction(
   kind: Exclude<LibraryBodyKind, "arc-track">,
 ): number {
   return DEFAULT_RIGID_BODY_FRICTION_BY_KIND[kind];
+}
+
+export function readDefaultRigidBodyPhysics(
+  kind: Exclude<LibraryBodyKind, "arc-track">,
+): EditorEntityPhysics {
+  return {
+    ...BODY_PHYSICS_DEFAULTS[kind],
+  };
 }
 
 export function isLibraryBodyKind(value: string): value is LibraryBodyKind {

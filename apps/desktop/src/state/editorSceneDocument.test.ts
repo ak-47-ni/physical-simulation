@@ -187,6 +187,49 @@ describe("editorSceneDocument", () => {
     ]);
   });
 
+  it("restores omitted rigid-body physics fields from classroom defaults by body kind", () => {
+    const scene = createEmptySceneDocument();
+
+    scene.entities.push(
+      {
+        id: "ball-legacy",
+        kind: "ball",
+        label: "Legacy Ball",
+        radius: 0.24,
+        x: 1.32,
+        y: 1.76,
+      },
+      {
+        id: "board-legacy",
+        kind: "board",
+        label: "Legacy Board",
+        width: 1.2,
+        height: 0.18,
+        x: 3.18,
+        y: 2.72,
+      },
+    );
+
+    const restored = createEditorSceneStateFromSceneDocument({ scene });
+
+    expect(restored.entities).toEqual([
+      expect.objectContaining({
+        id: "ball-legacy",
+        mass: 1.2,
+        friction: 0,
+        restitution: 1,
+        locked: false,
+      }),
+      expect.objectContaining({
+        id: "board-legacy",
+        mass: 5,
+        friction: 0.42,
+        restitution: 1,
+        locked: true,
+      }),
+    ]);
+  });
+
   it("converts stored authored values when scene units change", () => {
     const entities = [...createInitialSceneEntities(), TEST_ARC_TRACK_ENTITY].map((entity, index) =>
       index === 0

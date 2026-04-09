@@ -80,7 +80,8 @@ export type RuntimeSceneEntity =
   | RuntimeUserPolygonEntity;
 
 // Runtime compile payload keeps rigid bodies in the entity list; stretch-like behavior stays in
-// constraint entries such as spring.
+// constraint entries such as spring. Classroom rigid defaults stay ideally elastic here, and
+// friction remains a separate tangential-contact knob rather than bounce damping.
 export type RuntimeSceneRecord = {
   id: string;
   kind: string;
