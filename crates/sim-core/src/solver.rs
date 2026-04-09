@@ -238,27 +238,29 @@ fn resolve_surface_contact_manifold(
     let normal_velocity = relative_velocity.dot(normal);
     let inverse_normal_mass =
         inverse_mass_body + radial_offset.cross(normal).powi(2) * body.inverse_inertia;
+    let restitution = if support_contact {
+        0.0
+    } else {
+        body.restitution_coefficient
+            .max(surface_restitution_coefficient)
+    };
 
     let mut normal_impulse = 0.0;
 
     if normal_velocity < 0.0 && inverse_normal_mass > f64::EPSILON {
-        let restitution = if support_contact {
-            0.0
-        } else {
-            body.restitution_coefficient
-                .max(surface_restitution_coefficient)
-        };
         normal_impulse = -((1.0 + restitution) * normal_velocity) / inverse_normal_mass;
         angular_dynamics::apply_impulse(body, normal.scale(normal_impulse), point);
     }
 
-    apply_friction_impulse_against_surface(
-        body,
-        surface_friction_coefficient,
-        point,
-        normal,
-        normal_impulse,
-    );
+    if support_contact || restitution <= f64::EPSILON {
+        apply_friction_impulse_against_surface(
+            body,
+            surface_friction_coefficient,
+            point,
+            normal,
+            normal_impulse,
+        );
+    }
 
     if support_contact {
         damp_support_rotation(body);
@@ -295,20 +297,22 @@ fn resolve_contact_pair(body_a: &mut RuntimeBodyState, body_b: &mut RuntimeBodyS
     let inverse_normal_mass = total_inverse_mass
         + radial_offset_a.cross(normal).powi(2) * body_a.inverse_inertia
         + radial_offset_b.cross(normal).powi(2) * body_b.inverse_inertia;
+    let restitution = body_a
+        .restitution_coefficient
+        .max(body_b.restitution_coefficient);
 
     let mut normal_impulse = 0.0;
 
     if normal_velocity < 0.0 && inverse_normal_mass > f64::EPSILON {
-        let restitution = body_a
-            .restitution_coefficient
-            .max(body_b.restitution_coefficient);
         normal_impulse = -((1.0 + restitution) * normal_velocity) / inverse_normal_mass;
         let impulse = normal.scale(normal_impulse);
         angular_dynamics::apply_impulse(body_a, impulse, point);
         angular_dynamics::apply_impulse(body_b, impulse.scale(-1.0), point);
     }
 
-    apply_friction_impulse_between_bodies(body_a, body_b, point, normal, normal_impulse);
+    if restitution <= f64::EPSILON {
+        apply_friction_impulse_between_bodies(body_a, body_b, point, normal, normal_impulse);
+    }
 }
 
 fn apply_friction_impulse_against_surface(

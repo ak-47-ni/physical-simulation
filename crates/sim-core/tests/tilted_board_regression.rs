@@ -86,6 +86,51 @@ fn dynamic_block(
     }
 }
 
+fn elastic_board(
+    id: &str,
+    position: Vector2,
+    size: (f64, f64),
+    friction: f64,
+    restitution: f64,
+    rotation_radians: f64,
+) -> EntityDefinition {
+    EntityDefinition {
+        id: id.to_string(),
+        shape: ShapeDefinition::Block {
+            width: size.0,
+            height: size.1,
+        },
+        position,
+        rotation_radians,
+        initial_velocity: Vector2::ZERO,
+        mass: 0.0,
+        is_static: true,
+        friction_coefficient: friction,
+        restitution_coefficient: restitution,
+    }
+}
+
+fn elastic_ball(
+    id: &str,
+    position: Vector2,
+    radius: f64,
+    initial_velocity: Vector2,
+    friction: f64,
+    restitution: f64,
+) -> EntityDefinition {
+    EntityDefinition {
+        id: id.to_string(),
+        shape: ShapeDefinition::Ball { radius },
+        position,
+        rotation_radians: 0.0,
+        initial_velocity,
+        mass: 1.0,
+        is_static: false,
+        friction_coefficient: friction,
+        restitution_coefficient: restitution,
+    }
+}
+
 fn runtime_for_scene(entities: Vec<EntityDefinition>) -> RuntimeScene {
     let compiled = compile_scene(&CompileSceneRequest {
         entities,
@@ -115,6 +160,48 @@ fn runtime_entity(runtime: &RuntimeScene, entity_id: &str) -> RuntimeEntityFrame
         .find(|entity| entity.entity_id == entity_id)
         .expect("entity should exist")
         .clone()
+}
+
+fn rebound_apex_for_elastic_tilted_drop(board_friction: f64) -> f64 {
+    let rotation = FRAC_PI_6;
+    let board_half_height = 0.25;
+    let ball_radius = 0.4;
+    let normal = vector2(-rotation.sin(), rotation.cos());
+    let board_position = vector2(4.0, 2.0);
+    let initial_ball_position = board_position.add(normal.scale(board_half_height + ball_radius + 3.0));
+    let mut runtime = runtime_for_scene(vec![
+        elastic_board("board", board_position, (8.0, 0.5), board_friction, 1.0, rotation),
+        elastic_ball(
+            "ball",
+            initial_ball_position,
+            ball_radius,
+            Vector2::ZERO,
+            0.0,
+            1.0,
+        ),
+    ]);
+
+    let mut saw_rebound = false;
+    let mut rebound_apex = f64::NEG_INFINITY;
+
+    for _ in 0..200 {
+        let frame = runtime.step();
+        let ball = frame
+            .entities
+            .iter()
+            .find(|entity| entity.entity_id == "ball")
+            .expect("ball should exist");
+
+        if ball.velocity.y > 1e-6 {
+            saw_rebound = true;
+        }
+
+        if saw_rebound {
+            rebound_apex = rebound_apex.max(ball.position.y);
+        }
+    }
+
+    rebound_apex
 }
 
 #[test]
@@ -278,5 +365,18 @@ fn tilted_board_regression_locked_support_sliding_does_not_flip_block_upward() {
         block.rotation,
         rotation,
         rotation_delta
+    );
+}
+
+#[test]
+fn tilted_board_regression_friction_does_not_change_elastic_rebound_height() {
+    let low_friction_apex = rebound_apex_for_elastic_tilted_drop(0.0);
+    let high_friction_apex = rebound_apex_for_elastic_tilted_drop(0.9);
+
+    assert!(
+        (low_friction_apex - high_friction_apex).abs() <= 0.15,
+        "low_friction_apex={} high_friction_apex={}",
+        low_friction_apex,
+        high_friction_apex
     );
 }

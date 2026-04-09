@@ -14,6 +14,8 @@ fn gravity_force_source() -> serde_json::Value {
 fn elastic_bounce_request(
     ball_restitution: Option<f64>,
     board_restitution: Option<f64>,
+    board_friction: Option<f64>,
+    ball_friction: Option<f64>,
 ) -> RuntimeCompileRequest {
     let mut ball = json!({
         "id": "ball-1",
@@ -43,6 +45,14 @@ fn elastic_bounce_request(
 
     if let Some(value) = board_restitution {
         board["restitution"] = json!(value);
+    }
+
+    if let Some(value) = board_friction {
+        board["friction"] = json!(value);
+    }
+
+    if let Some(value) = ball_friction {
+        ball["friction"] = json!(value);
     }
 
     serde_json::from_value(json!({
@@ -295,7 +305,7 @@ fn serialization_contract_accepts_locked_board_payloads_as_static_runtime_entiti
 #[test]
 fn serialization_contract_missing_restitution_defaults_to_fully_elastic_runtime_behavior() {
     let max_upward_velocity =
-        max_upward_velocity_over_steps(elastic_bounce_request(None, None), 480);
+        max_upward_velocity_over_steps(elastic_bounce_request(None, None, None, None), 480);
 
     assert!(
         max_upward_velocity > 15.0,
@@ -306,14 +316,36 @@ fn serialization_contract_missing_restitution_defaults_to_fully_elastic_runtime_
 
 #[test]
 fn serialization_contract_explicit_restitution_values_override_elastic_fallbacks() {
-    let default_velocity = max_upward_velocity_over_steps(elastic_bounce_request(None, None), 480);
-    let damped_velocity =
-        max_upward_velocity_over_steps(elastic_bounce_request(Some(0.2), Some(0.2)), 480);
+    let default_velocity =
+        max_upward_velocity_over_steps(elastic_bounce_request(None, None, None, None), 480);
+    let damped_velocity = max_upward_velocity_over_steps(
+        elastic_bounce_request(Some(0.2), Some(0.2), None, None),
+        480,
+    );
 
     assert!(
         default_velocity > damped_velocity + 5.0,
         "default_velocity={} damped_velocity={}",
         default_velocity,
         damped_velocity
+    );
+}
+
+#[test]
+fn serialization_contract_default_elastic_payload_is_not_damped_by_board_friction() {
+    let low_friction_velocity = max_upward_velocity_over_steps(
+        elastic_bounce_request(None, None, Some(0.0), Some(0.0)),
+        480,
+    );
+    let high_friction_velocity = max_upward_velocity_over_steps(
+        elastic_bounce_request(None, None, Some(0.9), Some(0.0)),
+        480,
+    );
+
+    assert!(
+        (low_friction_velocity - high_friction_velocity).abs() <= 0.5,
+        "low_friction_velocity={} high_friction_velocity={}",
+        low_friction_velocity,
+        high_friction_velocity
     );
 }

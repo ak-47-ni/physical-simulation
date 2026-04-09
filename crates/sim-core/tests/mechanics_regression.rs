@@ -121,6 +121,16 @@ fn runtime_entity(
         .clone()
 }
 
+fn translational_kinetic_energy(runtime: &RuntimeScene, entity_ids: &[&str]) -> f64 {
+    entity_ids
+        .iter()
+        .map(|entity_id| {
+            let entity = runtime_entity(runtime, entity_id);
+            0.5 * (entity.velocity.x * entity.velocity.x + entity.velocity.y * entity.velocity.y)
+        })
+        .sum()
+}
+
 #[test]
 fn mechanics_regression_bridge_ball_and_board_defaults_still_resolve_contact() {
     let request: RuntimeCompileRequest = serde_json::from_value(json!({
@@ -196,6 +206,38 @@ fn mechanics_regression_bridge_ball_and_board_defaults_still_resolve_contact() {
         max_upward_velocity
     );
     assert!(ball.position.y >= 1.0 - 1e-6, "ball_y={}", ball.position.y);
+}
+
+#[test]
+fn mechanics_regression_oblique_elastic_ball_collision_is_not_damped_by_friction() {
+    let final_energy = |friction: f64| {
+        let mut runtime = runtime_for_scene_with_gravity(
+            vec![
+                EntityDefinition {
+                    friction_coefficient: friction,
+                    ..ball("ball-a", vector2(1.0, 1.0), 0.5, vector2(6.0, -1.5), 1.0)
+                },
+                EntityDefinition {
+                    friction_coefficient: friction,
+                    ..ball("ball-b", vector2(3.0, 0.4), 0.5, Vector2::ZERO, 1.0)
+                },
+            ],
+            Vector2::ZERO,
+        );
+
+        run_steps(&mut runtime, 12);
+        translational_kinetic_energy(&runtime, &["ball-a", "ball-b"])
+    };
+
+    let low_friction_energy = final_energy(0.0);
+    let high_friction_energy = final_energy(0.9);
+
+    assert!(
+        (low_friction_energy - high_friction_energy).abs() <= 0.1,
+        "low_friction_energy={} high_friction_energy={}",
+        low_friction_energy,
+        high_friction_energy
+    );
 }
 
 #[test]
