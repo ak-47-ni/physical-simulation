@@ -63,6 +63,14 @@ export type EditorState = {
 };
 
 const DUPLICATE_OFFSET = 24;
+export const DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION = 1;
+
+const DEFAULT_RIGID_BODY_FRICTION_BY_KIND = {
+  ball: 0,
+  block: 0,
+  board: 0.42,
+  polygon: 0,
+} as const;
 
 export function createInitialEditorState(): EditorState {
   return {
@@ -117,37 +125,43 @@ const BODY_DEFAULTS = {
 const BODY_PHYSICS_DEFAULTS: Record<Exclude<LibraryBodyKind, "arc-track">, EditorEntityPhysics> = {
   ball: {
     mass: 1.2,
-    friction: 0,
-    restitution: 1,
+    friction: DEFAULT_RIGID_BODY_FRICTION_BY_KIND.ball,
+    restitution: DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION,
     locked: false,
     velocityX: 0,
     velocityY: 0,
   },
   block: {
     mass: 2.8,
-    friction: 0,
-    restitution: 1,
+    friction: DEFAULT_RIGID_BODY_FRICTION_BY_KIND.block,
+    restitution: DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION,
     locked: false,
     velocityX: 0,
     velocityY: 0,
   },
   board: {
     mass: 5,
-    friction: 0.42,
-    restitution: 1,
+    friction: DEFAULT_RIGID_BODY_FRICTION_BY_KIND.board,
+    restitution: DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION,
     locked: true,
     velocityX: 0,
     velocityY: 0,
   },
   polygon: {
     mass: 2.2,
-    friction: 0,
-    restitution: 1,
+    friction: DEFAULT_RIGID_BODY_FRICTION_BY_KIND.polygon,
+    restitution: DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION,
     locked: false,
     velocityX: 0,
     velocityY: 0,
   },
 };
+
+export function readDefaultRigidBodyFriction(
+  kind: Exclude<LibraryBodyKind, "arc-track">,
+): number {
+  return DEFAULT_RIGID_BODY_FRICTION_BY_KIND[kind];
+}
 
 export function isLibraryBodyKind(value: string): value is LibraryBodyKind {
   return value in BODY_LABELS;

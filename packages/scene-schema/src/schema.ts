@@ -22,7 +22,9 @@ export type DeformableConstraintKind = (typeof DEFORMABLE_CONSTRAINT_KINDS)[numb
 
 export type SceneEntityPhysics = {
   mass?: number;
+  // Friction affects sliding/contact tangential behavior and remains distinct from restitution.
   friction?: number;
+  // Restitution controls collision bounce and stays independent from friction defaults.
   restitution?: number;
   locked?: boolean;
   velocityX?: number;

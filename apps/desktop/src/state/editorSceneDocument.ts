@@ -22,7 +22,11 @@ import {
   type MassUnit,
   type VelocityUnit,
 } from "./sceneUnits";
-import type { EditorSceneEntity } from "./editorStore";
+import {
+  DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION,
+  readDefaultRigidBodyFriction,
+  type EditorSceneEntity,
+} from "./editorStore";
 
 export const DEFAULT_SCENE_GRAVITY: Vector2 = { x: 0, y: 9.8 };
 export const DEFAULT_GRAVITY_SOURCE_ID = "gravity-primary";
@@ -374,10 +378,14 @@ function mapSceneEntityToEditorEntity(entity: SceneEntity): EditorSceneEntity[] 
   }
 
   const physics = {
-    friction: entity.friction ?? 0,
+    friction:
+      entity.friction ??
+      (entity.kind === "ball"
+        ? readDefaultRigidBodyFriction("ball")
+        : readDefaultRigidBodyFriction(entity.kind)),
     locked: entity.locked ?? false,
     mass: entity.mass ?? 0,
-    restitution: entity.restitution ?? 1,
+    restitution: entity.restitution ?? DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION,
     velocityX: entity.velocityX ?? 0,
     velocityY: entity.velocityY ?? 0,
   };

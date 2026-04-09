@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION,
   createDuplicatedEntity,
   createInitialSceneEntities,
   createPlacedBodyEntity,
   RIGID_BOUNDARY_LIBRARY_BODY_KINDS,
+  readDefaultRigidBodyFriction,
   type LibraryBodyKind,
 } from "./editorStore";
 
@@ -31,8 +33,16 @@ describe("editorStore", () => {
     for (const kind of ELASTIC_BODY_KINDS) {
       const entity = createPlacedBodyEntity([], kind, { x: 12, y: 18 });
 
-      expect(entity.restitution).toBe(1);
+      expect(entity.restitution).toBe(DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION);
     }
+  });
+
+  it("publishes classroom defaults that separate board friction from elastic restitution", () => {
+    expect(DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION).toBe(1);
+    expect(readDefaultRigidBodyFriction("ball")).toBe(0);
+    expect(readDefaultRigidBodyFriction("block")).toBe(0);
+    expect(readDefaultRigidBodyFriction("board")).toBe(0.42);
+    expect(readDefaultRigidBodyFriction("polygon")).toBe(0);
   });
 
   it("uses board-only non-zero default friction for new library bodies", () => {

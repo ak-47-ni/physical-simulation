@@ -512,4 +512,31 @@ describe("scene schema", () => {
     expect(compiledConstraint).toHaveProperty("entryEndpoint", "end");
     expect(compiledConstraint).not.toHaveProperty("entityId");
   });
+
+  it("preserves friction and restitution as separate rigid-body physics fields", () => {
+    const scene = createEmptySceneDocument();
+
+    scene.entities.push({
+      id: "board-1",
+      kind: "board",
+      label: "Board 1",
+      x: 3.18,
+      y: 2.72,
+      width: 1.2,
+      height: 0.18,
+      friction: 0.42,
+      restitution: 1,
+      locked: true,
+    });
+
+    const clone = cloneSceneDocument(scene);
+    const clonedBoard = clone.entities[0];
+
+    if (!clonedBoard || clonedBoard.kind !== "board") {
+      throw new Error("expected board entity");
+    }
+
+    expect(clonedBoard.friction).toBe(0.42);
+    expect(clonedBoard.restitution).toBe(1);
+  });
 });

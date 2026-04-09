@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  createEmptySceneDocument,
   isDeformableConstraintKind,
   isRigidBoundarySceneEntityKind,
 } from "../../../../packages/scene-schema/src";
 
 import { createSceneAuthoringSettings } from "./sceneAuthoringSettings";
 import { createInitialSceneEntities, createPlacedBodyEntity } from "./editorStore";
+import { createEditorSceneStateFromSceneDocument } from "./editorSceneDocument";
 import {
   createRuntimeCompileRequest,
   createRuntimeCompileRequestFromEditorState,
@@ -336,6 +338,35 @@ describe("runtimeCompileRequest", () => {
         startAngleDegrees: 30,
       },
     ]);
+  });
+
+  it("compiles restored legacy boards with board friction defaults and elastic restitution", () => {
+    const legacyScene = createEmptySceneDocument();
+
+    legacyScene.entities.push({
+      id: "board-legacy",
+      kind: "board",
+      label: "Legacy Board",
+      width: 1.2,
+      height: 0.18,
+      x: 3.18,
+      y: 2.72,
+    });
+
+    const restored = createEditorSceneStateFromSceneDocument({
+      scene: legacyScene,
+    });
+    const request = createRuntimeCompileRequestFromEditorState({
+      entities: restored.entities,
+    });
+
+    expect(request.scene.entities).toContainEqual(
+      expect.objectContaining({
+        id: "board-legacy",
+        friction: 0.42,
+        restitution: 1,
+      }),
+    );
   });
 
   it("normalizes arc-track center and radius to SI when authored units are non-SI", () => {

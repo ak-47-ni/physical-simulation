@@ -350,6 +350,7 @@ function normalizeRuntimeSceneEntityToSi(
     velocityX: entity.velocityX ?? 0,
     velocityY: entity.velocityY ?? 0,
   });
+  // Friction and restitution pass through as separate physics knobs in the classroom path.
   const physics = {
     ...(entity.mass !== undefined ? { mass: normalizeMassToSi(entity.mass, settings.massUnit) } : {}),
     ...(entity.friction !== undefined ? { friction: entity.friction } : {}),

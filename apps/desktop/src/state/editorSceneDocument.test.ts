@@ -163,6 +163,30 @@ describe("editorSceneDocument", () => {
     ]);
   });
 
+  it("restores board-only support friction without weakening default elastic restitution", () => {
+    const scene = createEmptySceneDocument();
+
+    scene.entities.push({
+      id: "board-legacy",
+      kind: "board",
+      label: "Legacy Board",
+      width: 1.2,
+      height: 0.18,
+      x: 3.18,
+      y: 2.72,
+    });
+
+    const restored = createEditorSceneStateFromSceneDocument({ scene });
+
+    expect(restored.entities).toEqual([
+      expect.objectContaining({
+        id: "board-legacy",
+        friction: 0.42,
+        restitution: 1,
+      }),
+    ]);
+  });
+
   it("converts stored authored values when scene units change", () => {
     const entities = [...createInitialSceneEntities(), TEST_ARC_TRACK_ENTITY].map((entity, index) =>
       index === 0
