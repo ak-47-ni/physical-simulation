@@ -7,8 +7,7 @@ import {
   createConstraintLineGeometry,
 } from "./constraintOverlayGeometry";
 import {
-  createArcTrackProfileGeometryFromAngles,
-  DEFAULT_ARC_TRACK_THICKNESS,
+  createArcTrackGuideGeometryFromAngles,
 } from "./arcTrackBodyEntity";
 import {
   authoringLengthToScreenPixels,
@@ -17,11 +16,12 @@ import {
 } from "./unitViewport";
 
 type ArcTrackPreviewConstraint = Extract<EditorConstraint, { kind: "arc-track" }>;
+type ArcTrackAnchorEntity = Extract<EditorSceneEntity, { kind: "block" | "board" }>;
 
 export type ArcTrackSpanPreset = 90 | 180 | 270;
 
 type RenderArcTrackAuthoringPreviewInput = {
-  board: Extract<EditorSceneEntity, { kind: "board" }>;
+  board: ArcTrackAnchorEntity;
   endpointKey: "start" | "end";
   onSelectSpanPreset?: (spanDegrees: ArcTrackSpanPreset) => void;
   previewConstraint: ArcTrackPreviewConstraint;
@@ -125,12 +125,11 @@ export function renderArcTrackAuthoringPreview(
     input.previewConstraint.center,
     input.viewport,
   );
-  const previewArc = createArcTrackProfileGeometryFromAngles({
+  const previewArc = createArcTrackGuideGeometryFromAngles({
     center: projectedCenter,
     endAngleDegrees: input.previewConstraint.endAngleDegrees,
     radius: authoringLengthToScreenPixels(input.previewConstraint.radius, input.viewport),
     startAngleDegrees: input.previewConstraint.startAngleDegrees,
-    thickness: authoringLengthToScreenPixels(DEFAULT_ARC_TRACK_THICKNESS, input.viewport),
   });
   const tangentGuideEnd = projectAuthoringPointToScreen(
     {
@@ -184,10 +183,11 @@ export function renderArcTrackAuthoringPreview(
           <path
             d={previewArc.pathData}
             data-testid="workspace-arc-track-preview-path"
-            fill="rgba(15, 118, 110, 0.16)"
+            fill="none"
             stroke="#0f766e"
-            strokeLinejoin="miter"
-            strokeWidth={previewArc.outlineWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={previewArc.strokeThickness}
           />
         </svg>
         {input.radiusLabel ? (
