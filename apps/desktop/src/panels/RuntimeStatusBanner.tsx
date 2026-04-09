@@ -25,6 +25,12 @@ const bannerStyle: CSSProperties = {
   lineHeight: 1.5,
 };
 
+const elasticCollisionNote = "Rigid collisions stay elastic; friction only changes sliding.";
+
+function withElasticCollisionNote(message: string) {
+  return `${message} ${elasticCollisionNote}`;
+}
+
 function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
   tone: "error" | "warning" | "info";
   message: string;
@@ -39,7 +45,9 @@ function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
   if (runtime.blockReason === "rebuild-required") {
     return {
       tone: "warning",
-      message: "Results are out of date. Recalculate to review the latest motion.",
+      message: withElasticCollisionNote(
+        "Results are out of date. Recalculate to review the latest motion.",
+      ),
     };
   }
 
@@ -53,35 +61,41 @@ function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
   if (runtime.status === "preparing") {
     return {
       tone: "info",
-      message: "Calculating the result. Playback and time jump unlock when it finishes.",
+      message: withElasticCollisionNote(
+        "Calculating the result. Playback and time jump unlock when it finishes.",
+      ),
     };
   }
 
   if (runtime.playbackMode === "precomputed" && runtime.status === "running") {
     return {
       tone: "info",
-      message: "Showing the calculated result. Pause to inspect or jump to another time.",
+      message: withElasticCollisionNote(
+        "Showing the calculated result. Pause to inspect or jump to another time.",
+      ),
     };
   }
 
   if (runtime.playbackMode === "precomputed" && runtime.status === "preparing") {
     return {
       tone: "info",
-      message: "Calculating the result. Playback and time jump unlock when it finishes.",
+      message: withElasticCollisionNote(
+        "Calculating the result. Playback and time jump unlock when it finishes.",
+      ),
     };
   }
 
   if (runtime.playbackMode === "precomputed" && runtime.canSeek && runtime.status === "paused") {
     return {
       tone: "info",
-      message: "Calculated result ready. Press Play result or jump to a time.",
+      message: withElasticCollisionNote("Calculated result ready. Press Play result or jump to a time."),
     };
   }
 
   if (runtime.playbackMode === "precomputed" && !runtime.canSeek) {
     return {
       tone: "info",
-      message: "Calculate a result to enable play, seek, and time jump.",
+      message: withElasticCollisionNote("Calculate a result to enable play, seek, and time jump."),
     };
   }
 

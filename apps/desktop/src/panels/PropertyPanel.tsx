@@ -145,6 +145,12 @@ const semanticsNoteStyle: CSSProperties = {
   border: "1px solid rgba(108, 128, 173, 0.14)",
 };
 
+const collisionSemanticsHintStyle: CSSProperties = {
+  color: "#5d6f88",
+  fontSize: "12px",
+  lineHeight: 1.5,
+};
+
 function ReadonlyField(props: { label: string; value: string }) {
   return (
     <div style={{ display: "grid", gap: "4px" }}>
@@ -155,6 +161,7 @@ function ReadonlyField(props: { label: string; value: string }) {
 }
 
 function PositionInput(props: {
+  ariaLabel?: string;
   disabled?: boolean;
   label: string;
   suffix?: string;
@@ -177,7 +184,7 @@ function PositionInput(props: {
     <label style={{ display: "grid", gap: "4px" }}>
       <span style={{ color: "#6a7890", fontSize: "12px" }}>{props.label}</span>
       <input
-        aria-label={props.label}
+        aria-label={props.ariaLabel ?? props.label}
         disabled={props.disabled}
         style={inputStyle}
         type="number"
@@ -349,6 +356,8 @@ export function PropertyPanel(props: PropertyPanelProps) {
         })
     : null;
   const showsEditableFriction = selectedEntity?.kind === "board";
+  const showsCollisionSemanticsHint =
+    selectedEntity !== null && selectedEntity.kind !== "arc-track";
 
   return (
     <div style={{ display: "grid", gap: "16px" }}>
@@ -789,6 +798,12 @@ export function PropertyPanel(props: PropertyPanelProps) {
                     onChange={onUpdateSelectedEntityRotation}
                   />
                 ) : null}
+                {showsCollisionSemanticsHint ? (
+                  <span style={collisionSemanticsHintStyle}>
+                    Classroom collisions stay elastic. Surface friction only changes
+                    sliding.
+                  </span>
+                ) : null}
                 <div
                   style={{
                     display: "grid",
@@ -805,15 +820,17 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   />
                   {showsEditableFriction ? (
                     <PositionInput
+                      ariaLabel="Friction"
                       disabled={authoringLocked}
-                      label="Friction"
+                      label="Surface friction"
                       value={selectedEntity.friction}
                       onChange={(friction) => onUpdateSelectedEntityPhysics({ friction })}
                     />
                   ) : null}
                   <PositionInput
+                    ariaLabel="Restitution"
                     disabled={authoringLocked}
-                    label="Restitution"
+                    label="Bounce"
                     value={selectedEntity.restitution}
                     onChange={(restitution) => onUpdateSelectedEntityPhysics({ restitution })}
                   />

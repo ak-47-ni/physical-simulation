@@ -132,7 +132,8 @@ describe("PropertyPanel", () => {
     fireEvent.change(screen.getByLabelText("Position Y"), { target: { value: "214" } });
     fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "30" } });
     fireEvent.change(screen.getByLabelText("Mass"), { target: { value: "1.8" } });
-    expect(screen.queryByLabelText("Friction")).toBeNull();
+    expect(screen.queryByText("Surface friction")).toBeNull();
+    expect(screen.getByText("Bounce")).toBeDefined();
     fireEvent.change(screen.getByLabelText("Restitution"), { target: { value: "0.9" } });
     fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "12" } });
     fireEvent.change(screen.getByLabelText("Velocity Y"), { target: { value: "-8" } });
@@ -211,6 +212,11 @@ describe("PropertyPanel", () => {
     expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("30");
     expect((screen.getByLabelText("Speed") as HTMLInputElement).value).toBe("4");
     expect((screen.getByLabelText("Direction") as HTMLInputElement).value).toBe("0");
+    expect(screen.getByText("Surface friction")).toBeDefined();
+    expect(screen.getByText("Bounce")).toBeDefined();
+    expect(
+      screen.getByText("Classroom collisions stay elastic. Surface friction only changes sliding."),
+    ).toBeDefined();
 
     fireEvent.change(screen.getByLabelText("Direction"), { target: { value: "90" } });
 
@@ -271,6 +277,7 @@ describe("PropertyPanel", () => {
     );
 
     expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("15");
+    expect(screen.getByText("Bounce")).toBeDefined();
   });
 
   it("does not show the rectangular-body angle control for balls", () => {

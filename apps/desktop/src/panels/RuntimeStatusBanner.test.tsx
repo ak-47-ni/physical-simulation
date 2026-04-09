@@ -59,6 +59,9 @@ describe("RuntimeStatusBanner", () => {
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
       "Results are out of date. Recalculate to review the latest motion.",
     );
+    expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
+      "Rigid collisions stay elastic; friction only changes sliding.",
+    );
   });
 
   it("shows a calculate-first running explanation while the result is playing", () => {
@@ -77,6 +80,9 @@ describe("RuntimeStatusBanner", () => {
 
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
       "Showing the calculated result. Pause to inspect or jump to another time.",
+    );
+    expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
+      "Rigid collisions stay elastic; friction only changes sliding.",
     );
   });
 
@@ -97,6 +103,9 @@ describe("RuntimeStatusBanner", () => {
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
       "Calculate a result to enable play, seek, and time jump.",
     );
+    expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
+      "Rigid collisions stay elastic; friction only changes sliding.",
+    );
   });
 
   it("shows calculate-first preparation guidance while frames are building", () => {
@@ -115,6 +124,9 @@ describe("RuntimeStatusBanner", () => {
 
     expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
       "Calculating the result. Playback and time jump unlock when it finishes.",
+    );
+    expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
+      "Rigid collisions stay elastic; friction only changes sliding.",
     );
   });
 });
