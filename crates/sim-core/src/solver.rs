@@ -96,13 +96,16 @@ pub fn step_bodies(
             continue;
         }
 
+        body.position = body
+            .position
+            .add(body.velocity.scale(delta_seconds))
+            .add(body.acceleration.scale(0.5 * delta_seconds * delta_seconds));
         body.velocity = body.velocity.add(body.acceleration.scale(delta_seconds));
-        body.position = body.position.add(body.velocity.scale(delta_seconds));
         angular_dynamics::integrate_rotation(body, delta_seconds);
     }
 
-    resolve_static_contacts(bodies, &static_surfaces);
-    resolve_dynamic_contacts(bodies, &static_surfaces);
+    resolve_static_contacts(bodies, &static_surfaces, delta_seconds);
+    resolve_dynamic_contacts(bodies, &static_surfaces, delta_seconds);
     let freshly_captured_body_ids =
         capture_arc_entries(bodies, arc_tracks, attached_arc_track_by_body_id);
     enforce_track_bindings(
@@ -145,23 +148,31 @@ pub fn inverse_mass(body: &RuntimeBodyState) -> f64 {
     }
 }
 
-fn resolve_static_contacts(bodies: &mut [RuntimeBodyState], static_surfaces: &[RuntimeBodyState]) {
+fn resolve_static_contacts(
+    bodies: &mut [RuntimeBodyState],
+    static_surfaces: &[RuntimeBodyState],
+    delta_seconds: f64,
+) {
     for body in bodies.iter_mut() {
         if body.is_static {
             continue;
         }
 
-        resolve_implicit_boundaries(body);
+        resolve_implicit_boundaries(body, delta_seconds);
 
         for surface in static_surfaces {
-            resolve_contact_with_surface(body, surface);
+            resolve_contact_with_surface(body, surface, delta_seconds);
         }
 
-        resolve_implicit_boundaries(body);
+        resolve_implicit_boundaries(body, delta_seconds);
     }
 }
 
-fn resolve_dynamic_contacts(bodies: &mut [RuntimeBodyState], static_surfaces: &[RuntimeBodyState]) {
+fn resolve_dynamic_contacts(
+    bodies: &mut [RuntimeBodyState],
+    static_surfaces: &[RuntimeBodyState],
+    delta_seconds: f64,
+) {
     for _ in 0..DYNAMIC_CONTACT_PASSES {
         for index_a in 0..bodies.len() {
             for index_b in (index_a + 1)..bodies.len() {
@@ -171,15 +182,19 @@ fn resolve_dynamic_contacts(bodies: &mut [RuntimeBodyState], static_surfaces: &[
                     continue;
                 }
 
-                resolve_contact_pair(body_a, body_b);
+                resolve_contact_pair(body_a, body_b, delta_seconds);
             }
         }
 
-        resolve_static_contacts(bodies, static_surfaces);
+        resolve_static_contacts(bodies, static_surfaces, delta_seconds);
     }
 }
 
-fn resolve_contact_with_surface(body: &mut RuntimeBodyState, surface: &RuntimeBodyState) {
+fn resolve_contact_with_surface(
+    body: &mut RuntimeBodyState,
+    surface: &RuntimeBodyState,
+    delta_seconds: f64,
+) {
     let Some(contact) = contact_geometry::contact_manifold(body, surface) else {
         return;
     };
@@ -190,10 +205,11 @@ fn resolve_contact_with_surface(body: &mut RuntimeBodyState, surface: &RuntimeBo
         surface.friction_coefficient,
         surface.restitution_coefficient,
         surface.is_static,
+        delta_seconds,
     );
 }
 
-fn resolve_implicit_boundaries(body: &mut RuntimeBodyState) {
+fn resolve_implicit_boundaries(body: &mut RuntimeBodyState, delta_seconds: f64) {
     for normal in IMPLICIT_BOUNDARY_NORMALS {
         let Some(contact) = contact_geometry::boundary_contact_manifold(body, normal) else {
             continue;
@@ -205,6 +221,7 @@ fn resolve_implicit_boundaries(body: &mut RuntimeBodyState) {
             IMPLICIT_BOUNDARY_FRICTION_COEFFICIENT,
             IMPLICIT_BOUNDARY_RESTITUTION_COEFFICIENT,
             true,
+            delta_seconds,
         );
     }
 }
@@ -215,15 +232,13 @@ fn resolve_surface_contact_manifold(
     surface_friction_coefficient: f64,
     surface_restitution_coefficient: f64,
     locked_surface: bool,
+    delta_seconds: f64,
 ) {
     let inverse_mass_body = inverse_mass(body);
 
     if inverse_mass_body <= f64::EPSILON {
         return;
     }
-
-    let correction = positional_correction(contact.penetration);
-    body.position = body.position.add(contact.normal.scale(correction));
 
     let support_contact =
         is_support_contact(body, contact.normal, contact.penetration, locked_surface);
@@ -233,17 +248,37 @@ fn resolve_surface_contact_manifold(
         contact.point
     };
     let normal = contact.normal;
-    let radial_offset = point.sub(body.position);
     let relative_velocity = angular_dynamics::velocity_at_point(body, point);
     let normal_velocity = relative_velocity.dot(normal);
-    let inverse_normal_mass =
-        inverse_mass_body + radial_offset.cross(normal).powi(2) * body.inverse_inertia;
     let restitution = if support_contact {
         0.0
     } else {
         body.restitution_coefficient
             .max(surface_restitution_coefficient)
     };
+    let rollback_seconds = if support_contact || restitution <= f64::EPSILON {
+        0.0
+    } else {
+        estimated_contact_rollback_seconds(contact.penetration, normal_velocity, delta_seconds)
+    };
+    let effective_penetration = if rollback_seconds > f64::EPSILON {
+        rewind_body_for_contact(body, rollback_seconds);
+        residual_penetration_after_rollback(contact.penetration, normal_velocity, rollback_seconds)
+    } else {
+        contact.penetration
+    };
+    let correction = positional_correction(effective_penetration);
+    body.position = body.position.add(contact.normal.scale(correction));
+    let point = if support_contact {
+        body.position
+    } else {
+        contact.point
+    };
+    let radial_offset = point.sub(body.position);
+    let relative_velocity = angular_dynamics::velocity_at_point(body, point);
+    let normal_velocity = relative_velocity.dot(normal);
+    let inverse_normal_mass =
+        inverse_mass_body + radial_offset.cross(normal).powi(2) * body.inverse_inertia;
 
     let mut normal_impulse = 0.0;
 
@@ -265,9 +300,17 @@ fn resolve_surface_contact_manifold(
     if support_contact {
         damp_support_rotation(body);
     }
+
+    if rollback_seconds > f64::EPSILON {
+        advance_body_after_contact(body, rollback_seconds);
+    }
 }
 
-fn resolve_contact_pair(body_a: &mut RuntimeBodyState, body_b: &mut RuntimeBodyState) {
+fn resolve_contact_pair(
+    body_a: &mut RuntimeBodyState,
+    body_b: &mut RuntimeBodyState,
+    delta_seconds: f64,
+) {
     let Some(contact) = contact_geometry::contact_manifold(body_a, body_b) else {
         return;
     };
@@ -280,15 +323,33 @@ fn resolve_contact_pair(body_a: &mut RuntimeBodyState, body_b: &mut RuntimeBodyS
         return;
     }
 
-    let correction = positional_correction(contact.penetration);
+    let point = contact.point;
+    let normal = contact.normal;
+    let relative_velocity = angular_dynamics::velocity_at_point(body_a, point)
+        .sub(angular_dynamics::velocity_at_point(body_b, point));
+    let normal_velocity = relative_velocity.dot(normal);
+    let restitution = body_a
+        .restitution_coefficient
+        .max(body_b.restitution_coefficient);
+    let rollback_seconds = if restitution <= f64::EPSILON {
+        0.0
+    } else {
+        estimated_contact_rollback_seconds(contact.penetration, normal_velocity, delta_seconds)
+    };
+    let effective_penetration = if rollback_seconds > f64::EPSILON {
+        rewind_body_for_contact(body_a, rollback_seconds);
+        rewind_body_for_contact(body_b, rollback_seconds);
+        residual_penetration_after_rollback(contact.penetration, normal_velocity, rollback_seconds)
+    } else {
+        contact.penetration
+    };
+    let correction = positional_correction(effective_penetration);
     let correction_a = correction * (inverse_mass_a / total_inverse_mass);
     let correction_b = correction * (inverse_mass_b / total_inverse_mass);
 
     body_a.position = body_a.position.add(contact.normal.scale(correction_a));
     body_b.position = body_b.position.sub(contact.normal.scale(correction_b));
 
-    let point = contact.point;
-    let normal = contact.normal;
     let radial_offset_a = point.sub(body_a.position);
     let radial_offset_b = point.sub(body_b.position);
     let relative_velocity = angular_dynamics::velocity_at_point(body_a, point)
@@ -297,9 +358,6 @@ fn resolve_contact_pair(body_a: &mut RuntimeBodyState, body_b: &mut RuntimeBodyS
     let inverse_normal_mass = total_inverse_mass
         + radial_offset_a.cross(normal).powi(2) * body_a.inverse_inertia
         + radial_offset_b.cross(normal).powi(2) * body_b.inverse_inertia;
-    let restitution = body_a
-        .restitution_coefficient
-        .max(body_b.restitution_coefficient);
 
     let mut normal_impulse = 0.0;
 
@@ -312,6 +370,11 @@ fn resolve_contact_pair(body_a: &mut RuntimeBodyState, body_b: &mut RuntimeBodyS
 
     if restitution <= f64::EPSILON {
         apply_friction_impulse_between_bodies(body_a, body_b, point, normal, normal_impulse);
+    }
+
+    if rollback_seconds > f64::EPSILON {
+        advance_body_after_contact(body_a, rollback_seconds);
+        advance_body_after_contact(body_b, rollback_seconds);
     }
 }
 
@@ -385,6 +448,58 @@ fn apply_friction_impulse_between_bodies(
 
 fn positional_correction(penetration: f64) -> f64 {
     (penetration - POSITION_CORRECTION_SLOP).max(0.0)
+}
+
+fn estimated_contact_rollback_seconds(
+    penetration: f64,
+    normal_velocity: f64,
+    delta_seconds: f64,
+) -> f64 {
+    if penetration <= f64::EPSILON || normal_velocity >= -f64::EPSILON || delta_seconds <= f64::EPSILON {
+        return 0.0;
+    }
+
+    (penetration / -normal_velocity).clamp(0.0, delta_seconds)
+}
+
+fn residual_penetration_after_rollback(
+    penetration: f64,
+    normal_velocity: f64,
+    rollback_seconds: f64,
+) -> f64 {
+    if rollback_seconds <= f64::EPSILON {
+        return penetration;
+    }
+
+    (penetration - (-normal_velocity * rollback_seconds)).max(0.0)
+}
+
+// Rewind elastic contacts to the estimated time of impact, apply the impulse there,
+// then integrate the remainder of the substep with the post-collision velocity.
+fn rewind_body_for_contact(body: &mut RuntimeBodyState, rollback_seconds: f64) {
+    if body.is_static || rollback_seconds <= f64::EPSILON {
+        return;
+    }
+
+    body.position = body
+        .position
+        .sub(body.velocity.scale(rollback_seconds))
+        .add(body.acceleration.scale(0.5 * rollback_seconds * rollback_seconds));
+    body.velocity = body.velocity.sub(body.acceleration.scale(rollback_seconds));
+    body.rotation_radians -= body.angular_velocity_radians * rollback_seconds;
+}
+
+fn advance_body_after_contact(body: &mut RuntimeBodyState, advance_seconds: f64) {
+    if body.is_static || advance_seconds <= f64::EPSILON {
+        return;
+    }
+
+    body.position = body
+        .position
+        .add(body.velocity.scale(advance_seconds))
+        .add(body.acceleration.scale(0.5 * advance_seconds * advance_seconds));
+    body.velocity = body.velocity.add(body.acceleration.scale(advance_seconds));
+    body.rotation_radians += body.angular_velocity_radians * advance_seconds;
 }
 
 fn is_support_contact(

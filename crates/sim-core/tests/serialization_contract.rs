@@ -93,6 +93,50 @@ fn max_upward_velocity_over_steps(request: RuntimeCompileRequest, steps: usize) 
     max_upward_velocity
 }
 
+fn bounce_peak_positions_over_steps(
+    request: RuntimeCompileRequest,
+    steps: usize,
+    target_peak_count: usize,
+) -> (f64, Vec<f64>) {
+    let mut bridge = SimulationBridge::new(1.0 / 60.0);
+    let initial_frame = bridge
+        .compile_runtime_request(request)
+        .expect("request should compile into runtime state");
+    let release_peak = initial_frame
+        .entities
+        .iter()
+        .find(|entity| entity.entity_id == "ball-1")
+        .expect("ball should exist")
+        .position
+        .y;
+    let mut peaks = Vec::new();
+    let mut current_peak = f64::NEG_INFINITY;
+    let mut ascending = false;
+
+    for _ in 0..steps {
+        let frame = bridge.step().expect("runtime should step");
+        let ball = frame
+            .entities
+            .iter()
+            .find(|entity| entity.entity_id == "ball-1")
+            .expect("ball should exist");
+
+        if ball.velocity.y > 1e-6 {
+            ascending = true;
+            current_peak = current_peak.max(ball.position.y);
+        } else if ascending {
+            peaks.push(current_peak);
+            if peaks.len() == target_peak_count {
+                break;
+            }
+            ascending = false;
+            current_peak = f64::NEG_INFINITY;
+        }
+    }
+
+    (release_peak, peaks)
+}
+
 #[test]
 fn serialization_contract_accepts_frontend_compile_request_shape() {
     let request: RuntimeCompileRequest = serde_json::from_value(json!({
@@ -348,4 +392,51 @@ fn serialization_contract_default_elastic_payload_is_not_damped_by_board_frictio
         low_friction_velocity,
         high_friction_velocity
     );
+}
+
+#[test]
+fn serialization_contract_default_elastic_payload_preserves_repeated_bounce_peaks() {
+    let (_, peaks) =
+        bounce_peak_positions_over_steps(elastic_bounce_request(None, None, None, Some(0.0)), 1440, 2);
+
+    assert!(peaks.len() >= 2, "peaks={:?}", peaks);
+
+    let reference_peak = peaks[0];
+
+    assert!(
+        (peaks[1] - reference_peak).abs() <= 3.0,
+        "reference_peak={} second_peak={} peaks={:?}",
+        reference_peak,
+        peaks[1],
+        peaks
+    );
+}
+
+#[test]
+fn serialization_contract_board_friction_does_not_change_repeated_elastic_bounce_peaks() {
+    let (_, low_friction_peaks) =
+        bounce_peak_positions_over_steps(elastic_bounce_request(None, None, Some(0.0), Some(0.0)), 1440, 2);
+    let (_, high_friction_peaks) =
+        bounce_peak_positions_over_steps(elastic_bounce_request(None, None, Some(0.9), Some(0.0)), 1440, 2);
+
+    assert!(
+        low_friction_peaks.len() >= 2 && high_friction_peaks.len() >= 2,
+        "low_friction_peaks={:?} high_friction_peaks={:?}",
+        low_friction_peaks,
+        high_friction_peaks
+    );
+
+    for index in 0..2 {
+        let low_peak = low_friction_peaks[index];
+        let high_peak = high_friction_peaks[index];
+        assert!(
+            (low_peak - high_peak).abs() <= 1.0,
+            "peak_index={} low_peak={} high_peak={} low_friction_peaks={:?} high_friction_peaks={:?}",
+            index,
+            low_peak,
+            high_peak,
+            low_friction_peaks,
+            high_friction_peaks
+        );
+    }
 }

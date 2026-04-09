@@ -131,6 +131,60 @@ fn translational_kinetic_energy(runtime: &RuntimeScene, entity_ids: &[&str]) -> 
         .sum()
 }
 
+fn bounce_peaks_for_entity(
+    runtime: &mut RuntimeScene,
+    entity_id: &str,
+    steps: usize,
+    target_peak_count: usize,
+) -> Vec<f64> {
+    let mut peaks = Vec::new();
+    let mut current_peak = f64::NEG_INFINITY;
+    let mut ascending = false;
+
+    for _ in 0..steps {
+        let frame = runtime.step();
+        let entity = frame
+            .entities
+            .iter()
+            .find(|entity| entity.entity_id == entity_id)
+            .expect("entity should exist");
+
+        if entity.velocity.y > 1e-6 {
+            ascending = true;
+            current_peak = current_peak.max(entity.position.y);
+        } else if ascending {
+            peaks.push(current_peak);
+            if peaks.len() == target_peak_count {
+                break;
+            }
+            ascending = false;
+            current_peak = f64::NEG_INFINITY;
+        }
+    }
+
+    peaks
+}
+
+fn repeated_bounce_peaks_for_elastic_drop(board_friction: f64) -> Vec<f64> {
+    let mut runtime = runtime_for_scene(vec![
+        block(
+            "ground",
+            vector2(0.0, 0.0),
+            (20.0, 1.0),
+            Vector2::ZERO,
+            true,
+            board_friction,
+            1.0,
+        ),
+        EntityDefinition {
+            friction_coefficient: 0.0,
+            ..ball("ball-1", vector2(0.0, 4.0), 0.5, Vector2::ZERO, 1.0)
+        },
+    ]);
+
+    bounce_peaks_for_entity(&mut runtime, "ball-1", 360, 3)
+}
+
 #[test]
 fn mechanics_regression_bridge_ball_and_board_defaults_still_resolve_contact() {
     let request: RuntimeCompileRequest = serde_json::from_value(json!({
@@ -175,37 +229,52 @@ fn mechanics_regression_bridge_ball_and_board_defaults_still_resolve_contact() {
         .compile_runtime_request(request)
         .expect("bridge payload should compile");
 
-    let mut last_frame = bridge.current_frame().expect("current frame should exist");
-    let mut lowest_ball_y = f64::INFINITY;
-    let mut max_upward_velocity = f64::NEG_INFINITY;
-    for _ in 0..180 {
-        last_frame = bridge.step().expect("bridge step should succeed");
-        let ball = last_frame
+    let release_peak = bridge
+        .current_frame()
+        .expect("current frame should exist")
+        .entities
+        .iter()
+        .find(|entity| entity.entity_id == "ball-1")
+        .expect("ball should exist")
+        .position
+        .y;
+    let mut peaks = Vec::new();
+    let mut current_peak = f64::NEG_INFINITY;
+    let mut ascending = false;
+
+    for _ in 0..360 {
+        let frame = bridge.step().expect("bridge step should succeed");
+        let ball = frame
             .entities
             .iter()
             .find(|entity| entity.entity_id == "ball-1")
             .expect("ball should exist");
-        lowest_ball_y = lowest_ball_y.min(ball.position.y);
-        max_upward_velocity = max_upward_velocity.max(ball.velocity.y);
+
+        if ball.velocity.y > 1e-6 {
+            ascending = true;
+            current_peak = current_peak.max(ball.position.y);
+        } else if ascending {
+            peaks.push(current_peak);
+            if peaks.len() == 2 {
+                break;
+            }
+            ascending = false;
+            current_peak = f64::NEG_INFINITY;
+        }
     }
 
-    let ball = last_frame
-        .entities
-        .iter()
-        .find(|entity| entity.entity_id == "ball-1")
-        .expect("ball should exist");
+    assert!(peaks.len() >= 2, "release_peak={} peaks={:?}", release_peak, peaks);
 
-    assert!(
-        lowest_ball_y >= 1.0 - 1e-6,
-        "lowest_ball_y={}",
-        lowest_ball_y
-    );
-    assert!(
-        max_upward_velocity > 0.5,
-        "max_upward_velocity={}",
-        max_upward_velocity
-    );
-    assert!(ball.position.y >= 1.0 - 1e-6, "ball_y={}", ball.position.y);
+    for (index, peak) in peaks.iter().enumerate() {
+        assert!(
+            (peak - release_peak).abs() <= 0.15,
+            "release_peak={} peak_index={} peak={} peaks={:?}",
+            release_peak,
+            index,
+            peak,
+            peaks
+        );
+    }
 }
 
 #[test]
@@ -238,6 +307,54 @@ fn mechanics_regression_oblique_elastic_ball_collision_is_not_damped_by_friction
         low_friction_energy,
         high_friction_energy
     );
+}
+
+#[test]
+fn mechanics_regression_elastic_drop_preserves_repeated_bounce_height() {
+    let release_peak = 4.0;
+    let peaks = repeated_bounce_peaks_for_elastic_drop(0.0);
+
+    assert!(peaks.len() >= 3, "peaks={peaks:?}");
+
+    for (index, peak) in peaks.iter().enumerate() {
+        assert!(
+            (peak - release_peak).abs() <= 0.15,
+            "release_peak={} peak_index={} peak={} peaks={:?}",
+            release_peak,
+            index,
+            peak,
+            peaks
+        );
+    }
+}
+
+#[test]
+fn mechanics_regression_board_friction_does_not_change_repeated_elastic_bounce_peaks() {
+    let release_peak = 4.0;
+    let low_friction_peaks = repeated_bounce_peaks_for_elastic_drop(0.0);
+    let high_friction_peaks = repeated_bounce_peaks_for_elastic_drop(0.9);
+
+    assert!(
+        low_friction_peaks.len() >= 3 && high_friction_peaks.len() >= 3,
+        "low_friction_peaks={low_friction_peaks:?} high_friction_peaks={high_friction_peaks:?}"
+    );
+
+    for index in 0..3 {
+        let low_peak = low_friction_peaks[index];
+        let high_peak = high_friction_peaks[index];
+        assert!(
+            (low_peak - release_peak).abs() <= 0.15
+                && (high_peak - release_peak).abs() <= 0.15
+                && (low_peak - high_peak).abs() <= 0.1,
+            "release_peak={} peak_index={} low_peak={} high_peak={} low_friction_peaks={:?} high_friction_peaks={:?}",
+            release_peak,
+            index,
+            low_peak,
+            high_peak,
+            low_friction_peaks,
+            high_friction_peaks
+        );
+    }
 }
 
 #[test]

@@ -61,6 +61,40 @@ fn runtime_entity(runtime: &RuntimeScene, entity_id: &str) -> RuntimeEntityFrame
         .clone()
 }
 
+fn bounce_peaks_for_entity(
+    runtime: &mut RuntimeScene,
+    entity_id: &str,
+    steps: usize,
+    target_peak_count: usize,
+) -> Vec<f64> {
+    let mut peaks = Vec::new();
+    let mut current_peak = f64::NEG_INFINITY;
+    let mut ascending = false;
+
+    for _ in 0..steps {
+        let frame = runtime.step();
+        let entity = frame
+            .entities
+            .iter()
+            .find(|entity| entity.entity_id == entity_id)
+            .expect("entity should exist");
+
+        if entity.velocity.y > 1e-6 {
+            ascending = true;
+            current_peak = current_peak.max(entity.position.y);
+        } else if ascending {
+            peaks.push(current_peak);
+            if peaks.len() == target_peak_count {
+                break;
+            }
+            ascending = false;
+            current_peak = f64::NEG_INFINITY;
+        }
+    }
+
+    peaks
+}
+
 #[test]
 fn quadrant_boundary_regression_runtime_wall_at_x_zero_keeps_bodies_non_negative() {
     let radius = 0.25;
@@ -138,4 +172,29 @@ fn quadrant_boundary_regression_boundaries_behave_like_fixed_supports_not_telepo
         ball.velocity.x,
         ball.velocity.y
     );
+}
+
+#[test]
+fn quadrant_boundary_regression_runtime_ground_preserves_repeated_elastic_bounce_height() {
+    let release_peak = 3.5;
+    let radius = 0.25;
+    let mut runtime = runtime_for_scene_with_gravity(
+        vec![ball("ball", vector2(0.8, release_peak), radius, Vector2::ZERO, 1.0)],
+        vector2(0.0, -9.81),
+    );
+
+    let peaks = bounce_peaks_for_entity(&mut runtime, "ball", 360, 3);
+
+    assert!(peaks.len() >= 3, "release_peak={} peaks={:?}", release_peak, peaks);
+
+    for (index, peak) in peaks.iter().enumerate() {
+        assert!(
+            (peak - release_peak).abs() <= 0.15,
+            "release_peak={} peak_index={} peak={} peaks={:?}",
+            release_peak,
+            index,
+            peak,
+            peaks
+        );
+    }
 }
