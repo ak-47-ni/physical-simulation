@@ -2,7 +2,7 @@ use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefini
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::runtime::{RuntimeEntityFrame, RuntimeFramePayload, RuntimeScene};
-use sim_core::scene::{CompileSceneRequest, compile_scene};
+use sim_core::scene::{compile_scene, CompileSceneRequest};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
@@ -200,7 +200,7 @@ fn arc_track_regression_detaches_at_arc_end_and_continues_free_flight() {
 }
 
 #[test]
-fn arc_track_regression_arc_track_entity_does_not_follow_legacy_guide_exit_path() {
+fn arc_track_regression_arc_track_entity_guides_ball_then_releases_tangentially() {
     let center = vector2(4.0, 4.0);
     let mut runtime = runtime_for_scene_with_arc_entity(
         ball("ball", vector2(3.7, 2.0), vector2(2.8, 0.0)),
@@ -209,12 +209,23 @@ fn arc_track_regression_arc_track_entity_does_not_follow_legacy_guide_exit_path(
         0.05,
     );
 
-    run_steps(&mut runtime, 12);
-    let frame = runtime_entity(&runtime, "ball");
+    run_steps(&mut runtime, 1);
+    let captured = runtime_entity(&runtime, "ball");
 
     assert!(
-        (frame.position.sub(center).length() - 2.0).abs() > 5e-2,
-        "expected entity arc-track to avoid legacy centerline guidance, got radial distance {:.3}",
-        frame.position.sub(center).length(),
+        (captured.position.sub(center).length() - 2.0).abs() < 5e-2,
+        "expected entity arc-track to guide the captured ball, got radial distance {:.3}",
+        captured.position.sub(center).length(),
     );
+    assert!(captured.velocity.x > 0.0, "ball_vx={}", captured.velocity.x);
+
+    run_steps(&mut runtime, 11);
+    let released = runtime_entity(&runtime, "ball");
+
+    assert!(
+        (released.position.sub(center).length() - 2.0).abs() > 5e-2,
+        "expected entity arc-track to release back into free motion, got radial distance {:.3}",
+        released.position.sub(center).length(),
+    );
+    assert!(released.velocity.x > 0.0, "ball_vx={}", released.velocity.x);
 }

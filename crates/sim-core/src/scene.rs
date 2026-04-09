@@ -1,12 +1,13 @@
 use std::collections::HashSet;
 
 use crate::analyzer::{AnalyzerDefinition, CompiledAnalyzer};
-use crate::arc_track::{CompiledArcTrack, validated_arc_start_and_span};
+use crate::arc_track::{validated_arc_start_and_span, ArcTrackCapturePolicy, CompiledArcTrack};
+use crate::constraint::ArcTrackSide;
 use crate::constraint::{
-    CompiledConstraint, ConstraintCompileError, ConstraintDefinition, compile_constraint,
+    compile_constraint, CompiledConstraint, ConstraintCompileError, ConstraintDefinition,
 };
 use crate::entity::{
-    CompiledEntity, CompiledShape, EntityDefinition, ShapeDefinition, is_convex_polygon,
+    is_convex_polygon, CompiledEntity, CompiledShape, EntityDefinition, ShapeDefinition,
 };
 use crate::force::{ForceSourceDefinition, GravityForce};
 use serde::{Deserialize, Serialize};
@@ -118,6 +119,7 @@ impl From<ConstraintCompileError> for SceneCompileError {
 pub fn compile_scene(request: &CompileSceneRequest) -> Result<CompiledScene, SceneCompileError> {
     let mut entity_ids = HashSet::new();
     let mut compiled_entities = Vec::with_capacity(request.entities.len());
+    let mut compiled_arc_tracks = Vec::new();
 
     for entity in &request.entities {
         if !entity_ids.insert(entity.id.clone()) {
@@ -126,7 +128,12 @@ pub fn compile_scene(request: &CompileSceneRequest) -> Result<CompiledScene, Sce
             });
         }
 
-        compiled_entities.push(compile_entity(entity)?);
+        match compile_entity(entity)? {
+            CompiledSceneItem::Entity(compiled_entity) => compiled_entities.push(compiled_entity),
+            CompiledSceneItem::ArcTrack(compiled_arc_track) => {
+                compiled_arc_tracks.push(compiled_arc_track);
+            }
+        }
     }
 
     let gravity = request
@@ -166,13 +173,18 @@ pub fn compile_scene(request: &CompileSceneRequest) -> Result<CompiledScene, Sce
     Ok(CompiledScene {
         entities: compiled_entities,
         constraints: compiled_constraints,
-        arc_tracks: Vec::new(),
+        arc_tracks: compiled_arc_tracks,
         gravity,
         analyzers: compiled_analyzers,
     })
 }
 
-fn compile_entity(entity: &EntityDefinition) -> Result<CompiledEntity, SceneCompileError> {
+enum CompiledSceneItem {
+    Entity(CompiledEntity),
+    ArcTrack(CompiledArcTrack),
+}
+
+fn compile_entity(entity: &EntityDefinition) -> Result<CompiledSceneItem, SceneCompileError> {
     let shape = match &entity.shape {
         ShapeDefinition::Ball { radius } => {
             if *radius <= 0.0 {
@@ -182,12 +194,12 @@ fn compile_entity(entity: &EntityDefinition) -> Result<CompiledEntity, SceneComp
                 });
             }
 
-            CompiledShape::Ball { radius: *radius }
+            Some(CompiledShape::Ball { radius: *radius })
         }
         ShapeDefinition::ArcTrack {
             radius,
             central_angle_degrees,
-            thickness,
+            ..
         } => {
             if !radius.is_finite() || *radius <= 0.0 {
                 return Err(SceneCompileError::InvalidArcTrackRadius {
@@ -196,29 +208,27 @@ fn compile_entity(entity: &EntityDefinition) -> Result<CompiledEntity, SceneComp
                 });
             }
 
-            if !thickness.is_finite() || *thickness <= 0.0 {
-                return Err(SceneCompileError::InvalidShapeParameters {
-                    entity_id: entity.id.clone(),
-                    kind: "arc-track".to_string(),
-                });
-            }
-
-            if validated_arc_start_and_span(entity.rotation_radians, *central_angle_degrees)
-                .is_none()
-            {
+            let Some((start_angle_radians, end_angle_radians, span_radians)) =
+                validated_arc_start_and_span(entity.rotation_radians, *central_angle_degrees)
+            else {
                 return Err(SceneCompileError::InvalidArcTrackSpan {
                     constraint_id: entity.id.clone(),
                     start_angle_degrees: entity.rotation_radians.to_degrees(),
                     end_angle_degrees: entity.rotation_radians.to_degrees()
                         + *central_angle_degrees,
                 });
-            }
+            };
 
-            CompiledShape::ArcTrack {
+            return Ok(CompiledSceneItem::ArcTrack(CompiledArcTrack {
+                id: entity.id.clone(),
+                center: entity.position,
                 radius: *radius,
-                central_angle_degrees: *central_angle_degrees,
-                thickness: *thickness,
-            }
+                start_angle_radians,
+                end_angle_radians,
+                span_radians,
+                side: ArcTrackSide::Inside,
+                capture_policy: ArcTrackCapturePolicy::Either,
+            }));
         }
         ShapeDefinition::Block { width, height } => {
             if *width <= 0.0 || *height <= 0.0 {
@@ -228,10 +238,10 @@ fn compile_entity(entity: &EntityDefinition) -> Result<CompiledEntity, SceneComp
                 });
             }
 
-            CompiledShape::Block {
+            Some(CompiledShape::Block {
                 width: *width,
                 height: *height,
-            }
+            })
         }
         ShapeDefinition::ConvexPolygon { points } => {
             if !is_convex_polygon(points) {
@@ -240,9 +250,9 @@ fn compile_entity(entity: &EntityDefinition) -> Result<CompiledEntity, SceneComp
                 });
             }
 
-            CompiledShape::ConvexPolygon {
+            Some(CompiledShape::ConvexPolygon {
                 points: points.clone(),
-            }
+            })
         }
         ShapeDefinition::Unsupported { kind } => {
             return Err(SceneCompileError::UnsupportedShape {
@@ -252,9 +262,9 @@ fn compile_entity(entity: &EntityDefinition) -> Result<CompiledEntity, SceneComp
         }
     };
 
-    Ok(CompiledEntity {
+    Ok(CompiledSceneItem::Entity(CompiledEntity {
         id: entity.id.clone(),
-        shape,
+        shape: shape.expect("non-arc-track entities should produce a rigid shape"),
         position: entity.position,
         rotation_radians: entity.rotation_radians,
         initial_velocity: entity.initial_velocity,
@@ -262,5 +272,5 @@ fn compile_entity(entity: &EntityDefinition) -> Result<CompiledEntity, SceneComp
         is_static: entity.is_static,
         friction_coefficient: entity.friction_coefficient,
         restitution_coefficient: entity.restitution_coefficient,
-    })
+    }))
 }

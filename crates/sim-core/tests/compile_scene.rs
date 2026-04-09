@@ -1,7 +1,9 @@
+use sim_core::arc_track::{ArcTrackCapturePolicy, CompiledArcTrack};
+use sim_core::constraint::ArcTrackSide;
 use sim_core::constraint::ConstraintDefinition;
-use sim_core::entity::{CompiledShape, EntityDefinition, ShapeDefinition, Vector2};
+use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
-use sim_core::scene::{CompileSceneRequest, SceneCompileError, compile_scene};
+use sim_core::scene::{compile_scene, CompileSceneRequest, SceneCompileError};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
@@ -95,7 +97,7 @@ fn compile_scene_rejects_unsupported_shapes() {
 }
 
 #[test]
-fn compile_scene_compiles_arc_track_entities_as_collidable_bodies() {
+fn compile_scene_compiles_arc_track_entities_as_guides() {
     let request = CompileSceneRequest {
         entities: vec![dynamic_entity(
             "arc-track-1",
@@ -115,15 +117,19 @@ fn compile_scene_compiles_arc_track_entities_as_collidable_bodies() {
 
     let compiled = compile_scene(&request).expect("arc-track entities should compile");
 
-    assert_eq!(compiled.entities.len(), 1);
-    assert!(compiled.arc_tracks.is_empty());
-    assert_eq!(compiled.entities[0].id, "arc-track-1");
+    assert!(compiled.entities.is_empty());
+    assert_eq!(compiled.arc_tracks.len(), 1);
     assert_eq!(
-        compiled.entities[0].shape,
-        CompiledShape::ArcTrack {
+        compiled.arc_tracks[0],
+        CompiledArcTrack {
+            id: "arc-track-1".to_string(),
+            center: vector2(0.0, 0.0),
             radius: 2.5,
-            central_angle_degrees: 120.0,
-            thickness: 0.18,
+            start_angle_radians: 0.0,
+            end_angle_radians: 120.0_f64.to_radians(),
+            span_radians: 120.0_f64.to_radians(),
+            side: ArcTrackSide::Inside,
+            capture_policy: ArcTrackCapturePolicy::Either,
         }
     );
 }

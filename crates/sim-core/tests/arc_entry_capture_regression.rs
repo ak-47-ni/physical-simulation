@@ -2,7 +2,7 @@ use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefini
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::runtime::{RuntimeEntityFrame, RuntimeScene};
-use sim_core::scene::{CompileSceneRequest, compile_scene};
+use sim_core::scene::{compile_scene, CompileSceneRequest};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
@@ -200,7 +200,7 @@ fn arc_entry_capture_regression_frontend_board_anchored_payload_enters_from_junc
 }
 
 #[test]
-fn arc_entry_capture_regression_arc_track_entity_does_not_capture_nearby_non_colliding_ball() {
+fn arc_entry_capture_regression_arc_track_entity_captures_tangent_matched_endpoint() {
     let center = vector2(8.0, 5.5);
     let mut runtime = runtime_for_scene_with_arc_entity(
         ball("ball", vector2(8.65, 4.5), vector2(-0.2, 0.0)),
@@ -214,12 +214,41 @@ fn arc_entry_capture_regression_arc_track_entity_does_not_capture_nearby_non_col
     let radial_distance = frame.position.sub(center).length();
 
     assert!(
-        (radial_distance - 1.0).abs() > 0.15,
-        "expected entity arc-track to avoid hidden capture before collision, got position=({:.3}, {:.3}) distance={:.3}",
+        (radial_distance - 1.0).abs() < 5e-2,
+        "expected entity arc-track to capture at the tangent-matched endpoint, got position=({:.3}, {:.3}) distance={:.3}",
         frame.position.x,
         frame.position.y,
         radial_distance,
     );
-    assert!(frame.position.x > 8.6, "ball_x={}", frame.position.x);
-    assert!((frame.position.y - 4.5).abs() < 1e-6, "ball_y={}", frame.position.y);
+    assert!(frame.position.x < 8.2, "ball_x={}", frame.position.x);
+    assert!(frame.velocity.x < 0.0, "ball_vx={}", frame.velocity.x);
+}
+
+#[test]
+fn arc_entry_capture_regression_arc_track_entity_does_not_capture_mid_arc_pass() {
+    let center = vector2(8.0, 5.5);
+    let mut runtime = runtime_for_scene_with_arc_entity(
+        ball("ball", vector2(7.1, 5.5), vector2(0.0, -0.2)),
+        arc_track_entity("arc-track", center, 1.0, 180.0, 90.0),
+        Vector2::ZERO,
+        0.05,
+    );
+
+    run_steps(&mut runtime, 1);
+    let frame = runtime_entity(&runtime, "ball");
+    let radial_distance = frame.position.sub(center).length();
+
+    assert!(
+        (radial_distance - 1.0).abs() > 5e-2,
+        "expected entity arc-track to avoid hidden mid-arc capture, got position=({:.3}, {:.3}) distance={:.3}",
+        frame.position.x,
+        frame.position.y,
+        radial_distance,
+    );
+    assert!(
+        (frame.position.x - 7.1).abs() < 1e-6,
+        "ball_x={}",
+        frame.position.x
+    );
+    assert!(frame.position.y < 5.5, "ball_y={}", frame.position.y);
 }
