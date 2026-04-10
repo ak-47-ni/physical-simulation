@@ -445,7 +445,7 @@ describe("runtimeCompileRequest", () => {
     ]);
   });
 
-  it("keeps arc-track entities typed as arc-track when building a runtime compile request", () => {
+  it("builds anchored arc-track runtime entities without legacy thick-body fields", () => {
     const request = createRuntimeCompileRequestFromEditorState({
       entities: [
         ...createInitialSceneEntities(),
@@ -453,7 +453,22 @@ describe("runtimeCompileRequest", () => {
       ],
     });
 
-    expect(request.scene.entities).toContainEqual({
+    const arcTrackEntity = request.scene.entities.find(
+      (entity): entity is {
+        id: string;
+        kind: string;
+        anchorEntityId: string;
+        anchorEntityKind: string;
+        anchorEndpoint: string;
+        center: { x: number; y: number };
+        entryEndpoint: string;
+        radius: number;
+        rotationDegrees: number;
+        sweepAngleDegrees: number;
+      } => entity.id === "arc-track-1",
+    );
+
+    expect(arcTrackEntity).toMatchObject({
       id: "arc-track-1",
       kind: "arc-track",
       label: "Arc Track 1",
@@ -466,6 +481,8 @@ describe("runtimeCompileRequest", () => {
       rotationDegrees: 135,
       sweepAngleDegrees: 90,
     });
+    expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
+    expect(arcTrackEntity).not.toHaveProperty("thickness");
   });
 
   it("keeps compile-request cloning stable when the source scene mutates later", () => {

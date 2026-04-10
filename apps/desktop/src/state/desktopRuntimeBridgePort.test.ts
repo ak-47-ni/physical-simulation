@@ -411,6 +411,105 @@ describe("desktopRuntimeBridgePort", () => {
     expect(commands).toEqual(["compile_scene", "start_runtime", "tick_runtime"]);
   });
 
+  it("passes anchored arc-track compile requests through tauri invoke without legacy fields", async () => {
+    const scene = createEmptySceneDocument();
+    scene.entities.push(
+      {
+        id: "board-1",
+        kind: "board",
+        x: 3.18,
+        y: 2.72,
+        width: 1.2,
+        height: 0.18,
+        rotationDegrees: 0,
+        mass: 5,
+        friction: 0.42,
+        restitution: 1,
+        locked: true,
+        velocityX: 0,
+        velocityY: 0,
+      },
+      {
+        id: "arc-track-1",
+        kind: "arc-track",
+        label: "Arc Track 1",
+        anchorEntityId: "board-1",
+        anchorEntityKind: "board",
+        anchorEndpoint: "start",
+        center: { x: 3.18, y: 3.72 },
+        entryEndpoint: "start",
+        radius: 1,
+        rotationDegrees: 135,
+        sweepAngleDegrees: 90,
+      },
+    );
+    const request = createRuntimeCompileRequest(scene, ["physics"]);
+    const commands: string[] = [];
+    const port = createDesktopRuntimeBridgePort({
+      fallbackPort: createMockRuntimeBridgePort(),
+      invoke: async <T>(command: string, payload?: Record<string, unknown>) => {
+        commands.push(command);
+
+        if (command === "compile_scene") {
+          expect(payload).toEqual({ request });
+          return createStatusSnapshot({
+            playbackMode: "precomputed",
+            resultState: "stale",
+            canSeek: false,
+            rebuildRequired: true,
+            blockReason: "rebuild-required",
+          }) as T;
+        }
+
+        if (command === "start_runtime") {
+          return createStatusSnapshot({
+            status: "running",
+            playbackMode: "precomputed",
+            resultState: "calculating",
+          }) as T;
+        }
+
+        throw new Error(`unexpected command: ${command}`);
+      },
+    });
+
+    await port.compile(request);
+    await port.start();
+
+    const arcTrackEntity = port
+      .getSnapshot()
+      .lastCompileRequest?.scene.entities.find(
+        (entity): entity is {
+          id: string;
+          kind: string;
+          anchorEntityId: string;
+          anchorEntityKind: string;
+          anchorEndpoint: string;
+          center: { x: number; y: number };
+          entryEndpoint: string;
+          radius: number;
+          rotationDegrees: number;
+          sweepAngleDegrees: number;
+        } => entity.id === "arc-track-1",
+      );
+
+    expect(commands).toEqual(["compile_scene", "start_runtime"]);
+    expect(arcTrackEntity).toMatchObject({
+      id: "arc-track-1",
+      kind: "arc-track",
+      anchorEntityId: "board-1",
+      anchorEntityKind: "board",
+      anchorEndpoint: "start",
+      center: { x: 3.18, y: 3.72 },
+      entryEndpoint: "start",
+      radius: 1,
+      rotationDegrees: 135,
+      sweepAngleDegrees: 90,
+    });
+    expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
+    expect(arcTrackEntity).not.toHaveProperty("thickness");
+  });
+
   it("publishes readable runtime failures for seek commands", async () => {
     const fallbackPort = createMockRuntimeBridgePort();
     const port = createDesktopRuntimeBridgePort({

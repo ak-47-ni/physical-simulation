@@ -34,6 +34,8 @@ function createArcTrackViaLibraryDrop(screenPosition: { x: number; y: number }) 
   fireEvent.pointerUp(window);
 }
 
+const BOARD_START_ENDPOINT_DROP_POSITION = { x: 318, y: 272 };
+
 function readBoardCenterY() {
   return 2.72 + 0.18 / 2;
 }
@@ -200,82 +202,204 @@ describe("App selection sync", () => {
     expect(ball.style.height).toBe("60px");
   });
 
-  it("creates an arc-track body from the Bodies library and edits its geometry in the inspector", () => {
+  it("creates an anchored arc-track guide from the Bodies library and edits anchored geometry", () => {
     render(<App />);
 
-    createArcTrackViaLibraryDrop({ x: 360, y: 240 });
+    createArcTrackViaLibraryDrop(BOARD_START_ENDPOINT_DROP_POSITION);
 
     expect(screen.getByTestId("scene-tree-item-arc-track-1").getAttribute("data-selected")).toBe(
       "true",
     );
-    expect((screen.getByLabelText("Center X") as HTMLInputElement).value).toBe("3.6");
-    expect((screen.getByLabelText("Center Y") as HTMLInputElement).value).toBe("2.4");
+    expect(screen.queryByLabelText("Center X")).toBeNull();
+    expect(screen.queryByLabelText("Center Y")).toBeNull();
     expect((screen.getByLabelText("Radius") as HTMLInputElement).value).toBe("1");
-    expect((screen.getByLabelText("Central angle") as HTMLInputElement).value).toBe("90");
-    expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("0");
+    expect((screen.getByLabelText("Sweep angle") as HTMLInputElement).value).toBe("90");
+    expect((screen.getByLabelText("Rotation") as HTMLInputElement).value).toBe("135");
 
-    fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "1.24" } });
-    fireEvent.change(screen.getByLabelText("Central angle"), { target: { value: "210" } });
-    fireEvent.change(screen.getByLabelText("Angle"), { target: { value: "25" } });
+    fireEvent.change(screen.getByLabelText("Rotation"), { target: { value: "-140" } });
 
+    expect((screen.getByLabelText("Rotation") as HTMLInputElement).value).toBe("-135");
+
+    fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "1.23" } });
     expect((screen.getByLabelText("Radius") as HTMLInputElement).value).toBe("1.2");
-    expect((screen.getByLabelText("Central angle") as HTMLInputElement).value).toBe("210");
-    expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("25");
+
+    fireEvent.change(screen.getByLabelText("Sweep angle"), { target: { value: "120" } });
+
+    expect((screen.getByLabelText("Sweep angle") as HTMLInputElement).value).toBe("120");
+    expect((screen.getByLabelText("Rotation") as HTMLInputElement).value).toBe("-150");
   });
 
-  it("compiles a dragged arc-track body as an arc-track entity with a center payload", async () => {
+  it("starts runtime after placing an anchored arc-track using the anchored guide payload", async () => {
     const compileRequests: Array<{ scene: { entities: unknown[] } }> = [];
-    (globalThis as { __TAURI_INTERNALS__?: { invoke: (command: string, payload?: Record<string, unknown>) => Promise<unknown> } }).__TAURI_INTERNALS__ = {
+    const commands: string[] = [];
+    let tickCount = 0;
+    (globalThis as {
+      __TAURI_INTERNALS__?: {
+        invoke: (command: string, payload?: Record<string, unknown>) => Promise<unknown>;
+      };
+    }).__TAURI_INTERNALS__ = {
       invoke: async (command, payload) => {
-        if (command !== "compile_scene") {
-          throw new Error(`unexpected command: ${command}`);
-        }
+        commands.push(command);
 
-        compileRequests.push((payload as { request: { scene: { entities: unknown[] } } }).request);
-
-        return {
-          status: "idle",
-          currentFrame: null,
-          currentTimeSeconds: 0,
-          timeScale: 1,
-          dirtyScopes: [],
-          rebuildRequired: false,
-          canResume: true,
-          blockReason: null,
-          playbackMode: "precomputed",
-          totalDurationSeconds: 20,
-          preparingProgress: null,
-          canSeek: false,
-        };
-      },
-    };
-
-    render(<App />);
-
-    createArcTrackViaLibraryDrop({ x: 360, y: 240 });
-
-    await waitFor(() =>
-      expect(
-        compileRequests.some((request) =>
-          request.scene.entities.some(
-            (entity) =>
+        if (command === "compile_scene") {
+          const request = (payload as { request: { scene: { entities: unknown[] } } }).request;
+          const arcTrackEntity = request.scene.entities.find(
+            (entity): entity is {
+              id: string;
+              kind: string;
+              anchorEntityId: string;
+              anchorEntityKind: string;
+              anchorEndpoint: string;
+              center: { x: number; y: number };
+              entryEndpoint: string;
+              radius: number;
+              rotationDegrees: number;
+              sweepAngleDegrees: number;
+            } =>
               typeof entity === "object" &&
               entity !== null &&
               "id" in entity &&
               entity.id === "arc-track-1",
-          ),
-        ),
-      ).toBe(true),
-    );
+          );
 
-    const latestRequest = compileRequests.at(-1);
-    const arcTrackEntity = latestRequest?.scene.entities.find(
+          if (arcTrackEntity) {
+            expect(arcTrackEntity).toMatchObject({
+              id: "arc-track-1",
+              kind: "arc-track",
+              anchorEntityId: "board-1",
+              anchorEntityKind: "board",
+              anchorEndpoint: "start",
+              center: { x: 3.18, y: 3.72 },
+              entryEndpoint: "start",
+              radius: 1,
+              rotationDegrees: 135,
+              sweepAngleDegrees: 90,
+            });
+            expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
+            expect(arcTrackEntity).not.toHaveProperty("thickness");
+          }
+
+          compileRequests.push(request);
+
+          return {
+            status: "paused",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: true,
+            canResume: true,
+            blockReason: "rebuild-required",
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "stale",
+          };
+        }
+
+        if (command === "start_runtime") {
+          return {
+            status: "running",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: false,
+            canResume: true,
+            blockReason: null,
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "calculating",
+          };
+        }
+
+        if (command === "reset_runtime") {
+          return {
+            status: "paused",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: true,
+            canResume: true,
+            blockReason: "rebuild-required",
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "stale",
+          };
+        }
+
+        if (command === "tick_runtime") {
+          tickCount += 1;
+
+          return {
+            status: "paused",
+            currentFrame: {
+              frameNumber: tickCount,
+              entities: [
+                {
+                  entityId: "arc-track-1",
+                  position: { x: 318, y: 372 },
+                  rotation: (135 * Math.PI) / 180,
+                },
+              ],
+            },
+            currentTimeSeconds: tickCount / 30,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: false,
+            canResume: true,
+            blockReason: null,
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: true,
+            resultState: "ready",
+          };
+        }
+
+        throw new Error(`unexpected command: ${command}`);
+      },
+    };
+
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    createArcTrackViaLibraryDrop(BOARD_START_ENDPOINT_DROP_POSITION);
+    fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
+    fireEvent.click(transport.getByRole("button", { name: /^calculate$/i }));
+
+    await waitFor(() => expect(commands.includes("start_runtime")).toBe(true));
+    await waitFor(() => expect(commands.includes("tick_runtime")).toBe(true));
+
+    const latestRequestWithArcTrack = [...compileRequests]
+      .reverse()
+      .find((request) =>
+        request.scene.entities.some(
+          (entity) =>
+            typeof entity === "object" &&
+            entity !== null &&
+            "id" in entity &&
+            entity.id === "arc-track-1",
+        ),
+      );
+    const arcTrackEntity = latestRequestWithArcTrack?.scene.entities.find(
       (entity): entity is {
         id: string;
         kind: string;
         center?: { x: number; y: number };
-        x?: number;
-        y?: number;
+        anchorEntityId?: string;
+        anchorEntityKind?: string;
+        anchorEndpoint?: string;
+        entryEndpoint?: string;
+        radius?: number;
+        rotationDegrees?: number;
+        sweepAngleDegrees?: number;
       } =>
         typeof entity === "object" &&
         entity !== null &&
@@ -286,10 +410,18 @@ describe("App selection sync", () => {
     expect(arcTrackEntity).toMatchObject({
       id: "arc-track-1",
       kind: "arc-track",
-      center: { x: 3.6, y: 2.4 },
+      anchorEntityId: "board-1",
+      anchorEntityKind: "board",
+      anchorEndpoint: "start",
+      center: { x: 3.18, y: 3.72 },
+      entryEndpoint: "start",
+      radius: 1,
+      rotationDegrees: 135,
+      sweepAngleDegrees: 90,
     });
-    expect(arcTrackEntity).not.toHaveProperty("x");
-    expect(arcTrackEntity).not.toHaveProperty("y");
+    expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
+    expect(arcTrackEntity).not.toHaveProperty("thickness");
+    expect(screen.queryByText(/missing centralAngleDegrees/i)).toBeNull();
   });
 
   it("updates physics properties and locked markers from the property panel", () => {
