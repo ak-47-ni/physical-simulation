@@ -31,6 +31,7 @@ import {
 export const DEFAULT_SCENE_GRAVITY: Vector2 = { x: 0, y: 9.8 };
 export const DEFAULT_GRAVITY_SOURCE_ID = "gravity-primary";
 const DEFAULT_ANALYZER_ID = "traj-primary";
+const DEFAULT_EDITOR_ARC_TRACK_THICKNESS = 0.18;
 
 export type PersistedSpringConstraint = {
   entityAId: string;
@@ -262,14 +263,17 @@ export function resolveAnalyzerEntityId(
 function mapEditorEntityToSceneEntity(entity: EditorSceneEntity): SceneEntity {
   if (entity.kind === "arc-track") {
     return {
+      anchorEndpoint: entity.anchorEndpoint,
+      anchorEntityId: entity.anchorEntityId,
+      anchorEntityKind: entity.anchorEntityKind,
       id: entity.id,
       kind: "arc-track",
       label: entity.label,
       center: cloneVector(entity.center),
+      entryEndpoint: entity.entryEndpoint,
       radius: entity.radius,
-      centralAngleDegrees: entity.centralAngleDegrees,
+      sweepAngleDegrees: entity.sweepAngleDegrees,
       rotationDegrees: entity.rotationDegrees,
-      thickness: entity.thickness,
     };
   }
 
@@ -363,16 +367,27 @@ function mapSceneEntityToEditorEntity(entity: SceneEntity): EditorSceneEntity[] 
   }
 
   if (entity.kind === "arc-track") {
+    const sweepAngleDegrees =
+      readNumber(entity, "sweepAngleDegrees") ?? readNumber(entity, "centralAngleDegrees") ?? 0;
+    const anchorEntityKind = readString(entity, "anchorEntityKind");
+    const anchorEndpoint = readString(entity, "anchorEndpoint");
+    const entryEndpoint = readString(entity, "entryEndpoint");
+
     return [
       {
+        anchorEndpoint: anchorEndpoint === "end" ? "end" : "start",
+        anchorEntityId: readString(entity, "anchorEntityId") ?? "board-1",
+        anchorEntityKind: anchorEntityKind === "block" ? "block" : "board",
         id: entity.id,
         kind: "arc-track",
         label: entity.label ?? entity.id,
         center: cloneVector(entity.center),
         radius: entity.radius,
-        centralAngleDegrees: entity.centralAngleDegrees,
+        entryEndpoint: entryEndpoint === "end" ? "end" : "start",
+        sweepAngleDegrees,
+        centralAngleDegrees: sweepAngleDegrees,
         rotationDegrees: entity.rotationDegrees,
-        thickness: entity.thickness,
+        thickness: readNumber(entity, "thickness") ?? DEFAULT_EDITOR_ARC_TRACK_THICKNESS,
       },
     ];
   }
