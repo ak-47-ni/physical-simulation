@@ -1,8 +1,14 @@
+use std::collections::HashMap;
+
+use sim_core::arc_track::{
+    ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
+    CompiledArcTrackAnchor,
+};
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::runtime::{RuntimeEntityFrame, RuntimeScene};
-use sim_core::scene::{compile_scene, CompileSceneRequest};
+use sim_core::scene::{CompileSceneRequest, compile_scene, compile_scene_with_arc_track_metadata};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
@@ -46,6 +52,26 @@ fn arc_track_entity(
     }
 }
 
+fn block(
+    id: &str,
+    center: Vector2,
+    width: f64,
+    height: f64,
+    rotation_degrees: f64,
+) -> EntityDefinition {
+    EntityDefinition {
+        id: id.to_string(),
+        shape: ShapeDefinition::Block { width, height },
+        position: center,
+        rotation_radians: rotation_degrees.to_radians(),
+        initial_velocity: Vector2::ZERO,
+        mass: 0.0,
+        is_static: true,
+        friction_coefficient: 0.2,
+        restitution_coefficient: 0.0,
+    }
+}
+
 fn runtime_for_scene(
     entity: EntityDefinition,
     constraint: ConstraintDefinition,
@@ -81,6 +107,46 @@ fn runtime_for_scene_with_arc_entity(
         }],
         analyzers: vec![],
     })
+    .expect("scene should compile");
+
+    RuntimeScene::new(compiled, fixed_delta_seconds)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn runtime_for_scene_with_anchored_arc_entity(
+    entity: EntityDefinition,
+    anchor: EntityDefinition,
+    anchor_kind: ArcTrackAnchorEntityKind,
+    anchor_endpoint: ArcTrackAnchorEndpoint,
+    arc_track: EntityDefinition,
+    entry_endpoint: ArcTrackEntryEndpoint,
+    gravity: Vector2,
+    fixed_delta_seconds: f64,
+) -> RuntimeScene {
+    let anchor_id = anchor.id.clone();
+    let arc_track_id = arc_track.id.clone();
+    let compiled = compile_scene_with_arc_track_metadata(
+        &CompileSceneRequest {
+            entities: vec![entity, anchor, arc_track],
+            constraints: vec![],
+            force_sources: vec![ForceSourceDefinition::Gravity {
+                id: "gravity".to_string(),
+                acceleration: gravity,
+            }],
+            analyzers: vec![],
+        },
+        &HashMap::from([(
+            arc_track_id,
+            ArcTrackEntityCompileMetadata {
+                anchor: Some(CompiledArcTrackAnchor {
+                    entity_id: anchor_id,
+                    entity_kind: anchor_kind,
+                    endpoint: anchor_endpoint,
+                }),
+                entry_endpoint: Some(entry_endpoint),
+            },
+        )]),
+    )
     .expect("scene should compile");
 
     RuntimeScene::new(compiled, fixed_delta_seconds)
@@ -251,4 +317,61 @@ fn arc_entry_capture_regression_arc_track_entity_does_not_capture_mid_arc_pass()
         frame.position.x
     );
     assert!(frame.position.y < 5.5, "ball_y={}", frame.position.y);
+}
+
+#[test]
+fn arc_entry_capture_regression_block_anchored_entity_captures_board_endpoint_crossing() {
+    let center = vector2(4.0, 4.0);
+    let mut runtime = runtime_for_scene_with_anchored_arc_entity(
+        ball("ball", vector2(3.6, 1.5), vector2(2.0, 0.0)),
+        block("anchor", vector2(2.0, 2.25), 4.0, 0.5, 0.0),
+        ArcTrackAnchorEntityKind::Block,
+        ArcTrackAnchorEndpoint::End,
+        arc_track_entity("arc-track", center, 2.0, 60.0, 30.0),
+        ArcTrackEntryEndpoint::End,
+        Vector2::ZERO,
+        0.05,
+    );
+
+    run_steps(&mut runtime, 8);
+    let frame = runtime_entity(&runtime, "ball");
+    let radial_distance = frame.position.sub(center).length();
+
+    assert!(
+        (radial_distance - 2.0).abs() < 5e-2,
+        "expected block-anchored junction handoff to capture the board-supported ball, got position=({:.3}, {:.3}) distance={:.3}",
+        frame.position.x,
+        frame.position.y,
+        radial_distance,
+    );
+    assert!(frame.position.x > 4.0, "ball_x={}", frame.position.x);
+    assert!(frame.position.y > 2.0, "ball_y={}", frame.position.y);
+}
+
+#[test]
+fn arc_entry_capture_regression_block_anchored_entity_avoids_hidden_free_ball_capture() {
+    let center = vector2(4.0, 4.0);
+    let mut runtime = runtime_for_scene_with_anchored_arc_entity(
+        ball("ball", vector2(4.05, 2.3), vector2(0.5, 0.0)),
+        block("anchor", vector2(2.0, 2.25), 4.0, 0.5, 0.0),
+        ArcTrackAnchorEntityKind::Block,
+        ArcTrackAnchorEndpoint::End,
+        arc_track_entity("arc-track", center, 2.0, 60.0, 30.0),
+        ArcTrackEntryEndpoint::End,
+        Vector2::ZERO,
+        0.05,
+    );
+
+    run_steps(&mut runtime, 2);
+    let frame = runtime_entity(&runtime, "ball");
+    let radial_distance = frame.position.sub(center).length();
+
+    assert!(
+        (radial_distance - 2.0).abs() > 5e-2,
+        "expected anchored guide to reject hidden free-ball capture near the junction, got position=({:.3}, {:.3}) distance={:.3}",
+        frame.position.x,
+        frame.position.y,
+        radial_distance,
+    );
+    assert!(frame.position.x > 4.05, "ball_x={}", frame.position.x);
 }

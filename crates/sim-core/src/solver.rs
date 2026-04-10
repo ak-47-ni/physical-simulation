@@ -6,7 +6,9 @@ mod contact_geometry;
 
 use std::collections::{HashMap, HashSet};
 
-use crate::arc_track::{ArcTrackCapturePolicy, CompiledArcTrack};
+use crate::arc_track::{
+    ArcTrackAnchorEndpoint, ArcTrackCapturePolicy, ArcTrackEndpointGeometry, CompiledArcTrack,
+};
 use crate::constraint::{ArcTrackSide, CompiledConstraint};
 use crate::entity::Vector2;
 
@@ -22,6 +24,9 @@ const ARC_ENTRY_CAPTURE_DISTANCE_THRESHOLD: f64 = 0.75;
 const ARC_ENTRY_CAPTURE_ALIGNMENT_THRESHOLD: f64 = 0.8;
 const ARC_ENTRY_CAPTURE_APPROACH_TOLERANCE: f64 = 0.2;
 const ARC_ENTRY_CAPTURE_SIDE_TOLERANCE: f64 = 0.2;
+const ARC_ENTRY_ANCHORED_JUNCTION_POSITION_TOLERANCE: f64 = 0.05;
+const ARC_ENTRY_ANCHORED_JUNCTION_SURFACE_TOLERANCE: f64 = 0.15;
+const ARC_ENTRY_ANCHORED_JUNCTION_CROSSING_TOLERANCE: f64 = 1e-6;
 const IMPLICIT_BOUNDARY_NORMALS: [Vector2; 2] = [Vector2::new(1.0, 0.0), Vector2::new(0.0, 1.0)];
 const IMPLICIT_BOUNDARY_FRICTION_COEFFICIENT: f64 = 0.0;
 const IMPLICIT_BOUNDARY_RESTITUTION_COEFFICIENT: f64 = 0.0;
@@ -60,6 +65,13 @@ pub struct RuntimeBodyState {
     pub is_static: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RuntimeAnchorEndpointGeometry {
+    position: Vector2,
+    tangent: Vector2,
+    surface_normal: Vector2,
+}
+
 pub fn step_bodies(
     bodies: &mut [RuntimeBodyState],
     constraints: &[CompiledConstraint],
@@ -68,6 +80,7 @@ pub fn step_bodies(
     gravity: Vector2,
     delta_seconds: f64,
 ) {
+    let previous_positions = bodies.iter().map(|body| body.position).collect::<Vec<_>>();
     let static_surfaces = bodies
         .iter()
         .filter(|body| body.is_static)
@@ -106,8 +119,13 @@ pub fn step_bodies(
 
     resolve_static_contacts(bodies, &static_surfaces, delta_seconds);
     resolve_dynamic_contacts(bodies, &static_surfaces, delta_seconds);
-    let freshly_captured_body_ids =
-        capture_arc_entries(bodies, arc_tracks, attached_arc_track_by_body_id);
+    let freshly_captured_body_ids = capture_arc_entries(
+        bodies,
+        arc_tracks,
+        &index_by_id,
+        &previous_positions,
+        attached_arc_track_by_body_id,
+    );
     enforce_track_bindings(
         bodies,
         constraints,
@@ -455,7 +473,10 @@ fn estimated_contact_rollback_seconds(
     normal_velocity: f64,
     delta_seconds: f64,
 ) -> f64 {
-    if penetration <= f64::EPSILON || normal_velocity >= -f64::EPSILON || delta_seconds <= f64::EPSILON {
+    if penetration <= f64::EPSILON
+        || normal_velocity >= -f64::EPSILON
+        || delta_seconds <= f64::EPSILON
+    {
         return 0.0;
     }
 
@@ -484,7 +505,10 @@ fn rewind_body_for_contact(body: &mut RuntimeBodyState, rollback_seconds: f64) {
     body.position = body
         .position
         .sub(body.velocity.scale(rollback_seconds))
-        .add(body.acceleration.scale(0.5 * rollback_seconds * rollback_seconds));
+        .add(
+            body.acceleration
+                .scale(0.5 * rollback_seconds * rollback_seconds),
+        );
     body.velocity = body.velocity.sub(body.acceleration.scale(rollback_seconds));
     body.rotation_radians -= body.angular_velocity_radians * rollback_seconds;
 }
@@ -494,10 +518,10 @@ fn advance_body_after_contact(body: &mut RuntimeBodyState, advance_seconds: f64)
         return;
     }
 
-    body.position = body
-        .position
-        .add(body.velocity.scale(advance_seconds))
-        .add(body.acceleration.scale(0.5 * advance_seconds * advance_seconds));
+    body.position = body.position.add(body.velocity.scale(advance_seconds)).add(
+        body.acceleration
+            .scale(0.5 * advance_seconds * advance_seconds),
+    );
     body.velocity = body.velocity.add(body.acceleration.scale(advance_seconds));
     body.rotation_radians += body.angular_velocity_radians * advance_seconds;
 }
@@ -661,6 +685,8 @@ fn enforce_track_bindings(
 fn capture_arc_entries(
     bodies: &mut [RuntimeBodyState],
     arc_tracks: &[CompiledArcTrack],
+    index_by_id: &HashMap<String, usize>,
+    previous_positions: &[Vector2],
     attached_arc_track_by_body_id: &mut HashMap<String, String>,
 ) -> HashSet<String> {
     let mut freshly_captured_body_ids = HashSet::new();
@@ -696,8 +722,22 @@ fn capture_arc_entries(
                 arc_track.side,
                 entry_endpoint,
             );
+            let anchored_entry = arc_track.anchor.as_ref().and_then(|anchor| {
+                let &anchor_index = index_by_id.get(&anchor.entity_id)?;
+                let geometry = anchor_endpoint_geometry(&bodies[anchor_index], anchor.endpoint)?;
 
-            for body in bodies.iter_mut() {
+                if geometry.position.sub(endpoint_geometry.position).length()
+                    > ARC_ENTRY_ANCHORED_JUNCTION_POSITION_TOLERANCE
+                    || geometry.tangent.dot(endpoint_geometry.tangent)
+                        < ARC_ENTRY_CAPTURE_ALIGNMENT_THRESHOLD
+                {
+                    None
+                } else {
+                    Some(geometry)
+                }
+            });
+
+            for (body_index, body) in bodies.iter_mut().enumerate() {
                 if body.is_static
                     || body.shape != RuntimeBodyShape::Ball
                     || attached_arc_track_by_body_id.contains_key(&body.entity_id)
@@ -709,20 +749,18 @@ fn capture_arc_entries(
                     continue;
                 }
 
-                let offset_from_entry = body.position.sub(endpoint_geometry.position);
-                let speed = body.velocity.length();
-                let alignment = body
-                    .velocity
-                    .scale(1.0 / speed)
-                    .dot(endpoint_geometry.tangent);
+                if let Some(anchor_geometry) = anchored_entry {
+                    let previous_position = previous_positions[body_index];
 
-                if offset_from_entry.length() > ARC_ENTRY_CAPTURE_DISTANCE_THRESHOLD
-                    || alignment < ARC_ENTRY_CAPTURE_ALIGNMENT_THRESHOLD
-                    || offset_from_entry.dot(endpoint_geometry.tangent)
-                        > ARC_ENTRY_CAPTURE_APPROACH_TOLERANCE
-                    || offset_from_entry.dot(endpoint_geometry.support_direction)
-                        < -ARC_ENTRY_CAPTURE_SIDE_TOLERANCE
-                {
+                    if !captures_anchored_arc_entry(
+                        body,
+                        previous_position,
+                        anchor_geometry,
+                        endpoint_geometry,
+                    ) {
+                        continue;
+                    }
+                } else if !captures_free_arc_entry(body, endpoint_geometry) {
                     continue;
                 }
 
@@ -745,6 +783,101 @@ fn capture_arc_entries(
     }
 
     freshly_captured_body_ids
+}
+
+fn anchor_endpoint_geometry(
+    body: &RuntimeBodyState,
+    endpoint: ArcTrackAnchorEndpoint,
+) -> Option<RuntimeAnchorEndpointGeometry> {
+    if body.shape != RuntimeBodyShape::Box {
+        return None;
+    }
+
+    let axis_x = Vector2::new(1.0, 0.0).rotated(body.rotation_radians);
+    let axis_y = axis_x.perp();
+    let top_center = body.position.add(axis_y.scale(-body.half_extents.y));
+    let half_width_offset = axis_x.scale(body.half_extents.x);
+    let surface_normal = axis_y.scale(-1.0);
+
+    let (position, tangent) = match endpoint {
+        ArcTrackAnchorEndpoint::Start => (top_center.sub(half_width_offset), axis_x.scale(-1.0)),
+        ArcTrackAnchorEndpoint::End => (top_center.add(half_width_offset), axis_x),
+    };
+
+    Some(RuntimeAnchorEndpointGeometry {
+        position,
+        tangent,
+        surface_normal,
+    })
+}
+
+fn captures_free_arc_entry(
+    body: &RuntimeBodyState,
+    endpoint_geometry: ArcTrackEndpointGeometry,
+) -> bool {
+    let offset_from_entry = body.position.sub(endpoint_geometry.position);
+    let speed = body.velocity.length();
+    let alignment = body
+        .velocity
+        .scale(1.0 / speed)
+        .dot(endpoint_geometry.tangent);
+
+    offset_from_entry.length() <= ARC_ENTRY_CAPTURE_DISTANCE_THRESHOLD
+        && alignment >= ARC_ENTRY_CAPTURE_ALIGNMENT_THRESHOLD
+        && offset_from_entry.dot(endpoint_geometry.tangent) <= ARC_ENTRY_CAPTURE_APPROACH_TOLERANCE
+        && offset_from_entry.dot(endpoint_geometry.support_direction)
+            >= -ARC_ENTRY_CAPTURE_SIDE_TOLERANCE
+}
+
+fn captures_anchored_arc_entry(
+    body: &RuntimeBodyState,
+    previous_position: Vector2,
+    anchor_geometry: RuntimeAnchorEndpointGeometry,
+    endpoint_geometry: ArcTrackEndpointGeometry,
+) -> bool {
+    let speed = body.velocity.length();
+
+    if speed <= f64::EPSILON {
+        return false;
+    }
+
+    let velocity_alignment = body
+        .velocity
+        .scale(1.0 / speed)
+        .dot(anchor_geometry.tangent);
+
+    if velocity_alignment < ARC_ENTRY_CAPTURE_ALIGNMENT_THRESHOLD {
+        return false;
+    }
+
+    let previous_offset = previous_position.sub(anchor_geometry.position);
+    let current_offset = body.position.sub(anchor_geometry.position);
+    let expected_surface_offset = body.half_extents.x;
+    let previous_surface_offset = previous_offset.dot(anchor_geometry.surface_normal);
+    let current_surface_offset = current_offset.dot(anchor_geometry.surface_normal);
+
+    if (previous_surface_offset - expected_surface_offset).abs()
+        > ARC_ENTRY_ANCHORED_JUNCTION_SURFACE_TOLERANCE
+        || (current_surface_offset - expected_surface_offset).abs()
+            > ARC_ENTRY_ANCHORED_JUNCTION_SURFACE_TOLERANCE
+    {
+        return false;
+    }
+
+    let previous_longitudinal = previous_offset.dot(anchor_geometry.tangent);
+    let current_longitudinal = current_offset.dot(anchor_geometry.tangent);
+
+    if previous_longitudinal > ARC_ENTRY_ANCHORED_JUNCTION_CROSSING_TOLERANCE
+        || current_longitudinal < -ARC_ENTRY_ANCHORED_JUNCTION_CROSSING_TOLERANCE
+    {
+        return false;
+    }
+
+    if current_longitudinal <= previous_longitudinal {
+        return false;
+    }
+
+    body.velocity.dot(endpoint_geometry.tangent) > f64::EPSILON
 }
 
 #[allow(clippy::too_many_arguments)]

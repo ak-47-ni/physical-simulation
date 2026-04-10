@@ -1,8 +1,14 @@
+use std::collections::HashMap;
+
+use sim_core::arc_track::{
+    ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
+    CompiledArcTrackAnchor,
+};
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::runtime::{RuntimeFramePayload, RuntimeScene};
-use sim_core::scene::{CompileSceneRequest, compile_scene};
+use sim_core::scene::{CompileSceneRequest, compile_scene, compile_scene_with_arc_track_metadata};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
@@ -39,6 +45,50 @@ fn ball(id: &str, position: Vector2, velocity: Vector2) -> EntityDefinition {
     }
 }
 
+fn arc_track_entity(
+    id: &str,
+    center: Vector2,
+    radius: f64,
+    central_angle_degrees: f64,
+    rotation_degrees: f64,
+) -> EntityDefinition {
+    EntityDefinition {
+        id: id.to_string(),
+        shape: ShapeDefinition::ArcTrack {
+            radius,
+            central_angle_degrees,
+            thickness: 0.18,
+        },
+        position: center,
+        rotation_radians: rotation_degrees.to_radians(),
+        initial_velocity: Vector2::ZERO,
+        mass: 0.0,
+        is_static: true,
+        friction_coefficient: 0.0,
+        restitution_coefficient: 0.0,
+    }
+}
+
+fn static_block(
+    id: &str,
+    position: Vector2,
+    width: f64,
+    height: f64,
+    rotation_degrees: f64,
+) -> EntityDefinition {
+    EntityDefinition {
+        id: id.to_string(),
+        shape: ShapeDefinition::Block { width, height },
+        position,
+        rotation_radians: rotation_degrees.to_radians(),
+        initial_velocity: Vector2::ZERO,
+        mass: 0.0,
+        is_static: true,
+        friction_coefficient: 0.2,
+        restitution_coefficient: 0.0,
+    }
+}
+
 fn runtime_for_scene(
     entities: Vec<EntityDefinition>,
     constraints: Vec<ConstraintDefinition>,
@@ -54,6 +104,46 @@ fn runtime_for_scene(
         }],
         analyzers: vec![],
     })
+    .expect("scene should compile");
+
+    RuntimeScene::new(compiled, fixed_delta_seconds)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn runtime_for_scene_with_anchored_arc_entity(
+    entity: EntityDefinition,
+    anchor: EntityDefinition,
+    anchor_kind: ArcTrackAnchorEntityKind,
+    anchor_endpoint: ArcTrackAnchorEndpoint,
+    arc_track: EntityDefinition,
+    entry_endpoint: ArcTrackEntryEndpoint,
+    gravity: Vector2,
+    fixed_delta_seconds: f64,
+) -> RuntimeScene {
+    let anchor_id = anchor.id.clone();
+    let arc_track_id = arc_track.id.clone();
+    let compiled = compile_scene_with_arc_track_metadata(
+        &CompileSceneRequest {
+            entities: vec![entity, anchor, arc_track],
+            constraints: vec![],
+            force_sources: vec![ForceSourceDefinition::Gravity {
+                id: "gravity".to_string(),
+                acceleration: gravity,
+            }],
+            analyzers: vec![],
+        },
+        &HashMap::from([(
+            arc_track_id,
+            ArcTrackEntityCompileMetadata {
+                anchor: Some(CompiledArcTrackAnchor {
+                    entity_id: anchor_id,
+                    entity_kind: anchor_kind,
+                    endpoint: anchor_endpoint,
+                }),
+                entry_endpoint: Some(entry_endpoint),
+            },
+        )]),
+    )
     .expect("scene should compile");
 
     RuntimeScene::new(compiled, fixed_delta_seconds)
@@ -294,4 +384,45 @@ fn constraint_runtime_arc_track_free_state_replays_deterministically_after_reset
     let second_run = runtime.current_frame();
 
     assert_eq!(first_run, second_run);
+}
+
+#[test]
+fn constraint_runtime_block_anchored_arc_track_detaches_when_support_would_need_to_pull() {
+    let center = vector2(4.0, 4.0);
+    let mut runtime = runtime_for_scene_with_anchored_arc_entity(
+        ball("ball", vector2(4.1, 5.5), vector2(-2.0, 0.0)),
+        static_block("anchor", vector2(6.0, 6.25), 4.0, 0.5, 0.0),
+        ArcTrackAnchorEntityKind::Block,
+        ArcTrackAnchorEndpoint::Start,
+        arc_track_entity("arc-track", center, 2.0, 60.0, 210.0),
+        ArcTrackEntryEndpoint::End,
+        vector2(0.0, -9.81),
+        0.05,
+    );
+
+    let first_frame = runtime.step();
+    let captured = payload_frame(&first_frame, "ball");
+
+    assert!(
+        (captured.position.sub(center).length() - 2.0).abs() < 5e-2,
+        "expected anchored handoff to capture before detach, got position=({:.3}, {:.3}) distance={:.3}",
+        captured.position.x,
+        captured.position.y,
+        captured.position.sub(center).length(),
+    );
+
+    for _ in 0..5 {
+        runtime.step();
+    }
+    let released_frame = runtime.current_frame();
+    let released = payload_frame(&released_frame, "ball");
+    let released_radial_distance = released.position.sub(center).length();
+
+    assert!(
+        (released_radial_distance - 2.0).abs() > 5e-2,
+        "expected anchored guide to detach when support would need to pull, got position=({:.3}, {:.3}) distance={:.3}",
+        released.position.x,
+        released.position.y,
+        released_radial_distance,
+    );
 }
