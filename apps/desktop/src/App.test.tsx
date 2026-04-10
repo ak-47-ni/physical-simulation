@@ -50,6 +50,19 @@ function readExpectedBlockContactTopLeftY(rotationDegrees: number) {
   return readBoardCenterY() - 0.18 / 2 - readBlockSupportAlongUpNormal(rotationDegrees) - 0.52 / 2;
 }
 
+function readRenderedBallCenterPx() {
+  const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+  const left = Number.parseFloat(ball.style.left);
+  const top = Number.parseFloat(ball.style.top);
+  const width = Number.parseFloat(ball.style.width);
+  const height = Number.parseFloat(ball.style.height);
+
+  return {
+    x: left + width / 2,
+    y: top + height / 2,
+  };
+}
+
 describe("App selection sync", () => {
   it("synchronizes selection across scene tree, workspace, and property panel", () => {
     render(<App />);
@@ -422,6 +435,210 @@ describe("App selection sync", () => {
     expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
     expect(arcTrackEntity).not.toHaveProperty("thickness");
     expect(screen.queryByText(/missing centralAngleDegrees/i)).toBeNull();
+  });
+
+  it("shows a ball handing off from a board into anchored arc-guide motion at runtime", async () => {
+    const compileRequests: Array<{
+      scene: {
+        entities: Array<Record<string, unknown>>;
+      };
+    }> = [];
+    const commands: string[] = [];
+    let tickCount = 0;
+    (globalThis as {
+      __TAURI_INTERNALS__?: {
+        invoke: (command: string, payload?: Record<string, unknown>) => Promise<unknown>;
+      };
+    }).__TAURI_INTERNALS__ = {
+      invoke: async (command, payload) => {
+        commands.push(command);
+
+        if (command === "compile_scene") {
+          const request = (payload as {
+            request: {
+              scene: {
+                entities: Array<Record<string, unknown>>;
+              };
+            };
+          }).request;
+          compileRequests.push(request);
+
+          return {
+            status: "paused",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: true,
+            canResume: true,
+            blockReason: "rebuild-required",
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "stale",
+          };
+        }
+
+        if (command === "start_runtime") {
+          return {
+            status: "running",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: false,
+            canResume: true,
+            blockReason: null,
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "calculating",
+          };
+        }
+
+        if (command === "pause_runtime") {
+          return {
+            status: "paused",
+            currentFrame: null,
+            currentTimeSeconds: tickCount / 60,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: false,
+            canResume: true,
+            blockReason: null,
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: true,
+            resultState: "ready",
+          };
+        }
+
+        if (command === "reset_runtime") {
+          return {
+            status: "paused",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: true,
+            canResume: true,
+            blockReason: "rebuild-required",
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "stale",
+          };
+        }
+
+        if (command === "tick_runtime") {
+          tickCount += 1;
+
+          return {
+            status: "paused",
+            currentFrame: {
+              frameNumber: tickCount,
+              entities: [
+                {
+                  entityId: "ball-1",
+                  position: { x: 3.89, y: 3.01 },
+                  rotation: 0,
+                  velocity: { x: 0.9, y: 0.85 },
+                },
+                {
+                  entityId: "board-1",
+                  position: { x: 3.78, y: 2.81 },
+                  rotation: 0,
+                },
+                {
+                  entityId: "arc-track-1",
+                  position: { x: 3.18, y: 3.72 },
+                  rotation: (135 * Math.PI) / 180,
+                },
+              ],
+            },
+            currentTimeSeconds: tickCount / 60,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: false,
+            canResume: true,
+            blockReason: null,
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: true,
+            resultState: "ready",
+          };
+        }
+
+        throw new Error(`unexpected command: ${command}`);
+      },
+    };
+
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Position X"), { target: { value: "2.7" } });
+    fireEvent.change(screen.getByLabelText("Position Y"), { target: { value: "2.24" } });
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "1.2" } });
+    fireEvent.change(screen.getByLabelText("Velocity Y"), { target: { value: "0" } });
+    createArcTrackViaLibraryDrop(BOARD_START_ENDPOINT_DROP_POSITION);
+    fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
+    fireEvent.click(transport.getByRole("button", { name: /^calculate$/i }));
+
+    await waitFor(() => expect(commands.includes("start_runtime")).toBe(true));
+    await waitFor(() => expect(commands.includes("tick_runtime")).toBe(true));
+    await waitFor(() => expect(commands.includes("pause_runtime")).toBe(true));
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled,
+      ).toBe(false);
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+    fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
+    await waitFor(() => {
+      const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+      expect(ball.style.left).toBe("365px");
+      expect(ball.style.top).toBe("277px");
+    });
+
+    const latestRequestWithArcTrack = [...compileRequests]
+      .reverse()
+      .find((request) =>
+        request.scene.entities.some((entity) => entity.id === "arc-track-1" || entity.id === "ball-1"),
+      );
+    const compileBall = latestRequestWithArcTrack?.scene.entities.find((entity) => entity.id === "ball-1");
+    const compileArc = latestRequestWithArcTrack?.scene.entities.find((entity) => entity.id === "arc-track-1");
+    const renderedBallCenter = readRenderedBallCenterPx();
+    const guidedRadiusPx = Math.hypot(renderedBallCenter.x - 318, renderedBallCenter.y - 372);
+
+    expect(compileBall).toMatchObject({
+      id: "ball-1",
+      kind: "ball",
+      x: 2.7,
+      y: 2.24,
+      velocityX: 1.2,
+      velocityY: 0,
+    });
+    expect(compileArc).toMatchObject({
+      id: "arc-track-1",
+      kind: "arc-track",
+      anchorEntityId: "board-1",
+      anchorEntityKind: "board",
+      anchorEndpoint: "start",
+      entryEndpoint: "start",
+      radius: 1,
+      rotationDegrees: 135,
+      sweepAngleDegrees: 90,
+    });
+    expect(guidedRadiusPx).toBeCloseTo(100, 0);
+    expect(renderedBallCenter.y).toBeLessThan(320);
   });
 
   it("updates physics properties and locked markers from the property panel", () => {

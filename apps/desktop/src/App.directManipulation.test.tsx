@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { LibraryDragSession } from "./workspace/libraryDragSession";
@@ -267,6 +267,7 @@ vi.mock("./workspace/WorkspaceCanvas", () => ({
 import { App } from "./App";
 
 afterEach(() => {
+  delete (globalThis as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
   cleanup();
   mockLibraryState.latestProps = null;
   mockWorkspaceState.latestProps = null;
@@ -287,6 +288,18 @@ function readLatestArcTrackEntity() {
 
   if (!entity) {
     throw new Error("expected latest workspace arc-track entity");
+  }
+
+  return entity;
+}
+
+function readLatestDisplayEntity(entityId: string) {
+  const entity = readLatestWorkspaceProps()?.displayEntities?.find(
+    (candidate) => candidate.id === entityId,
+  );
+
+  if (!entity) {
+    throw new Error(`expected latest workspace display entity ${entityId}`);
   }
 
   return entity;
@@ -587,5 +600,220 @@ describe("App direct manipulation contracts", () => {
 
     expect(screen.queryByTestId("scene-tree-item-board-1")).toBeNull();
     expect(screen.queryByTestId("scene-tree-item-arc-track-1")).toBeNull();
+  });
+
+  it("keeps block-junction handoff visible after direct-manipulation setup and runtime start", async () => {
+    const compileRequests: Array<{
+      scene: {
+        entities: Array<Record<string, unknown>>;
+      };
+    }> = [];
+    const commands: string[] = [];
+    let tickCount = 0;
+    (globalThis as {
+      __TAURI_INTERNALS__?: {
+        invoke: (command: string, payload?: Record<string, unknown>) => Promise<unknown>;
+      };
+    }).__TAURI_INTERNALS__ = {
+      invoke: async (command, payload) => {
+        commands.push(command);
+
+        if (command === "compile_scene") {
+          const request = (payload as {
+            request: {
+              scene: {
+                entities: Array<Record<string, unknown>>;
+              };
+            };
+          }).request;
+          compileRequests.push(request);
+
+          return {
+            status: "paused",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: true,
+            canResume: true,
+            blockReason: "rebuild-required",
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "stale",
+          };
+        }
+
+        if (command === "start_runtime") {
+          return {
+            status: "running",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: false,
+            canResume: true,
+            blockReason: null,
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "calculating",
+          };
+        }
+
+        if (command === "pause_runtime") {
+          return {
+            status: "paused",
+            currentFrame: null,
+            currentTimeSeconds: tickCount / 60,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: false,
+            canResume: true,
+            blockReason: null,
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: true,
+            resultState: "ready",
+          };
+        }
+
+        if (command === "reset_runtime") {
+          return {
+            status: "paused",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: true,
+            canResume: true,
+            blockReason: "rebuild-required",
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "stale",
+          };
+        }
+
+        if (command === "tick_runtime") {
+          tickCount += 1;
+
+          return {
+            status: "paused",
+            currentFrame: {
+              frameNumber: tickCount,
+              entities: [
+                {
+                  entityId: "ball-1",
+                  position: { x: 3.18, y: 2.33 },
+                  rotation: 0,
+                  velocity: { x: 0.85, y: 0.8 },
+                },
+                {
+                  entityId: "block-1",
+                  position: { x: 2.9, y: 2.3 },
+                  rotation: 0,
+                },
+                {
+                  entityId: "arc-track-1",
+                  position: { x: 2.48, y: 3.04 },
+                  rotation: (135 * Math.PI) / 180,
+                },
+              ],
+            },
+            currentTimeSeconds: tickCount / 60,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: false,
+            canResume: true,
+            blockReason: null,
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: true,
+            resultState: "ready",
+          };
+        }
+
+        throw new Error(`unexpected command: ${command}`);
+      },
+    };
+
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Start block drag" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
+    fireEvent.pointerUp(window);
+
+    fireEvent.click(screen.getByRole("button", { name: "Start arc-track drag" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
+    fireEvent.pointerUp(window);
+
+    fireEvent.click(screen.getByTestId("scene-tree-item-ball-1"));
+    fireEvent.change(screen.getByLabelText("Position X"), { target: { value: "1.96" } });
+    fireEvent.change(screen.getByLabelText("Position Y"), { target: { value: "1.56" } });
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "1.1" } });
+    fireEvent.change(screen.getByLabelText("Velocity Y"), { target: { value: "0" } });
+    fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
+    fireEvent.click(transport.getByRole("button", { name: /^calculate$/i }));
+
+    await waitFor(() => expect(commands.includes("start_runtime")).toBe(true));
+    await waitFor(() => expect(commands.includes("tick_runtime")).toBe(true));
+    await waitFor(() => expect(commands.includes("pause_runtime")).toBe(true));
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled,
+      ).toBe(false);
+    });
+
+    fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
+    fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
+    await waitFor(() => {
+      const runtimeDisplayBall = readLatestDisplayEntity("ball-1");
+
+      expect(Number(runtimeDisplayBall.x)).toBe(294);
+      expect(Number(runtimeDisplayBall.y)).toBe(209);
+    });
+
+    const latestRequestWithBlockArc = [...compileRequests]
+      .reverse()
+      .find((request) =>
+        request.scene.entities.some((entity) => entity.id === "arc-track-1" || entity.id === "ball-1"),
+      );
+    const compileBall = latestRequestWithBlockArc?.scene.entities.find((entity) => entity.id === "ball-1");
+    const compileArc = latestRequestWithBlockArc?.scene.entities.find((entity) => entity.id === "arc-track-1");
+    const displayBall = readLatestDisplayEntity("ball-1");
+    const displayBallCenter = {
+      x: Number(displayBall.x) + Number(displayBall.radius),
+      y: Number(displayBall.y) + Number(displayBall.radius),
+    };
+    const guidedRadiusPx = Math.hypot(displayBallCenter.x - 248, displayBallCenter.y - 304);
+
+    expect(compileBall).toMatchObject({
+      id: "ball-1",
+      kind: "ball",
+      x: 1.96,
+      y: 1.56,
+      velocityX: 1.1,
+      velocityY: 0,
+    });
+    expect(compileArc).toMatchObject({
+      id: "arc-track-1",
+      kind: "arc-track",
+      anchorEntityId: "block-1",
+      anchorEntityKind: "block",
+      anchorEndpoint: "start",
+      entryEndpoint: "start",
+      radius: 1,
+      rotationDegrees: 135,
+      sweepAngleDegrees: 90,
+    });
+    expect(guidedRadiusPx).toBeCloseTo(100, 0);
+    expect(displayBallCenter.y).toBeLessThan(250);
   });
 });

@@ -80,6 +80,55 @@ function createElasticBounceRequest(boardFriction: number) {
   return createRuntimeCompileRequest(scene, ["physics", "analysis"]);
 }
 
+function createBlockArcHandoffRequest() {
+  const scene = createEmptySceneDocument();
+  scene.entities.push(
+    {
+      id: "ball-1",
+      kind: "ball",
+      x: 1.96,
+      y: 1.56,
+      radius: 0.24,
+      mass: 1.2,
+      friction: 0,
+      restitution: 1,
+      locked: false,
+      velocityX: 1.1,
+      velocityY: 0,
+    },
+    {
+      id: "block-1",
+      kind: "block",
+      x: 2.48,
+      y: 2.04,
+      width: 0.84,
+      height: 0.52,
+      rotationDegrees: 0,
+      mass: 2.8,
+      friction: 0,
+      restitution: 1,
+      locked: false,
+      velocityX: 0,
+      velocityY: 0,
+    },
+    {
+      id: "arc-track-1",
+      kind: "arc-track",
+      label: "Arc Track 1",
+      anchorEntityId: "block-1",
+      anchorEntityKind: "block",
+      anchorEndpoint: "start",
+      center: { x: 2.48, y: 3.04 },
+      entryEndpoint: "start",
+      radius: 1,
+      rotationDegrees: 135,
+      sweepAngleDegrees: 90,
+    },
+  );
+
+  return createRuntimeCompileRequest(scene, ["physics"]);
+}
+
 function readReboundPeakHeights(samples: RuntimeTrajectorySample[]) {
   const peaks: number[] = [];
 
@@ -501,6 +550,83 @@ describe("desktopRuntimeBridgePort", () => {
       anchorEntityKind: "board",
       anchorEndpoint: "start",
       center: { x: 3.18, y: 3.72 },
+      entryEndpoint: "start",
+      radius: 1,
+      rotationDegrees: 135,
+      sweepAngleDegrees: 90,
+    });
+    expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
+    expect(arcTrackEntity).not.toHaveProperty("thickness");
+  });
+
+  it("preserves block-junction handoff metadata when compile requests go through tauri invoke", async () => {
+    const request = createBlockArcHandoffRequest();
+    const commands: string[] = [];
+    const port = createDesktopRuntimeBridgePort({
+      fallbackPort: createMockRuntimeBridgePort(),
+      invoke: async <T>(command: string, payload?: Record<string, unknown>) => {
+        commands.push(command);
+
+        if (command === "compile_scene") {
+          expect(payload).toEqual({ request });
+          return createStatusSnapshot({
+            playbackMode: "precomputed",
+            resultState: "stale",
+            canSeek: false,
+            rebuildRequired: true,
+            blockReason: "rebuild-required",
+          }) as T;
+        }
+
+        if (command === "start_runtime") {
+          return createStatusSnapshot({
+            status: "running",
+            playbackMode: "precomputed",
+            resultState: "calculating",
+          }) as T;
+        }
+
+        throw new Error(`unexpected command: ${command}`);
+      },
+    });
+
+    await port.compile(request);
+    await port.start();
+
+    const ballEntity = port
+      .getSnapshot()
+      .lastCompileRequest?.scene.entities.find((entity) => entity.id === "ball-1");
+    const arcTrackEntity = port
+      .getSnapshot()
+      .lastCompileRequest?.scene.entities.find(
+        (entity): entity is {
+          id: string;
+          kind: string;
+          anchorEntityId: string;
+          anchorEntityKind: string;
+          anchorEndpoint: string;
+          center: { x: number; y: number };
+          entryEndpoint: string;
+          radius: number;
+          rotationDegrees: number;
+          sweepAngleDegrees: number;
+        } => entity.id === "arc-track-1",
+      );
+
+    expect(commands).toEqual(["compile_scene", "start_runtime"]);
+    expect(ballEntity).toMatchObject({
+      id: "ball-1",
+      kind: "ball",
+      velocityX: 1.1,
+      velocityY: 0,
+    });
+    expect(arcTrackEntity).toMatchObject({
+      id: "arc-track-1",
+      kind: "arc-track",
+      anchorEntityId: "block-1",
+      anchorEntityKind: "block",
+      anchorEndpoint: "start",
+      center: { x: 2.48, y: 3.04 },
       entryEndpoint: "start",
       radius: 1,
       rotationDegrees: 135,
