@@ -1,4 +1,7 @@
 use serde_json::json;
+use sim_core::arc_track::{
+    ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackCapturePolicy, CompiledArcTrackAnchor,
+};
 use sim_core::bridge::{
     BridgeBlockReason, BridgeError, BridgeStatus, DirtyEditScope, RuntimeCompileRequest,
     SimulationBridge,
@@ -272,6 +275,69 @@ fn bridge_contract_accepts_new_arc_track_runtime_payload_without_legacy_shape_fi
     assert_eq!(frame.frame_number, 0);
     assert_eq!(frame.entities.len(), 1);
     assert_eq!(frame.entities[0].entity_id, "board-1");
+}
+
+#[test]
+fn bridge_contract_compiles_anchored_arc_track_entities_with_explicit_entry_policy() {
+    let request: RuntimeCompileRequest = serde_json::from_value(json!({
+        "scene": {
+            "schemaVersion": 1,
+            "entities": [
+                {
+                    "id": "board-1",
+                    "kind": "board",
+                    "x": 0.0,
+                    "y": 0.0,
+                    "width": 4.0,
+                    "height": 0.5,
+                    "locked": true
+                },
+                {
+                    "id": "arc-track-1",
+                    "kind": "arc-track",
+                    "anchorEntityId": "board-1",
+                    "anchorEntityKind": "board",
+                    "anchorEndpoint": "end",
+                    "center": { "x": 4.0, "y": 0.5 },
+                    "entryEndpoint": "end",
+                    "radius": 1.5,
+                    "sweepAngleDegrees": 90.0,
+                    "rotationDegrees": 180.0
+                }
+            ],
+            "constraints": [],
+            "forceSources": [
+                {
+                    "id": "gravity-1",
+                    "kind": "gravity",
+                    "acceleration": { "x": 0.0, "y": -9.81 }
+                }
+            ],
+            "analyzers": [],
+            "annotations": []
+        },
+        "dirtyScopes": [],
+        "rebuildRequired": false
+    }))
+    .expect("anchored arc-track runtime payload should deserialize");
+
+    let compiled = request
+        .into_compiled_scene()
+        .expect("anchored arc-track runtime payload should compile");
+
+    assert_eq!(compiled.arc_tracks.len(), 1);
+    assert_eq!(
+        compiled.arc_tracks[0].capture_policy,
+        ArcTrackCapturePolicy::End
+    );
+    assert_eq!(
+        compiled.arc_tracks[0].anchor,
+        Some(CompiledArcTrackAnchor {
+            entity_id: "board-1".to_string(),
+            entity_kind: ArcTrackAnchorEntityKind::Board,
+            endpoint: ArcTrackAnchorEndpoint::End,
+        })
+    );
 }
 
 #[test]

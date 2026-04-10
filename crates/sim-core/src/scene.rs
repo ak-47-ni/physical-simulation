@@ -1,7 +1,10 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::analyzer::{AnalyzerDefinition, CompiledAnalyzer};
-use crate::arc_track::{validated_arc_start_and_span, ArcTrackCapturePolicy, CompiledArcTrack};
+use crate::arc_track::{
+    validated_arc_start_and_span, ArcTrackCapturePolicy, ArcTrackEntityCompileMetadata,
+    CompiledArcTrack,
+};
 use crate::constraint::ArcTrackSide;
 use crate::constraint::{
     compile_constraint, CompiledConstraint, ConstraintCompileError, ConstraintDefinition,
@@ -179,6 +182,24 @@ pub fn compile_scene(request: &CompileSceneRequest) -> Result<CompiledScene, Sce
     })
 }
 
+pub fn compile_scene_with_arc_track_metadata(
+    request: &CompileSceneRequest,
+    arc_track_metadata_by_id: &HashMap<String, ArcTrackEntityCompileMetadata>,
+) -> Result<CompiledScene, SceneCompileError> {
+    let mut compiled = compile_scene(request)?;
+
+    for arc_track in &mut compiled.arc_tracks {
+        let Some(metadata) = arc_track_metadata_by_id.get(&arc_track.id) else {
+            continue;
+        };
+
+        arc_track.capture_policy = metadata.capture_policy();
+        arc_track.anchor = metadata.anchor.clone();
+    }
+
+    Ok(compiled)
+}
+
 enum CompiledSceneItem {
     Entity(CompiledEntity),
     ArcTrack(CompiledArcTrack),
@@ -228,6 +249,7 @@ fn compile_entity(entity: &EntityDefinition) -> Result<CompiledSceneItem, SceneC
                 span_radians,
                 side: ArcTrackSide::Inside,
                 capture_policy: ArcTrackCapturePolicy::Either,
+                anchor: None,
             }));
         }
         ShapeDefinition::Block { width, height } => {

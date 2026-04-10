@@ -1,6 +1,12 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::analyzer::{AnalyzerDefinition, TrajectorySample};
+use crate::arc_track::{
+    ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
+    CompiledArcTrackAnchor,
+};
 use crate::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use crate::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use crate::force::ForceSourceDefinition;
@@ -9,7 +15,10 @@ use crate::playback::{
     PRECOMPUTE_CHUNK_STEPS,
 };
 use crate::runtime::{RuntimeFramePayload, RuntimeScene};
-use crate::scene::{compile_scene, CompileSceneRequest, CompiledScene, SceneCompileError};
+use crate::scene::{
+    compile_scene, compile_scene_with_arc_track_metadata, CompileSceneRequest, CompiledScene,
+    SceneCompileError,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BridgeError {
@@ -100,6 +109,19 @@ pub struct BridgeStatusSnapshot {
 }
 
 impl SimulationBridge {
+    fn install_compiled_scene(&mut self, compiled_scene: CompiledScene) -> RuntimeFramePayload {
+        let runtime = RuntimeScene::new(compiled_scene.clone(), self.fixed_delta_seconds());
+        let frame = runtime.current_frame();
+
+        self.compiled_scene = Some(compiled_scene);
+        self.runtime = Some(runtime);
+        self.clear_precomputed_playback();
+        self.dirty_scopes.clear();
+        self.status = BridgeStatus::Idle;
+
+        frame
+    }
+
     pub fn new(fixed_delta_seconds: f64) -> Self {
         Self {
             base_delta_seconds: fixed_delta_seconds.max(f64::EPSILON),
@@ -121,23 +143,17 @@ impl SimulationBridge {
         request: CompileSceneRequest,
     ) -> Result<RuntimeFramePayload, BridgeError> {
         let compiled_scene = compile_scene(&request).map_err(BridgeError::SceneCompile)?;
-        let runtime = RuntimeScene::new(compiled_scene.clone(), self.fixed_delta_seconds());
-        let frame = runtime.current_frame();
 
-        self.compiled_scene = Some(compiled_scene);
-        self.runtime = Some(runtime);
-        self.clear_precomputed_playback();
-        self.dirty_scopes.clear();
-        self.status = BridgeStatus::Idle;
-
-        Ok(frame)
+        Ok(self.install_compiled_scene(compiled_scene))
     }
 
     pub fn compile_runtime_request(
         &mut self,
         request: RuntimeCompileRequest,
     ) -> Result<RuntimeFramePayload, BridgeError> {
-        self.compile_scene(request.into_compile_scene_request()?)
+        let compiled_scene = request.into_compiled_scene()?;
+
+        Ok(self.install_compiled_scene(compiled_scene))
     }
 
     pub fn compile_scene_snapshot(
@@ -622,34 +638,60 @@ pub struct RuntimeCompileRequest {
 
 impl RuntimeCompileRequest {
     pub fn into_compile_scene_request(self) -> Result<CompileSceneRequest, BridgeError> {
-        let analyzers = self
-            .scene
-            .analyzers
+        Ok(self.into_compile_scene_parts()?.0)
+    }
+
+    pub fn into_compiled_scene(self) -> Result<CompiledScene, BridgeError> {
+        let (compile_request, arc_track_metadata_by_id) = self.into_compile_scene_parts()?;
+
+        compile_scene_with_arc_track_metadata(&compile_request, &arc_track_metadata_by_id)
+            .map_err(BridgeError::SceneCompile)
+    }
+
+    fn into_compile_scene_parts(
+        self,
+    ) -> Result<
+        (
+            CompileSceneRequest,
+            HashMap<String, ArcTrackEntityCompileMetadata>,
+        ),
+        BridgeError,
+    > {
+        let RuntimeCompileRequest { scene, .. } = self;
+        let SceneDocumentPayload {
+            entities,
+            constraints,
+            force_sources,
+            analyzers,
+            ..
+        } = scene;
+        let arc_track_metadata_by_id = entities
+            .iter()
+            .filter_map(SceneEntityPayload::compiled_arc_track_metadata)
+            .collect::<HashMap<_, _>>();
+        let analyzers = analyzers
             .into_iter()
             .map(SceneAnalyzerRecord::into_analyzer_definition)
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(CompileSceneRequest {
-            entities: self
-                .scene
-                .entities
-                .into_iter()
-                .map(SceneEntityPayload::into_entity_definition)
-                .collect::<Result<Vec<_>, _>>()?,
-            constraints: self
-                .scene
-                .constraints
-                .into_iter()
-                .map(SceneConstraintPayload::into_constraint_definition)
-                .collect(),
-            force_sources: self
-                .scene
-                .force_sources
-                .into_iter()
-                .map(SceneForceSourcePayload::into_force_source_definition)
-                .collect(),
-            analyzers,
-        })
+        Ok((
+            CompileSceneRequest {
+                entities: entities
+                    .into_iter()
+                    .map(SceneEntityPayload::into_entity_definition)
+                    .collect::<Result<Vec<_>, _>>()?,
+                constraints: constraints
+                    .into_iter()
+                    .map(SceneConstraintPayload::into_constraint_definition)
+                    .collect(),
+                force_sources: force_sources
+                    .into_iter()
+                    .map(SceneForceSourcePayload::into_force_source_definition)
+                    .collect(),
+                analyzers,
+            },
+            arc_track_metadata_by_id,
+        ))
     }
 }
 
@@ -809,6 +851,36 @@ pub struct SceneEntityPayload {
 }
 
 impl SceneEntityPayload {
+    fn compiled_arc_track_metadata(&self) -> Option<(String, ArcTrackEntityCompileMetadata)> {
+        if self.kind != "arc-track" {
+            return None;
+        }
+
+        let anchor = match (
+            self.anchor_entity_id.as_deref(),
+            self.anchor_entity_kind.as_deref(),
+            self.anchor_endpoint.as_deref(),
+        ) {
+            (Some(entity_id), Some(entity_kind), Some(endpoint)) => Some(CompiledArcTrackAnchor {
+                entity_id: entity_id.to_string(),
+                entity_kind: parse_arc_track_anchor_entity_kind(entity_kind)?,
+                endpoint: parse_arc_track_anchor_endpoint(endpoint)?,
+            }),
+            _ => None,
+        };
+
+        Some((
+            self.id.clone(),
+            ArcTrackEntityCompileMetadata {
+                anchor,
+                entry_endpoint: self
+                    .entry_endpoint
+                    .as_deref()
+                    .and_then(parse_arc_track_entry_endpoint),
+            },
+        ))
+    }
+
     fn into_entity_definition(self) -> Result<EntityDefinition, BridgeError> {
         let SceneEntityPayload {
             id,
@@ -1133,4 +1205,28 @@ fn looks_like_arc_track_entity_payload(
         || sweep_angle_degrees.is_some()
         || thickness.is_some()
         || rotation_degrees.is_some()
+}
+
+fn parse_arc_track_anchor_entity_kind(kind: &str) -> Option<ArcTrackAnchorEntityKind> {
+    match kind {
+        "board" => Some(ArcTrackAnchorEntityKind::Board),
+        "block" => Some(ArcTrackAnchorEntityKind::Block),
+        _ => None,
+    }
+}
+
+fn parse_arc_track_anchor_endpoint(endpoint: &str) -> Option<ArcTrackAnchorEndpoint> {
+    match endpoint {
+        "start" => Some(ArcTrackAnchorEndpoint::Start),
+        "end" => Some(ArcTrackAnchorEndpoint::End),
+        _ => None,
+    }
+}
+
+fn parse_arc_track_entry_endpoint(endpoint: &str) -> Option<ArcTrackEntryEndpoint> {
+    match endpoint {
+        "start" => Some(ArcTrackEntryEndpoint::Start),
+        "end" => Some(ArcTrackEntryEndpoint::End),
+        _ => None,
+    }
 }

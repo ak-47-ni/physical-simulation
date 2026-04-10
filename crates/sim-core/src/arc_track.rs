@@ -13,6 +13,37 @@ pub enum ArcTrackCapturePolicy {
     Either,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArcTrackAnchorEntityKind {
+    Board,
+    Block,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArcTrackAnchorEndpoint {
+    Start,
+    End,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompiledArcTrackAnchor {
+    pub entity_id: String,
+    pub entity_kind: ArcTrackAnchorEntityKind,
+    pub endpoint: ArcTrackAnchorEndpoint,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArcTrackEntityCompileMetadata {
+    pub anchor: Option<CompiledArcTrackAnchor>,
+    pub entry_endpoint: Option<ArcTrackEntryEndpoint>,
+}
+
+impl ArcTrackEntityCompileMetadata {
+    pub fn capture_policy(&self) -> ArcTrackCapturePolicy {
+        capture_policy_for_entry_endpoint(self.entry_endpoint)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompiledArcTrack {
     pub id: String,
@@ -23,6 +54,7 @@ pub struct CompiledArcTrack {
     pub span_radians: f64,
     pub side: ArcTrackSide,
     pub capture_policy: ArcTrackCapturePolicy,
+    pub anchor: Option<CompiledArcTrackAnchor>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -103,11 +135,19 @@ pub fn compiled_arc_track_from_constraint(
         end_angle_radians: *end_angle_radians,
         span_radians: *span_radians,
         side: *side,
-        capture_policy: match entry_endpoint {
-            ArcTrackEntryEndpoint::Start => ArcTrackCapturePolicy::Start,
-            ArcTrackEntryEndpoint::End => ArcTrackCapturePolicy::End,
-        },
+        capture_policy: capture_policy_for_entry_endpoint(Some(*entry_endpoint)),
+        anchor: None,
     })
+}
+
+pub fn capture_policy_for_entry_endpoint(
+    entry_endpoint: Option<ArcTrackEntryEndpoint>,
+) -> ArcTrackCapturePolicy {
+    match entry_endpoint {
+        Some(ArcTrackEntryEndpoint::Start) => ArcTrackCapturePolicy::Start,
+        Some(ArcTrackEntryEndpoint::End) => ArcTrackCapturePolicy::End,
+        None => ArcTrackCapturePolicy::Either,
+    }
 }
 
 pub fn project_point_to_arc(

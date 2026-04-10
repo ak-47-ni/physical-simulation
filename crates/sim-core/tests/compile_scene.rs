@@ -1,4 +1,9 @@
-use sim_core::arc_track::{ArcTrackCapturePolicy, CompiledArcTrack};
+use serde_json::json;
+use sim_core::arc_track::{
+    ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackCapturePolicy, CompiledArcTrack,
+    CompiledArcTrackAnchor,
+};
+use sim_core::bridge::RuntimeCompileRequest;
 use sim_core::constraint::ArcTrackSide;
 use sim_core::constraint::ConstraintDefinition;
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
@@ -130,6 +135,71 @@ fn compile_scene_compiles_arc_track_entities_as_guides() {
             span_radians: 120.0_f64.to_radians(),
             side: ArcTrackSide::Inside,
             capture_policy: ArcTrackCapturePolicy::Either,
+            anchor: None,
         }
+    );
+}
+
+#[test]
+fn compile_scene_preserves_anchored_arc_track_junction_metadata_from_runtime_payload() {
+    let request: RuntimeCompileRequest = serde_json::from_value(json!({
+        "scene": {
+            "schemaVersion": 1,
+            "entities": [
+                {
+                    "id": "block-1",
+                    "kind": "block",
+                    "x": 0.0,
+                    "y": 0.0,
+                    "width": 4.0,
+                    "height": 0.5,
+                    "rotationRadians": 0.0,
+                    "locked": true
+                },
+                {
+                    "id": "arc-track-1",
+                    "kind": "arc-track",
+                    "anchorEntityId": "block-1",
+                    "anchorEntityKind": "block",
+                    "anchorEndpoint": "start",
+                    "center": { "x": 0.0, "y": 0.5 },
+                    "entryEndpoint": "end",
+                    "radius": 1.5,
+                    "sweepAngleDegrees": 90.0,
+                    "rotationDegrees": 90.0
+                }
+            ],
+            "constraints": [],
+            "forceSources": [
+                {
+                    "id": "gravity-1",
+                    "kind": "gravity",
+                    "acceleration": { "x": 0.0, "y": -9.81 }
+                }
+            ],
+            "analyzers": [],
+            "annotations": []
+        },
+        "dirtyScopes": [],
+        "rebuildRequired": false
+    }))
+    .expect("anchored arc-track runtime payload should deserialize");
+
+    let compiled = request
+        .into_compiled_scene()
+        .expect("anchored arc-track runtime payload should compile");
+
+    assert_eq!(compiled.arc_tracks.len(), 1);
+    assert_eq!(
+        compiled.arc_tracks[0].capture_policy,
+        ArcTrackCapturePolicy::End
+    );
+    assert_eq!(
+        compiled.arc_tracks[0].anchor,
+        Some(CompiledArcTrackAnchor {
+            entity_id: "block-1".to_string(),
+            entity_kind: ArcTrackAnchorEntityKind::Block,
+            endpoint: ArcTrackAnchorEndpoint::Start,
+        })
     );
 }
