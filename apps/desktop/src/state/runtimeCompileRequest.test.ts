@@ -29,6 +29,22 @@ function createAnchoredArcTrackEntity() {
   };
 }
 
+function createBlockAnchoredArcTrackEntity() {
+  return {
+    id: "arc-track-2",
+    kind: "arc-track" as const,
+    label: "Arc Track 2",
+    anchorEntityId: "block-1",
+    anchorEntityKind: "block" as const,
+    anchorEndpoint: "start" as const,
+    center: { x: 2.48, y: 3.04 },
+    entryEndpoint: "start" as const,
+    radius: 1,
+    rotationDegrees: 135,
+    sweepAngleDegrees: 90,
+  };
+}
+
 describe("runtimeCompileRequest", () => {
   it("compiles non-spring bodies as rigid-boundary entities while spring stays in constraint data", () => {
     const request = createRuntimeCompileRequestFromEditorState({
@@ -476,6 +492,81 @@ describe("runtimeCompileRequest", () => {
       anchorEntityKind: "board",
       anchorEndpoint: "start",
       center: { x: 3.18, y: 3.72 },
+      entryEndpoint: "start",
+      radius: 1,
+      rotationDegrees: 135,
+      sweepAngleDegrees: 90,
+    });
+    expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
+    expect(arcTrackEntity).not.toHaveProperty("thickness");
+  });
+
+  it("keeps block-junction handoff payloads aligned to ball-only guide motion", () => {
+    const request = createRuntimeCompileRequestFromEditorState({
+      entities: [
+        {
+          id: "ball-handoff-1",
+          kind: "ball" as const,
+          label: "Ball Handoff 1",
+          x: 1.96,
+          y: 1.56,
+          radius: 0.24,
+          mass: 1.2,
+          friction: 0,
+          restitution: 1,
+          locked: false,
+          velocityX: 1.1,
+          velocityY: 0,
+        },
+        {
+          id: "block-1",
+          kind: "block" as const,
+          label: "Block 1",
+          x: 2.48,
+          y: 2.04,
+          width: 0.84,
+          height: 0.52,
+          rotationDegrees: 0,
+          mass: 2.8,
+          friction: 0,
+          restitution: 1,
+          locked: false,
+          velocityX: 0,
+          velocityY: 0,
+        },
+        createBlockAnchoredArcTrackEntity(),
+      ],
+    });
+
+    const ballEntity = request.scene.entities.find((entity) => entity.id === "ball-handoff-1");
+    const arcTrackEntity = request.scene.entities.find(
+      (entity): entity is {
+        id: string;
+        kind: string;
+        anchorEntityId: string;
+        anchorEntityKind: string;
+        anchorEndpoint: string;
+        center: { x: number; y: number };
+        entryEndpoint: string;
+        radius: number;
+        rotationDegrees: number;
+        sweepAngleDegrees: number;
+      } => entity.id === "arc-track-2",
+    );
+
+    expect(ballEntity).toMatchObject({
+      id: "ball-handoff-1",
+      kind: "ball",
+      velocityX: 1.1,
+      velocityY: 0,
+    });
+    expect(arcTrackEntity).toMatchObject({
+      id: "arc-track-2",
+      kind: "arc-track",
+      anchorEntityId: "block-1",
+      anchorEntityKind: "block",
+      anchorEndpoint: "start",
+      center: { x: 2.48, y: 3.04 },
       entryEndpoint: "start",
       radius: 1,
       rotationDegrees: 135,
