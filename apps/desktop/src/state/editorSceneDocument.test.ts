@@ -47,11 +47,30 @@ const TEST_ARC_TRACK_ENTITY = {
   id: "arc-track-entity-1",
   kind: "arc-track" as const,
   label: "Arc Track 1",
+  anchorEntityId: "board-1",
+  anchorEntityKind: "board" as const,
+  anchorEndpoint: "start" as const,
   center: { x: 4.2, y: 2.8 },
+  entryEndpoint: "start" as const,
   radius: 1.1,
+  sweepAngleDegrees: 120,
   centralAngleDegrees: 120,
   rotationDegrees: -15,
   thickness: 0.18,
+};
+
+const TEST_PERSISTED_ARC_TRACK_ENTITY = {
+  id: "arc-track-entity-1",
+  kind: "arc-track" as const,
+  label: "Arc Track 1",
+  anchorEntityId: "board-1",
+  anchorEntityKind: "board" as const,
+  anchorEndpoint: "start" as const,
+  center: { x: 4.2, y: 2.8 },
+  entryEndpoint: "start" as const,
+  radius: 1.1,
+  sweepAngleDegrees: 120,
+  rotationDegrees: -15,
 };
 
 describe("editorSceneDocument", () => {
@@ -62,7 +81,11 @@ describe("editorSceneDocument", () => {
       entities: [...createInitialSceneEntities(), TEST_ARC_TRACK_ENTITY],
     });
 
-    expect(scene.entities).toContainEqual(TEST_ARC_TRACK_ENTITY);
+    expect(scene.entities).toContainEqual(TEST_PERSISTED_ARC_TRACK_ENTITY);
+    const persistedArcTrack = scene.entities.find((entity) => entity.id === TEST_ARC_TRACK_ENTITY.id);
+
+    expect(persistedArcTrack).not.toHaveProperty("centralAngleDegrees");
+    expect(persistedArcTrack).not.toHaveProperty("thickness");
     expect(scene.constraints).toEqual([
       {
         entityAId: "ball-1",
@@ -296,8 +319,13 @@ describe("editorSceneDocument", () => {
         id: "arc-track-entity-1",
         kind: "arc-track",
         label: "Arc Track 1",
+        anchorEntityId: "board-1",
+        anchorEntityKind: "board",
+        anchorEndpoint: "start",
         center: { x: 420, y: 280 },
+        entryEndpoint: "start",
         radius: 110,
+        sweepAngleDegrees: 120,
         centralAngleDegrees: 120,
         rotationDegrees: -15,
         thickness: 18,
@@ -378,11 +406,47 @@ describe("editorSceneDocument", () => {
       entities: [...createInitialSceneEntities(), TEST_ARC_TRACK_ENTITY],
     });
 
-    expect(scene.entities).toContainEqual(TEST_ARC_TRACK_ENTITY);
+    expect(scene.entities).toContainEqual(TEST_PERSISTED_ARC_TRACK_ENTITY);
 
     const restored = createEditorSceneStateFromSceneDocument({ scene });
 
     expect(restored.entities).toContainEqual(TEST_ARC_TRACK_ENTITY);
+  });
+
+  it("restores anchored arc-track editor fields from legacy central-angle payloads", () => {
+    const scene = createEmptySceneDocument();
+
+    scene.entities.push({
+      id: "arc-track-legacy-1",
+      kind: "arc-track",
+      label: "Arc Track Legacy 1",
+      anchorEntityId: "block-1",
+      anchorEntityKind: "block",
+      anchorEndpoint: "end",
+      center: { x: 5.4, y: 2.1 },
+      entryEndpoint: "end",
+      radius: 0.96,
+      centralAngleDegrees: 135,
+      rotationDegrees: 30,
+    } as never);
+
+    const restored = createEditorSceneStateFromSceneDocument({ scene });
+
+    expect(restored.entities).toContainEqual({
+      id: "arc-track-legacy-1",
+      kind: "arc-track",
+      label: "Arc Track Legacy 1",
+      anchorEntityId: "block-1",
+      anchorEntityKind: "block",
+      anchorEndpoint: "end",
+      center: { x: 5.4, y: 2.1 },
+      entryEndpoint: "end",
+      radius: 0.96,
+      sweepAngleDegrees: 135,
+      centralAngleDegrees: 135,
+      rotationDegrees: 30,
+      thickness: 0.18,
+    });
   });
 
   it("round-trips arc-track constraints through persisted scene documents", () => {
