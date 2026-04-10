@@ -222,6 +222,59 @@ fn bridge_contract_accepts_typed_constraint_runtime_payloads() {
 }
 
 #[test]
+fn bridge_contract_accepts_new_arc_track_runtime_payload_without_legacy_shape_fields() {
+    let request: RuntimeCompileRequest = serde_json::from_value(json!({
+        "scene": {
+            "schemaVersion": 1,
+            "entities": [
+                {
+                    "id": "board-1",
+                    "kind": "board",
+                    "x": 0.0,
+                    "y": 0.0,
+                    "width": 4.0,
+                    "height": 0.5,
+                    "locked": true
+                },
+                {
+                    "id": "arc-track-1",
+                    "kind": "arc-track",
+                    "anchorEntityId": "board-1",
+                    "anchorEntityKind": "board",
+                    "anchorEndpoint": "end",
+                    "center": { "x": 4.0, "y": 0.5 },
+                    "entryEndpoint": "end",
+                    "radius": 1.5,
+                    "sweepAngleDegrees": 90.0,
+                    "rotationDegrees": 180.0
+                }
+            ],
+            "constraints": [],
+            "forceSources": [
+                {
+                    "id": "gravity-1",
+                    "kind": "gravity",
+                    "acceleration": { "x": 0.0, "y": -9.81 }
+                }
+            ],
+            "analyzers": [],
+            "annotations": []
+        },
+        "dirtyScopes": [],
+        "rebuildRequired": false
+    }))
+    .expect("new arc-track runtime payload should deserialize");
+
+    let frame = SimulationBridge::new(0.1)
+        .compile_runtime_request(request)
+        .expect("new arc-track runtime payload should compile without centralAngleDegrees");
+
+    assert_eq!(frame.frame_number, 0);
+    assert_eq!(frame.entities.len(), 1);
+    assert_eq!(frame.entities[0].entity_id, "board-1");
+}
+
+#[test]
 fn bridge_contract_invalid_constraint_payloads_return_readable_scene_errors() {
     let request: RuntimeCompileRequest = serde_json::from_value(json!({
         "scene": {

@@ -782,12 +782,17 @@ impl SceneForceSourcePayload {
 pub struct SceneEntityPayload {
     pub id: String,
     pub kind: String,
+    pub anchor_entity_id: Option<String>,
+    pub anchor_entity_kind: Option<String>,
+    pub anchor_endpoint: Option<String>,
     pub center: Option<Vector2>,
     #[serde(rename = "centralAngleDegrees")]
     pub central_angle_degrees: Option<f64>,
+    pub entry_endpoint: Option<String>,
     pub points: Option<Vec<Vector2>>,
     #[serde(rename = "rotationDegrees")]
     pub rotation_degrees: Option<f64>,
+    pub sweep_angle_degrees: Option<f64>,
     pub x: Option<f64>,
     pub y: Option<f64>,
     pub width: Option<f64>,
@@ -808,10 +813,15 @@ impl SceneEntityPayload {
         let SceneEntityPayload {
             id,
             kind,
+            anchor_entity_id,
+            anchor_entity_kind,
+            anchor_endpoint,
             center,
             central_angle_degrees,
+            entry_endpoint,
             points,
             rotation_degrees,
+            sweep_angle_degrees,
             x,
             y,
             width,
@@ -829,8 +839,13 @@ impl SceneEntityPayload {
 
         if kind != "arc-track"
             && looks_like_arc_track_entity_payload(
+                anchor_entity_id.as_deref(),
+                anchor_entity_kind.as_deref(),
+                anchor_endpoint.as_deref(),
                 center.as_ref(),
                 central_angle_degrees,
+                entry_endpoint.as_deref(),
+                sweep_angle_degrees,
                 thickness,
                 rotation_degrees,
             )
@@ -875,9 +890,13 @@ impl SceneEntityPayload {
                     missing_field: "center".to_string(),
                 })?;
                 let radius = required_scalar(&id, &kind, "radius", radius)?;
-                let central_angle_degrees =
-                    required_scalar(&id, &kind, "centralAngleDegrees", central_angle_degrees)?;
-                let thickness = required_scalar(&id, &kind, "thickness", thickness)?;
+                let central_angle_degrees = required_arc_track_span_degrees(
+                    &id,
+                    &kind,
+                    sweep_angle_degrees,
+                    central_angle_degrees,
+                )?;
+                let thickness = thickness.unwrap_or(LEGACY_ARC_TRACK_THICKNESS_FALLBACK);
 
                 (
                     ShapeDefinition::ArcTrack {
@@ -1077,14 +1096,41 @@ fn required_scalar(
     })
 }
 
+const LEGACY_ARC_TRACK_THICKNESS_FALLBACK: f64 = 0.18;
+
+fn required_arc_track_span_degrees(
+    id: &str,
+    kind: &str,
+    sweep_angle_degrees: Option<f64>,
+    legacy_central_angle_degrees: Option<f64>,
+) -> Result<f64, BridgeError> {
+    sweep_angle_degrees
+        .or(legacy_central_angle_degrees)
+        .ok_or_else(|| BridgeError::IncompleteEntityRecord {
+            id: id.to_string(),
+            kind: kind.to_string(),
+            missing_field: "sweepAngleDegrees".to_string(),
+        })
+}
+
 fn looks_like_arc_track_entity_payload(
+    anchor_entity_id: Option<&str>,
+    anchor_entity_kind: Option<&str>,
+    anchor_endpoint: Option<&str>,
     center: Option<&Vector2>,
     central_angle_degrees: Option<f64>,
+    entry_endpoint: Option<&str>,
+    sweep_angle_degrees: Option<f64>,
     thickness: Option<f64>,
     rotation_degrees: Option<f64>,
 ) -> bool {
-    center.is_some()
+    anchor_entity_id.is_some()
+        || anchor_entity_kind.is_some()
+        || anchor_endpoint.is_some()
+        || center.is_some()
         || central_angle_degrees.is_some()
+        || entry_endpoint.is_some()
+        || sweep_angle_degrees.is_some()
         || thickness.is_some()
         || rotation_degrees.is_some()
 }
