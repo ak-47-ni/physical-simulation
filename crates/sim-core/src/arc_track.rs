@@ -71,6 +71,29 @@ pub struct ArcTrackEndpointGeometry {
     pub support_direction: Vector2,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LocalTangentHandoffGeometry {
+    pub position: Vector2,
+    pub tangent: Vector2,
+    pub surface_normal: Vector2,
+}
+
+impl CompiledArcTrack {
+    pub fn local_tangent_handoff_geometry(
+        &self,
+        entry_endpoint: ArcTrackEntryEndpoint,
+    ) -> LocalTangentHandoffGeometry {
+        arc_track_local_tangent_handoff_geometry(
+            self.center,
+            self.radius,
+            self.start_angle_radians,
+            self.end_angle_radians,
+            self.side,
+            entry_endpoint,
+        )
+    }
+}
+
 pub fn validated_arc_angles(
     start_angle_degrees: f64,
     end_angle_degrees: f64,
@@ -195,6 +218,54 @@ pub fn endpoint_geometry(
         position: center.add(radial.scale(radius)),
         tangent,
         support_direction: support_direction(radial, side),
+    }
+}
+
+pub fn arc_track_local_tangent_handoff_geometry(
+    center: Vector2,
+    radius: f64,
+    start_angle_radians: f64,
+    end_angle_radians: f64,
+    side: ArcTrackSide,
+    entry_endpoint: ArcTrackEntryEndpoint,
+) -> LocalTangentHandoffGeometry {
+    let endpoint = endpoint_geometry(
+        center,
+        radius,
+        start_angle_radians,
+        end_angle_radians,
+        side,
+        entry_endpoint,
+    );
+
+    LocalTangentHandoffGeometry {
+        position: endpoint.position,
+        tangent: endpoint.tangent,
+        surface_normal: endpoint.support_direction.scale(-1.0),
+    }
+}
+
+pub fn box_local_tangent_handoff_geometry(
+    center: Vector2,
+    half_extents: Vector2,
+    rotation_radians: f64,
+    endpoint: ArcTrackAnchorEndpoint,
+) -> LocalTangentHandoffGeometry {
+    let axis_x = Vector2::new(1.0, 0.0).rotated(rotation_radians);
+    let axis_y = axis_x.perp();
+    let top_center = center.add(axis_y.scale(-half_extents.y));
+    let half_width_offset = axis_x.scale(half_extents.x);
+    let surface_normal = axis_y.scale(-1.0);
+
+    let (position, tangent) = match endpoint {
+        ArcTrackAnchorEndpoint::Start => (top_center.sub(half_width_offset), axis_x.scale(-1.0)),
+        ArcTrackAnchorEndpoint::End => (top_center.add(half_width_offset), axis_x),
+    };
+
+    LocalTangentHandoffGeometry {
+        position,
+        tangent,
+        surface_normal,
     }
 }
 
