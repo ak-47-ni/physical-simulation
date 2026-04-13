@@ -305,6 +305,19 @@ function readLatestDisplayEntity(entityId: string) {
   return entity;
 }
 
+function readGuideMidpointFromArcTrack(entity: {
+  center: { x: number; y: number };
+  radius: number;
+  rotationDegrees: number;
+}) {
+  const angleRadians = (entity.rotationDegrees * Math.PI) / 180;
+
+  return {
+    x: entity.center.x + entity.radius * Math.cos(angleRadians),
+    y: entity.center.y - entity.radius * Math.sin(angleRadians),
+  };
+}
+
 describe("App direct manipulation contracts", () => {
   it("creates exactly one body when a dragged library body is released over the stage", () => {
     render(<App />);
@@ -602,7 +615,7 @@ describe("App direct manipulation contracts", () => {
     expect(screen.queryByTestId("scene-tree-item-arc-track-1")).toBeNull();
   });
 
-  it("keeps block-junction handoff visible after direct-manipulation setup and runtime start", async () => {
+  it("keeps rotated block local-junction handoff visible after direct-manipulation setup and runtime start", async () => {
     const compileRequests: Array<{
       scene: {
         entities: Array<Record<string, unknown>>;
@@ -701,6 +714,16 @@ describe("App direct manipulation contracts", () => {
 
         if (command === "tick_runtime") {
           tickCount += 1;
+          const arcTrackEntity = readLatestArcTrackEntity() as {
+            center: { x: number; y: number };
+            radius: number;
+            rotationDegrees: number;
+          };
+          const guideMidpoint = readGuideMidpointFromArcTrack({
+            center: arcTrackEntity.center,
+            radius: Number(arcTrackEntity.radius),
+            rotationDegrees: Number(arcTrackEntity.rotationDegrees),
+          });
 
           return {
             status: "paused",
@@ -709,19 +732,19 @@ describe("App direct manipulation contracts", () => {
               entities: [
                 {
                   entityId: "ball-1",
-                  position: { x: 3.18, y: 2.33 },
+                  position: guideMidpoint,
                   rotation: 0,
-                  velocity: { x: 0.85, y: 0.8 },
+                  velocity: { x: 0.6, y: 0.72 },
                 },
                 {
                   entityId: "block-1",
                   position: { x: 2.9, y: 2.3 },
-                  rotation: 0,
+                  rotation: (15 * Math.PI) / 180,
                 },
                 {
                   entityId: "arc-track-1",
-                  position: { x: 2.48, y: 3.04 },
-                  rotation: (135 * Math.PI) / 180,
+                  position: arcTrackEntity.center,
+                  rotation: (Number(arcTrackEntity.rotationDegrees) * Math.PI) / 180,
                 },
               ],
             },
@@ -749,10 +772,19 @@ describe("App direct manipulation contracts", () => {
     fireEvent.click(screen.getByRole("button", { name: "Start block drag" }));
     fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
     fireEvent.pointerUp(window);
+    fireEvent.click(screen.getByTestId("scene-tree-item-block-1"));
+    fireEvent.change(screen.getByLabelText("Angle"), { target: { value: "15" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Start arc-track drag" }));
     fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
     fireEvent.pointerUp(window);
+
+    expect(readLatestArcTrackEntity()).toMatchObject({
+      anchorEntityId: "block-1",
+      anchorEntityKind: "block",
+      anchorEndpoint: "start",
+      entryEndpoint: "start",
+    });
 
     fireEvent.click(screen.getByTestId("scene-tree-item-ball-1"));
     fireEvent.change(screen.getByLabelText("Position X"), { target: { value: "1.96" } });
@@ -774,10 +806,24 @@ describe("App direct manipulation contracts", () => {
     fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));
     fireEvent.click(transport.getByRole("button", { name: /^step$/i }));
     await waitFor(() => {
+      const placedArcTrack = readLatestArcTrackEntity() as {
+        center: { x: number; y: number };
+        radius: number;
+        rotationDegrees: number;
+      };
+      const expectedGuideMidpoint = readGuideMidpointFromArcTrack({
+        center: placedArcTrack.center,
+        radius: Number(placedArcTrack.radius),
+        rotationDegrees: Number(placedArcTrack.rotationDegrees),
+      });
       const runtimeDisplayBall = readLatestDisplayEntity("ball-1");
+      const runtimeDisplayBallCenter = {
+        x: Number(runtimeDisplayBall.x) + Number(runtimeDisplayBall.radius),
+        y: Number(runtimeDisplayBall.y) + Number(runtimeDisplayBall.radius),
+      };
 
-      expect(Number(runtimeDisplayBall.x)).toBe(294);
-      expect(Number(runtimeDisplayBall.y)).toBe(209);
+      expect(runtimeDisplayBallCenter.x).toBeCloseTo(expectedGuideMidpoint.x * 100, 0);
+      expect(runtimeDisplayBallCenter.y).toBeCloseTo(expectedGuideMidpoint.y * 100, 0);
     });
 
     const latestRequestWithBlockArc = [...compileRequests]
@@ -786,13 +832,29 @@ describe("App direct manipulation contracts", () => {
         request.scene.entities.some((entity) => entity.id === "arc-track-1" || entity.id === "ball-1"),
       );
     const compileBall = latestRequestWithBlockArc?.scene.entities.find((entity) => entity.id === "ball-1");
+    const compileBlock = latestRequestWithBlockArc?.scene.entities.find((entity) => entity.id === "block-1") as
+      | {
+          id: string;
+          kind: string;
+          rotationRadians: number;
+        }
+      | undefined;
     const compileArc = latestRequestWithBlockArc?.scene.entities.find((entity) => entity.id === "arc-track-1");
     const displayBall = readLatestDisplayEntity("ball-1");
+    const placedArcTrack = readLatestArcTrackEntity() as {
+      center: { x: number; y: number };
+      radius: number;
+      rotationDegrees: number;
+      sweepAngleDegrees: number;
+    };
     const displayBallCenter = {
       x: Number(displayBall.x) + Number(displayBall.radius),
       y: Number(displayBall.y) + Number(displayBall.radius),
     };
-    const guidedRadiusPx = Math.hypot(displayBallCenter.x - 248, displayBallCenter.y - 304);
+    const guidedRadiusPx = Math.hypot(
+      displayBallCenter.x - Number(placedArcTrack.center.x) * 100,
+      displayBallCenter.y - Number(placedArcTrack.center.y) * 100,
+    );
 
     expect(compileBall).toMatchObject({
       id: "ball-1",
@@ -802,6 +864,11 @@ describe("App direct manipulation contracts", () => {
       velocityX: 1.1,
       velocityY: 0,
     });
+    expect(compileBlock).toMatchObject({
+      id: "block-1",
+      kind: "block",
+    });
+    expect(compileBlock?.rotationRadians).toBeCloseTo((15 * Math.PI) / 180, 6);
     expect(compileArc).toMatchObject({
       id: "arc-track-1",
       kind: "arc-track",
@@ -809,11 +876,10 @@ describe("App direct manipulation contracts", () => {
       anchorEntityKind: "block",
       anchorEndpoint: "start",
       entryEndpoint: "start",
-      radius: 1,
-      rotationDegrees: 135,
-      sweepAngleDegrees: 90,
+      radius: Number(placedArcTrack.radius),
+      rotationDegrees: Number(placedArcTrack.rotationDegrees),
+      sweepAngleDegrees: Number(placedArcTrack.sweepAngleDegrees),
     });
-    expect(guidedRadiusPx).toBeCloseTo(100, 0);
-    expect(displayBallCenter.y).toBeLessThan(250);
+    expect(guidedRadiusPx).toBeCloseTo(Number(placedArcTrack.radius) * 100, 0);
   });
 });

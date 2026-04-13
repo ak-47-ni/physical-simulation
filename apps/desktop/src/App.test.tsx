@@ -437,7 +437,7 @@ describe("App selection sync", () => {
     expect(screen.queryByText(/missing centralAngleDegrees/i)).toBeNull();
   });
 
-  it("shows a ball handing off from a board into anchored arc-guide motion at runtime", async () => {
+  it("shows a ball handing off from a board into anchored arc-guide motion after the local junction crossing", async () => {
     const compileRequests: Array<{
       scene: {
         entities: Array<Record<string, unknown>>;

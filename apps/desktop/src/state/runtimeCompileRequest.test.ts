@@ -45,6 +45,8 @@ function createBlockAnchoredArcTrackEntity() {
   };
 }
 
+const FIFTEEN_DEGREES_IN_RADIANS = (15 * Math.PI) / 180;
+
 describe("runtimeCompileRequest", () => {
   it("compiles non-spring bodies as rigid-boundary entities while spring stays in constraint data", () => {
     const request = createRuntimeCompileRequestFromEditorState({
@@ -501,7 +503,7 @@ describe("runtimeCompileRequest", () => {
     expect(arcTrackEntity).not.toHaveProperty("thickness");
   });
 
-  it("keeps block-junction handoff payloads aligned to ball-only guide motion", () => {
+  it("keeps rotated block local-junction handoff payloads aligned to tangent-frame guide motion", () => {
     const request = createRuntimeCompileRequestFromEditorState({
       entities: [
         {
@@ -526,7 +528,7 @@ describe("runtimeCompileRequest", () => {
           y: 2.04,
           width: 0.84,
           height: 0.52,
-          rotationDegrees: 0,
+          rotationDegrees: 15,
           mass: 2.8,
           friction: 0,
           restitution: 1,
@@ -539,6 +541,13 @@ describe("runtimeCompileRequest", () => {
     });
 
     const ballEntity = request.scene.entities.find((entity) => entity.id === "ball-handoff-1");
+    const blockEntity = request.scene.entities.find(
+      (entity): entity is {
+        id: string;
+        kind: string;
+        rotationRadians: number;
+      } => entity.id === "block-1",
+    );
     const arcTrackEntity = request.scene.entities.find(
       (entity): entity is {
         id: string;
@@ -560,6 +569,11 @@ describe("runtimeCompileRequest", () => {
       velocityX: 1.1,
       velocityY: 0,
     });
+    expect(blockEntity).toMatchObject({
+      id: "block-1",
+      kind: "block",
+    });
+    expect(blockEntity?.rotationRadians).toBeCloseTo(FIFTEEN_DEGREES_IN_RADIANS, 6);
     expect(arcTrackEntity).toMatchObject({
       id: "arc-track-2",
       kind: "arc-track",
