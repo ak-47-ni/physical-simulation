@@ -80,7 +80,7 @@ function createElasticBounceRequest(boardFriction: number) {
   return createRuntimeCompileRequest(scene, ["physics", "analysis"]);
 }
 
-function createBlockArcHandoffRequest() {
+function createRotatedBlockLocalTangentHandoffRequest() {
   const scene = createEmptySceneDocument();
   scene.entities.push(
     {
@@ -103,7 +103,7 @@ function createBlockArcHandoffRequest() {
       y: 2.04,
       width: 0.84,
       height: 0.52,
-      rotationDegrees: 0,
+      rotationDegrees: 15,
       mass: 2.8,
       friction: 0,
       restitution: 1,
@@ -128,6 +128,8 @@ function createBlockArcHandoffRequest() {
 
   return createRuntimeCompileRequest(scene, ["physics"]);
 }
+
+const FIFTEEN_DEGREES_IN_RADIANS = (15 * Math.PI) / 180;
 
 function readReboundPeakHeights(samples: RuntimeTrajectorySample[]) {
   const peaks: number[] = [];
@@ -559,8 +561,8 @@ describe("desktopRuntimeBridgePort", () => {
     expect(arcTrackEntity).not.toHaveProperty("thickness");
   });
 
-  it("preserves block-junction handoff metadata when compile requests go through tauri invoke", async () => {
-    const request = createBlockArcHandoffRequest();
+  it("preserves rotated block local-junction metadata when compile requests go through tauri invoke", async () => {
+    const request = createRotatedBlockLocalTangentHandoffRequest();
     const commands: string[] = [];
     const port = createDesktopRuntimeBridgePort({
       fallbackPort: createMockRuntimeBridgePort(),
@@ -596,6 +598,15 @@ describe("desktopRuntimeBridgePort", () => {
     const ballEntity = port
       .getSnapshot()
       .lastCompileRequest?.scene.entities.find((entity) => entity.id === "ball-1");
+    const blockEntity = port
+      .getSnapshot()
+      .lastCompileRequest?.scene.entities.find(
+        (entity): entity is {
+          id: string;
+          kind: string;
+          rotationRadians: number;
+        } => entity.id === "block-1",
+      );
     const arcTrackEntity = port
       .getSnapshot()
       .lastCompileRequest?.scene.entities.find(
@@ -620,6 +631,11 @@ describe("desktopRuntimeBridgePort", () => {
       velocityX: 1.1,
       velocityY: 0,
     });
+    expect(blockEntity).toMatchObject({
+      id: "block-1",
+      kind: "block",
+    });
+    expect(blockEntity?.rotationRadians).toBeCloseTo(FIFTEEN_DEGREES_IN_RADIANS, 6);
     expect(arcTrackEntity).toMatchObject({
       id: "arc-track-1",
       kind: "arc-track",
