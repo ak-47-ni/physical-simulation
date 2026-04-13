@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use sim_core::arc_track::{
     ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
-    CompiledArcTrackAnchor,
+    CompiledArcTrackAnchor, angle_radians_for_position,
 };
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
@@ -52,6 +52,13 @@ fn arc_track_entity(
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct AnchorEndpointFrame {
+    position: Vector2,
+    tangent: Vector2,
+    surface_normal: Vector2,
+}
+
 fn block(
     id: &str,
     center: Vector2,
@@ -70,6 +77,77 @@ fn block(
         friction_coefficient: 0.2,
         restitution_coefficient: 0.0,
     }
+}
+
+fn block_anchor_endpoint_frame(
+    center: Vector2,
+    width: f64,
+    height: f64,
+    rotation_degrees: f64,
+    endpoint: ArcTrackAnchorEndpoint,
+) -> AnchorEndpointFrame {
+    let axis_x = vector2(1.0, 0.0).rotated(rotation_degrees.to_radians());
+    let axis_y = axis_x.perp();
+    let top_center = center.add(axis_y.scale(-height * 0.5));
+    let half_width_offset = axis_x.scale(width * 0.5);
+    let surface_normal = axis_y.scale(-1.0);
+    let (position, tangent) = match endpoint {
+        ArcTrackAnchorEndpoint::Start => (top_center.sub(half_width_offset), axis_x.scale(-1.0)),
+        ArcTrackAnchorEndpoint::End => (top_center.add(half_width_offset), axis_x),
+    };
+
+    AnchorEndpointFrame {
+        position,
+        tangent,
+        surface_normal,
+    }
+}
+
+fn anchored_arc_track_entity(
+    id: &str,
+    anchor_frame: AnchorEndpointFrame,
+    radius: f64,
+    sweep_degrees: f64,
+    entry_endpoint: ArcTrackEntryEndpoint,
+) -> EntityDefinition {
+    let radial = match entry_endpoint {
+        ArcTrackEntryEndpoint::Start => anchor_frame.tangent.perp(),
+        ArcTrackEntryEndpoint::End => anchor_frame.tangent.perp().scale(-1.0),
+    };
+    let center = anchor_frame.position.sub(radial.scale(radius));
+    let entry_angle_radians = angle_radians_for_position(radial).expect("radial should define angle");
+    let start_angle_radians = match entry_endpoint {
+        ArcTrackEntryEndpoint::Start => entry_angle_radians,
+        ArcTrackEntryEndpoint::End => entry_angle_radians - sweep_degrees.to_radians(),
+    };
+
+    arc_track_entity(
+        id,
+        center,
+        radius,
+        sweep_degrees,
+        start_angle_radians.to_degrees(),
+    )
+}
+
+fn local_tangent_crossing_ball(
+    id: &str,
+    anchor_frame: AnchorEndpointFrame,
+    tangential_offset: f64,
+    tangential_velocity: f64,
+    normal_velocity: f64,
+) -> EntityDefinition {
+    ball(
+        id,
+        anchor_frame
+            .position
+            .add(anchor_frame.tangent.scale(tangential_offset))
+            .add(anchor_frame.surface_normal.scale(0.5)),
+        anchor_frame
+            .tangent
+            .scale(tangential_velocity)
+            .add(anchor_frame.surface_normal.scale(normal_velocity)),
+    )
 }
 
 fn runtime_for_scene(
@@ -374,4 +452,44 @@ fn arc_entry_capture_regression_block_anchored_entity_avoids_hidden_free_ball_ca
         radial_distance,
     );
     assert!(frame.position.x > 4.05, "ball_x={}", frame.position.x);
+}
+
+#[test]
+fn arc_entry_capture_regression_rotated_block_uses_local_tangent_crossing_not_velocity_alignment() {
+    let anchor_center = vector2(2.0, 2.0);
+    let anchor_frame =
+        block_anchor_endpoint_frame(anchor_center, 4.0, 0.5, 90.0, ArcTrackAnchorEndpoint::End);
+    let initial_ball = local_tangent_crossing_ball("ball", anchor_frame, -0.02, 1.0, 0.9);
+    let initial_x = initial_ball.position.x;
+    let projected_x_after_step = initial_ball.position.x + initial_ball.initial_velocity.x * 0.05;
+    let mut runtime = runtime_for_scene_with_anchored_arc_entity(
+        initial_ball,
+        block("anchor", anchor_center, 4.0, 0.5, 90.0),
+        ArcTrackAnchorEntityKind::Block,
+        ArcTrackAnchorEndpoint::End,
+        anchored_arc_track_entity("arc-track", anchor_frame, 1.0, 90.0, ArcTrackEntryEndpoint::End),
+        ArcTrackEntryEndpoint::End,
+        Vector2::ZERO,
+        0.05,
+    );
+
+    run_steps(&mut runtime, 1);
+    let frame = runtime_entity(&runtime, "ball");
+    let radial_distance = frame.position.sub(vector2(1.25, 4.0)).length();
+
+    assert!(
+        projected_x_after_step > anchor_frame.position.x,
+        "expected projected motion to stay on the same world-x side of the endpoint",
+    );
+    assert!(
+        initial_x > anchor_frame.position.x && projected_x_after_step > anchor_frame.position.x,
+        "expected local-tangent crossing setup to avoid any world-x crossing",
+    );
+    assert!(
+        (radial_distance - 1.0).abs() < 5e-2,
+        "expected rotated support handoff to capture from local tangent crossing, got position=({:.3}, {:.3}) distance={:.3}",
+        frame.position.x,
+        frame.position.y,
+        radial_distance,
+    );
 }

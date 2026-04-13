@@ -835,18 +835,9 @@ fn captures_anchored_arc_entry(
     anchor_geometry: RuntimeAnchorEndpointGeometry,
     endpoint_geometry: ArcTrackEndpointGeometry,
 ) -> bool {
-    let speed = body.velocity.length();
+    let tangential_speed = body.velocity.dot(anchor_geometry.tangent);
 
-    if speed <= f64::EPSILON {
-        return false;
-    }
-
-    let velocity_alignment = body
-        .velocity
-        .scale(1.0 / speed)
-        .dot(anchor_geometry.tangent);
-
-    if velocity_alignment < ARC_ENTRY_CAPTURE_ALIGNMENT_THRESHOLD {
+    if tangential_speed <= f64::EPSILON {
         return false;
     }
 
@@ -870,10 +861,6 @@ fn captures_anchored_arc_entry(
     if previous_longitudinal > ARC_ENTRY_ANCHORED_JUNCTION_CROSSING_TOLERANCE
         || current_longitudinal < -ARC_ENTRY_ANCHORED_JUNCTION_CROSSING_TOLERANCE
     {
-        return false;
-    }
-
-    if current_longitudinal <= previous_longitudinal {
         return false;
     }
 
