@@ -73,6 +73,36 @@ const TEST_PERSISTED_ARC_TRACK_ENTITY = {
   rotationDegrees: -15,
 };
 
+const TILTED_BOARD_ARC_TRACK_ENTITY = {
+  id: "arc-track-tilted-1",
+  kind: "arc-track" as const,
+  label: "Tilted Arc Track 1",
+  anchorEntityId: "board-1",
+  anchorEntityKind: "board" as const,
+  anchorEndpoint: "end" as const,
+  center: { x: 5.8, y: 3.6 },
+  entryEndpoint: "end" as const,
+  radius: 1.5,
+  sweepAngleDegrees: 135,
+  centralAngleDegrees: 135,
+  rotationDegrees: 210,
+  thickness: 0.18,
+};
+
+const TILTED_BOARD_PERSISTED_ARC_TRACK_ENTITY = {
+  id: "arc-track-tilted-1",
+  kind: "arc-track" as const,
+  label: "Tilted Arc Track 1",
+  anchorEntityId: "board-1",
+  anchorEntityKind: "board" as const,
+  anchorEndpoint: "end" as const,
+  center: { x: 5.8, y: 3.6 },
+  entryEndpoint: "end" as const,
+  radius: 1.5,
+  sweepAngleDegrees: 135,
+  rotationDegrees: 210,
+};
+
 describe("editorSceneDocument", () => {
   it("creates a scene document with typed constraints and an explicit gravity source", () => {
     const scene = createSceneDocumentFromEditorState({
@@ -411,6 +441,27 @@ describe("editorSceneDocument", () => {
     const restored = createEditorSceneStateFromSceneDocument({ scene });
 
     expect(restored.entities).toContainEqual(TEST_ARC_TRACK_ENTITY);
+  });
+
+  it("round-trips tilted board anchored arc-track metadata without drifting endpoints or angles", () => {
+    const entities = createInitialSceneEntities().map((entity) =>
+      entity.kind === "board" ? { ...entity, rotationDegrees: -30 } : entity,
+    );
+    const scene = createSceneDocumentFromEditorState({
+      entities: [...entities, TILTED_BOARD_ARC_TRACK_ENTITY],
+    });
+
+    expect(scene.entities).toContainEqual(TILTED_BOARD_PERSISTED_ARC_TRACK_ENTITY);
+    const restored = createEditorSceneStateFromSceneDocument({ scene });
+
+    expect(restored.entities).toContainEqual(
+      expect.objectContaining({
+        id: "board-1",
+        kind: "board",
+        rotationDegrees: -30,
+      }),
+    );
+    expect(restored.entities).toContainEqual(TILTED_BOARD_ARC_TRACK_ENTITY);
   });
 
   it("restores anchored arc-track editor fields from legacy central-angle payloads", () => {

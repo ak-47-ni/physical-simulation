@@ -45,6 +45,41 @@ function createBlockAnchoredArcTrackEntity() {
   };
 }
 
+function createTiltedBoardEntity() {
+  return {
+    id: "board-tilted-1",
+    kind: "board" as const,
+    label: "Tilted Board 1",
+    x: 620,
+    y: 340,
+    width: 400,
+    height: 18,
+    rotationDegrees: -30,
+    mass: 5000,
+    friction: 0.42,
+    restitution: 1,
+    locked: true,
+    velocityX: 0,
+    velocityY: 0,
+  };
+}
+
+function createTiltedBoardAnchoredArcTrackEntity() {
+  return {
+    id: "arc-track-tilted-1",
+    kind: "arc-track" as const,
+    label: "Tilted Arc Track 1",
+    anchorEntityId: "board-tilted-1",
+    anchorEntityKind: "board" as const,
+    anchorEndpoint: "end" as const,
+    center: { x: 780, y: 460 },
+    entryEndpoint: "end" as const,
+    radius: 150,
+    rotationDegrees: 210,
+    sweepAngleDegrees: 135,
+  };
+}
+
 const FIFTEEN_DEGREES_IN_RADIANS = (15 * Math.PI) / 180;
 
 describe("runtimeCompileRequest", () => {
@@ -586,6 +621,88 @@ describe("runtimeCompileRequest", () => {
       rotationDegrees: 135,
       sweepAngleDegrees: 90,
     });
+    expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
+    expect(arcTrackEntity).not.toHaveProperty("thickness");
+  });
+
+  it("keeps tilted board anchored arc-track payload fields stable through runtime normalization", () => {
+    const request = createRuntimeCompileRequestFromEditorState({
+      entities: [
+        {
+          id: "ball-tilted-1",
+          kind: "ball" as const,
+          label: "Ball Tilted 1",
+          x: 120,
+          y: 160,
+          radius: 24,
+          mass: 1200,
+          friction: 0,
+          restitution: 1,
+          locked: false,
+          velocityX: 90,
+          velocityY: -20,
+        },
+        createTiltedBoardEntity(),
+        createTiltedBoardAnchoredArcTrackEntity(),
+      ],
+      settings: createSceneAuthoringSettings({
+        gravity: 980,
+        lengthUnit: "cm",
+        velocityUnit: "cm/s",
+        massUnit: "g",
+        pixelsPerMeter: 1,
+      }),
+    });
+
+    const boardEntity = request.scene.entities.find(
+      (entity): entity is {
+        id: string;
+        kind: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        rotationRadians: number;
+      } => entity.id === "board-tilted-1",
+    );
+    const arcTrackEntity = request.scene.entities.find(
+      (entity): entity is {
+        id: string;
+        kind: string;
+        anchorEntityId: string;
+        anchorEntityKind: string;
+        anchorEndpoint: string;
+        center: { x: number; y: number };
+        entryEndpoint: string;
+        radius: number;
+        rotationDegrees: number;
+        sweepAngleDegrees: number;
+      } => entity.id === "arc-track-tilted-1",
+    );
+
+    expect(boardEntity).toMatchObject({
+      id: "board-tilted-1",
+      kind: "board",
+      x: 6.2,
+      y: 3.4,
+      width: 4,
+      height: 0.18,
+    });
+    expect(boardEntity?.rotationRadians).toBeCloseTo((-30 * Math.PI) / 180, 6);
+    expect(arcTrackEntity).toMatchObject({
+      id: "arc-track-tilted-1",
+      kind: "arc-track",
+      label: "Tilted Arc Track 1",
+      anchorEntityId: "board-tilted-1",
+      anchorEntityKind: "board",
+      anchorEndpoint: "end",
+      entryEndpoint: "end",
+      radius: 1.5,
+      rotationDegrees: 210,
+      sweepAngleDegrees: 135,
+    });
+    expect(arcTrackEntity?.center.x).toBeCloseTo(7.8, 6);
+    expect(arcTrackEntity?.center.y).toBeCloseTo(4.6, 6);
     expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
     expect(arcTrackEntity).not.toHaveProperty("thickness");
   });
