@@ -57,14 +57,18 @@ function createEmptyRuntimeState(
 function shouldKeepExistingSamplesOnReadError(
   error: unknown,
   snapshot: RuntimeBridgePortSnapshot,
+  analyzerId: string,
 ): boolean {
   const message = error instanceof Error ? error.message : "";
 
-  if (!/unknown analyzer|runtime not initialized/i.test(message)) {
+  if (!/unknown analyzer/i.test(message)) {
     return false;
   }
 
-  return (snapshot.bridge.currentFrame?.frameNumber ?? 0) === 0;
+  return (
+    hasTrajectoryAnalyzer(snapshot, analyzerId) &&
+    (snapshot.bridge.currentFrame?.frameNumber ?? 0) === 0
+  );
 }
 
 function readTrajectoryRuntimeContext(
@@ -122,6 +126,11 @@ export function useRuntimeTrajectorySamples(
           return;
         }
 
+        if (trajectorySamples.length === 0) {
+          setState(createEmptyRuntimeState(runtimePort.getSnapshot(), analyzerId));
+          return;
+        }
+
         setState({
           trajectorySamples,
           status: "ready",
@@ -133,7 +142,7 @@ export function useRuntimeTrajectorySamples(
           return;
         }
 
-        if (shouldKeepExistingSamplesOnReadError(error, runtimePort.getSnapshot())) {
+        if (shouldKeepExistingSamplesOnReadError(error, runtimePort.getSnapshot(), analyzerId)) {
           setState({
             ...createEmptyRuntimeState(runtimePort.getSnapshot(), analyzerId),
           });

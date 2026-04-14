@@ -11,13 +11,13 @@ use crate::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinitio
 use crate::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use crate::force::ForceSourceDefinition;
 use crate::playback::{
-    InvalidPlaybackConfig, PlaybackConfig, PlaybackMode, PrecomputeSession, PreparedPlayback,
-    PRECOMPUTE_CHUNK_STEPS,
+    InvalidPlaybackConfig, PRECOMPUTE_CHUNK_STEPS, PlaybackConfig, PlaybackMode, PrecomputeSession,
+    PreparedPlayback,
 };
 use crate::runtime::{RuntimeFramePayload, RuntimeScene};
 use crate::scene::{
-    compile_scene, compile_scene_with_arc_track_metadata, CompileSceneRequest, CompiledScene,
-    SceneCompileError,
+    CompileSceneRequest, CompiledScene, SceneCompileError, compile_scene,
+    compile_scene_with_arc_track_metadata,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -332,16 +332,11 @@ impl SimulationBridge {
 
     pub fn read_trajectory_samples(&self, id: &str) -> Result<Vec<TrajectorySample>, BridgeError> {
         let samples = self.analyzer_samples(id)?;
-        let runtime_samples = samples
+
+        Ok(samples
             .into_iter()
             .filter(|sample| sample.frame_number > 0)
-            .collect::<Vec<_>>();
-
-        if runtime_samples.is_empty() {
-            return Err(BridgeError::UnknownAnalyzer { id: id.to_string() });
-        }
-
-        Ok(runtime_samples)
+            .collect::<Vec<_>>())
     }
 
     pub fn set_time_scale(&mut self, time_scale: f64) -> Result<BridgeStatusSnapshot, BridgeError> {
