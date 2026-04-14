@@ -493,3 +493,33 @@ fn arc_entry_capture_regression_rotated_block_uses_local_tangent_crossing_not_ve
         radial_distance,
     );
 }
+
+#[test]
+fn arc_entry_capture_regression_rotated_block_allows_small_local_tangent_overshoot_window() {
+    let anchor_center = vector2(2.0, 2.0);
+    let anchor_frame =
+        block_anchor_endpoint_frame(anchor_center, 4.0, 0.5, 90.0, ArcTrackAnchorEndpoint::End);
+    let initial_ball = local_tangent_crossing_ball("ball", anchor_frame, 0.08, 1.0, 0.9);
+    let mut runtime = runtime_for_scene_with_anchored_arc_entity(
+        initial_ball,
+        block("anchor", anchor_center, 4.0, 0.5, 90.0),
+        ArcTrackAnchorEntityKind::Block,
+        ArcTrackAnchorEndpoint::End,
+        anchored_arc_track_entity("arc-track", anchor_frame, 1.0, 90.0, ArcTrackEntryEndpoint::End),
+        ArcTrackEntryEndpoint::End,
+        Vector2::ZERO,
+        0.05,
+    );
+
+    run_steps(&mut runtime, 1);
+    let frame = runtime_entity(&runtime, "ball");
+    let radial_distance = frame.position.sub(vector2(1.25, 4.0)).length();
+
+    assert!(
+        (radial_distance - 1.0).abs() < 5e-2,
+        "expected rotated support handoff to allow a small post-endpoint overshoot window, got position=({:.3}, {:.3}) distance={:.3}",
+        frame.position.x,
+        frame.position.y,
+        radial_distance,
+    );
+}

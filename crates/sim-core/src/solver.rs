@@ -27,6 +27,7 @@ const ARC_ENTRY_CAPTURE_SIDE_TOLERANCE: f64 = 0.2;
 const ARC_ENTRY_ANCHORED_JUNCTION_POSITION_TOLERANCE: f64 = 0.05;
 const ARC_ENTRY_ANCHORED_JUNCTION_SURFACE_TOLERANCE: f64 = 0.15;
 const ARC_ENTRY_ANCHORED_JUNCTION_CROSSING_TOLERANCE: f64 = 1e-6;
+const ARC_ENTRY_ANCHORED_JUNCTION_OVERSHOOT_PADDING: f64 = 0.05;
 const IMPLICIT_BOUNDARY_NORMALS: [Vector2; 2] = [Vector2::new(1.0, 0.0), Vector2::new(0.0, 1.0)];
 const IMPLICIT_BOUNDARY_FRICTION_COEFFICIENT: f64 = 0.0;
 const IMPLICIT_BOUNDARY_RESTITUTION_COEFFICIENT: f64 = 0.0;
@@ -857,8 +858,10 @@ fn captures_anchored_arc_entry(
 
     let previous_longitudinal = previous_offset.dot(anchor_geometry.tangent);
     let current_longitudinal = current_offset.dot(anchor_geometry.tangent);
+    let overshoot_window = body.half_extents.x + ARC_ENTRY_ANCHORED_JUNCTION_OVERSHOOT_PADDING;
 
-    if previous_longitudinal > ARC_ENTRY_ANCHORED_JUNCTION_CROSSING_TOLERANCE
+    if previous_longitudinal > overshoot_window
+        || current_longitudinal > overshoot_window
         || current_longitudinal < -ARC_ENTRY_ANCHORED_JUNCTION_CROSSING_TOLERANCE
     {
         return false;
