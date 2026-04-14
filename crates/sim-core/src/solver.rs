@@ -28,6 +28,7 @@ const ARC_ENTRY_ANCHORED_JUNCTION_POSITION_TOLERANCE: f64 = 0.05;
 const ARC_ENTRY_ANCHORED_JUNCTION_SURFACE_TOLERANCE: f64 = 0.15;
 const ARC_ENTRY_ANCHORED_JUNCTION_CROSSING_TOLERANCE: f64 = 1e-6;
 const ARC_ENTRY_ANCHORED_JUNCTION_OVERSHOOT_PADDING: f64 = 0.05;
+const ARC_ENTRY_ANCHORED_SUPPORT_ACCELERATION_TOLERANCE: f64 = 1e-6;
 const IMPLICIT_BOUNDARY_NORMALS: [Vector2; 2] = [Vector2::new(1.0, 0.0), Vector2::new(0.0, 1.0)];
 const IMPLICIT_BOUNDARY_FRICTION_COEFFICIENT: f64 = 0.0;
 const IMPLICIT_BOUNDARY_RESTITUTION_COEFFICIENT: f64 = 0.0;
@@ -725,7 +726,8 @@ fn capture_arc_entries(
             );
             let anchored_entry = arc_track.anchor.as_ref().and_then(|anchor| {
                 let &anchor_index = index_by_id.get(&anchor.entity_id)?;
-                let geometry = anchor_endpoint_geometry(&bodies[anchor_index], anchor.endpoint)?;
+                let anchor_body = bodies[anchor_index].clone();
+                let geometry = anchor_endpoint_geometry(&anchor_body, anchor.endpoint)?;
 
                 if geometry.position.sub(endpoint_geometry.position).length()
                     > ARC_ENTRY_ANCHORED_JUNCTION_POSITION_TOLERANCE
@@ -734,7 +736,7 @@ fn capture_arc_entries(
                 {
                     None
                 } else {
-                    Some(geometry)
+                    Some((geometry, anchor_body))
                 }
             });
 
@@ -750,12 +752,13 @@ fn capture_arc_entries(
                     continue;
                 }
 
-                if let Some(anchor_geometry) = anchored_entry {
+                if let Some((anchor_geometry, ref anchor_body)) = anchored_entry {
                     let previous_position = previous_positions[body_index];
 
                     if !captures_anchored_arc_entry(
                         body,
                         previous_position,
+                        anchor_body,
                         anchor_geometry,
                         endpoint_geometry,
                     ) {
@@ -833,6 +836,7 @@ fn captures_free_arc_entry(
 fn captures_anchored_arc_entry(
     body: &RuntimeBodyState,
     previous_position: Vector2,
+    anchor_body: &RuntimeBodyState,
     anchor_geometry: RuntimeAnchorEndpointGeometry,
     endpoint_geometry: ArcTrackEndpointGeometry,
 ) -> bool {
@@ -843,28 +847,46 @@ fn captures_anchored_arc_entry(
     }
 
     let previous_offset = previous_position.sub(anchor_geometry.position);
-    let current_offset = body.position.sub(anchor_geometry.position);
-    let expected_surface_offset = body.half_extents.x;
-    let previous_surface_offset = previous_offset.dot(anchor_geometry.surface_normal);
-    let current_surface_offset = current_offset.dot(anchor_geometry.surface_normal);
-
-    if (previous_surface_offset - expected_surface_offset).abs()
-        > ARC_ENTRY_ANCHORED_JUNCTION_SURFACE_TOLERANCE
-        || (current_surface_offset - expected_surface_offset).abs()
-            > ARC_ENTRY_ANCHORED_JUNCTION_SURFACE_TOLERANCE
-    {
-        return false;
-    }
-
     let previous_longitudinal = previous_offset.dot(anchor_geometry.tangent);
-    let current_longitudinal = current_offset.dot(anchor_geometry.tangent);
     let overshoot_window = body.half_extents.x + ARC_ENTRY_ANCHORED_JUNCTION_OVERSHOOT_PADDING;
 
-    if previous_longitudinal > overshoot_window
-        || current_longitudinal > overshoot_window
-        || current_longitudinal < -ARC_ENTRY_ANCHORED_JUNCTION_CROSSING_TOLERANCE
-    {
-        return false;
+    let supporting_contact = contact_geometry::contact_manifold(body, anchor_body).filter(|contact| {
+        body.acceleration.length() > f64::EPSILON
+            && body.acceleration.dot(contact.normal) < -ARC_ENTRY_ANCHORED_SUPPORT_ACCELERATION_TOLERANCE
+    });
+
+    if let Some(contact) = supporting_contact {
+        let contact_longitudinal =
+            contact.point.sub(anchor_geometry.position).dot(anchor_geometry.tangent);
+
+        if previous_longitudinal > overshoot_window
+            || contact_longitudinal > overshoot_window
+            || contact_longitudinal < -ARC_ENTRY_ANCHORED_JUNCTION_CROSSING_TOLERANCE
+        {
+            return false;
+        }
+    } else {
+        let current_offset = body.position.sub(anchor_geometry.position);
+        let expected_surface_offset = body.half_extents.x;
+        let previous_surface_offset = previous_offset.dot(anchor_geometry.surface_normal);
+        let current_surface_offset = current_offset.dot(anchor_geometry.surface_normal);
+
+        if (previous_surface_offset - expected_surface_offset).abs()
+            > ARC_ENTRY_ANCHORED_JUNCTION_SURFACE_TOLERANCE
+            || (current_surface_offset - expected_surface_offset).abs()
+                > ARC_ENTRY_ANCHORED_JUNCTION_SURFACE_TOLERANCE
+        {
+            return false;
+        }
+
+        let current_longitudinal = current_offset.dot(anchor_geometry.tangent);
+
+        if previous_longitudinal > overshoot_window
+            || current_longitudinal > overshoot_window
+            || current_longitudinal < -ARC_ENTRY_ANCHORED_JUNCTION_CROSSING_TOLERANCE
+        {
+            return false;
+        }
     }
 
     body.velocity.dot(endpoint_geometry.tangent) > f64::EPSILON
