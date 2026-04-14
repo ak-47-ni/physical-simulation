@@ -43,12 +43,7 @@ fn bridge_trajectory_reads_only_return_step_samples() {
         .compile_scene(runtime_scene_request())
         .expect("scene should compile into a bridge runtime");
 
-    assert_eq!(
-        bridge.read_trajectory_samples("traj-1"),
-        Err(BridgeError::UnknownAnalyzer {
-            id: "traj-1".to_string(),
-        })
-    );
+    assert_eq!(bridge.read_trajectory_samples("traj-1"), Ok(vec![]));
 
     bridge.step().expect("first step should succeed");
     bridge.step().expect("second step should succeed");
@@ -76,10 +71,20 @@ fn bridge_trajectory_reads_clear_after_reset() {
 
     bridge.reset().expect("reset should succeed");
 
+    assert_eq!(bridge.read_trajectory_samples("traj-1"), Ok(vec![]));
+}
+
+#[test]
+fn bridge_trajectory_reads_still_report_true_unknown_analyzers() {
+    let mut bridge = SimulationBridge::new(0.1);
+    bridge
+        .compile_scene(runtime_scene_request())
+        .expect("scene should compile into a bridge runtime");
+
     assert_eq!(
-        bridge.read_trajectory_samples("traj-1"),
+        bridge.read_trajectory_samples("missing-traj"),
         Err(BridgeError::UnknownAnalyzer {
-            id: "traj-1".to_string(),
+            id: "missing-traj".to_string(),
         })
     );
 }

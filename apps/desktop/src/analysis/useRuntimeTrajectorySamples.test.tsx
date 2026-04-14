@@ -54,11 +54,11 @@ function createControlledRuntimePort(input?: {
     step: async () => snapshot,
     reset: async () => snapshot,
     setTimeScale: async () => snapshot,
-    readTrajectorySamples: async () => {
+    readTrajectorySamples: async (analyzerId) => {
       readCalls += 1;
 
       if (!samples) {
-        throw new Error("unknown analyzer: traj-1");
+        throw new Error(`unknown analyzer: ${analyzerId}`);
       }
 
       return samples.map((sample) => ({
@@ -215,6 +215,37 @@ describe("useRuntimeTrajectorySamples", () => {
     });
   });
 
+  it("keeps loading instead of erroring when a valid analyzer has no runtime samples yet", async () => {
+    const snapshot = createInitialRuntimeBridgePortSnapshot();
+    snapshot.bridge.status = "preparing";
+    snapshot.bridge.playbackMode = "precomputed";
+    snapshot.bridge.currentFrame = {
+      frameNumber: 0,
+      entities: [],
+    };
+    snapshot.lastCompileRequest = {
+      scene: {
+        ...createEmptySceneDocument(),
+        analyzers: [{ id: "traj-1", kind: "trajectory", entityId: "probe-1" }],
+      },
+      dirtyScopes: ["analysis"],
+      rebuildRequired: false,
+    };
+    const controlledPort = createControlledRuntimePort({
+      initialSnapshot: snapshot,
+      initialSamples: [],
+    });
+
+    render(<RuntimeTrajectoryProbe runtimePort={controlledPort.port} analyzerId="traj-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("trajectory-status").textContent).toBe("loading");
+      expect(screen.getByTestId("trajectory-count").textContent).toBe("0");
+      expect(screen.getByTestId("trajectory-error").textContent).toBe("");
+      expect(controlledPort.readCallCount()).toBe(1);
+    });
+  });
+
   it("re-reads samples after a fresh step result", async () => {
     const snapshot = createInitialRuntimeBridgePortSnapshot();
     snapshot.bridge.status = "paused";
@@ -339,6 +370,38 @@ describe("useRuntimeTrajectorySamples", () => {
       expect(screen.getByTestId("trajectory-status").textContent).toBe("idle");
       expect(screen.getByTestId("trajectory-count").textContent).toBe("0");
       expect(screen.getByTestId("trajectory-error").textContent).toBe("");
+    });
+  });
+
+  it("preserves true unknown analyzer errors even on the initial frame", async () => {
+    const snapshot = createInitialRuntimeBridgePortSnapshot();
+    snapshot.bridge.status = "paused";
+    snapshot.bridge.currentFrame = {
+      frameNumber: 0,
+      entities: [],
+    };
+    snapshot.lastCompileRequest = {
+      scene: {
+        ...createEmptySceneDocument(),
+        analyzers: [{ id: "traj-1", kind: "trajectory", entityId: "probe-1" }],
+      },
+      dirtyScopes: ["analysis"],
+      rebuildRequired: false,
+    };
+    const controlledPort = createControlledRuntimePort({
+      initialSnapshot: snapshot,
+      initialSamples: undefined,
+    });
+
+    render(
+      <RuntimeTrajectoryProbe runtimePort={controlledPort.port} analyzerId="missing-traj" />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("trajectory-status").textContent).toBe("error");
+      expect(screen.getByTestId("trajectory-error").textContent).toBe(
+        "unknown analyzer: missing-traj",
+      );
     });
   });
 
