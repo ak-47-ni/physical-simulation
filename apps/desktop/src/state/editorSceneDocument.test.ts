@@ -43,6 +43,17 @@ const TEST_CONSTRAINTS = [
   },
 ];
 
+const GUIDE_NETWORK_TEST_CONSTRAINTS = [
+  {
+    axis: { x: 260, y: -150 },
+    entityId: "ball-1",
+    id: "track-guide-1",
+    kind: "track" as const,
+    label: "Track Guide 1",
+    origin: { x: 420, y: 260 },
+  },
+];
+
 const TEST_ARC_TRACK_ENTITY = {
   id: "arc-track-entity-1",
   kind: "arc-track" as const,
@@ -454,6 +465,45 @@ describe("editorSceneDocument", () => {
     expect(scene.entities).toContainEqual(TILTED_BOARD_PERSISTED_ARC_TRACK_ENTITY);
     const restored = createEditorSceneStateFromSceneDocument({ scene });
 
+    expect(restored.entities).toContainEqual(
+      expect.objectContaining({
+        id: "board-1",
+        kind: "board",
+        rotationDegrees: -30,
+      }),
+    );
+    expect(restored.entities).toContainEqual(TILTED_BOARD_ARC_TRACK_ENTITY);
+  });
+
+  it("round-trips mixed guide source metadata without drifting track and anchored arc semantics", () => {
+    const entities = createInitialSceneEntities().map((entity) =>
+      entity.kind === "board" ? { ...entity, rotationDegrees: -30 } : entity,
+    );
+    const scene = createSceneDocumentFromEditorState({
+      constraints: GUIDE_NETWORK_TEST_CONSTRAINTS,
+      entities: [...entities, TILTED_BOARD_ARC_TRACK_ENTITY],
+    });
+
+    expect(scene.constraints).toContainEqual({
+      axis: { x: 260, y: -150 },
+      entityId: "ball-1",
+      id: "track-guide-1",
+      kind: "track",
+      origin: { x: 420, y: 260 },
+    });
+    expect(scene.entities).toContainEqual(TILTED_BOARD_PERSISTED_ARC_TRACK_ENTITY);
+
+    const restored = createEditorSceneStateFromSceneDocument({ scene });
+
+    expect(restored.constraints).toContainEqual(
+      expect.objectContaining({
+        axis: { x: 260, y: -150 },
+        entityId: "ball-1",
+        id: "track-guide-1",
+        kind: "track",
+        origin: { x: 420, y: 260 },
+      }),
+    );
     expect(restored.entities).toContainEqual(
       expect.objectContaining({
         id: "board-1",

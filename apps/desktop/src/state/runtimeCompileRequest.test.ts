@@ -80,6 +80,17 @@ function createTiltedBoardAnchoredArcTrackEntity() {
   };
 }
 
+function createGuideTrackConstraint() {
+  return {
+    axis: { x: 260, y: -150 },
+    entityId: "ball-guide-1",
+    id: "track-guide-1",
+    kind: "track" as const,
+    label: "Track Guide 1",
+    origin: { x: 420, y: 260 },
+  };
+}
+
 const FIFTEEN_DEGREES_IN_RADIANS = (15 * Math.PI) / 180;
 
 describe("runtimeCompileRequest", () => {
@@ -705,6 +716,87 @@ describe("runtimeCompileRequest", () => {
     expect(arcTrackEntity?.center.y).toBeCloseTo(4.6, 6);
     expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
     expect(arcTrackEntity).not.toHaveProperty("thickness");
+  });
+
+  it("keeps linear and arc guide source metadata aligned in one compile request", () => {
+    const request = createRuntimeCompileRequestFromEditorState({
+      constraints: [createGuideTrackConstraint()],
+      entities: [
+        {
+          id: "ball-guide-1",
+          kind: "ball" as const,
+          label: "Ball Guide 1",
+          x: 120,
+          y: 160,
+          radius: 24,
+          mass: 1200,
+          friction: 0,
+          restitution: 1,
+          locked: false,
+          velocityX: 90,
+          velocityY: -20,
+        },
+        createTiltedBoardEntity(),
+        createTiltedBoardAnchoredArcTrackEntity(),
+      ],
+      settings: createSceneAuthoringSettings({
+        gravity: 980,
+        lengthUnit: "cm",
+        velocityUnit: "cm/s",
+        massUnit: "g",
+        pixelsPerMeter: 1,
+      }),
+    });
+
+    const trackConstraint = request.scene.constraints.find(
+      (constraint): constraint is {
+        id: string;
+        kind: string;
+        entityId: string;
+        origin: { x: number; y: number };
+        axis: { x: number; y: number };
+      } => constraint.id === "track-guide-1",
+    );
+    const boardEntity = request.scene.entities.find(
+      (entity): entity is {
+        id: string;
+        kind: string;
+        rotationRadians: number;
+      } => entity.id === "board-tilted-1",
+    );
+    const arcTrackEntity = request.scene.entities.find(
+      (entity): entity is {
+        id: string;
+        kind: string;
+        anchorEntityId: string;
+        anchorEntityKind: string;
+        anchorEndpoint: string;
+        entryEndpoint: string;
+        radius: number;
+        rotationDegrees: number;
+        sweepAngleDegrees: number;
+      } => entity.id === "arc-track-tilted-1",
+    );
+
+    expect(trackConstraint).toMatchObject({
+      id: "track-guide-1",
+      kind: "track",
+      entityId: "ball-guide-1",
+      origin: { x: 4.2, y: 2.6 },
+      axis: { x: 2.6, y: -1.5 },
+    });
+    expect(boardEntity?.rotationRadians).toBeCloseTo((-30 * Math.PI) / 180, 6);
+    expect(arcTrackEntity).toMatchObject({
+      id: "arc-track-tilted-1",
+      kind: "arc-track",
+      anchorEntityId: "board-tilted-1",
+      anchorEntityKind: "board",
+      anchorEndpoint: "end",
+      entryEndpoint: "end",
+      radius: 1.5,
+      rotationDegrees: 210,
+      sweepAngleDegrees: 135,
+    });
   });
 
   it("keeps compile-request cloning stable when the source scene mutates later", () => {
