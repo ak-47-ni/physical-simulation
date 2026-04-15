@@ -44,16 +44,16 @@ describe("createBoardAnchoredArcTrackConstraint", () => {
       id: "arc-track-1",
     });
 
-    expect(constraint).toEqual({
+    expect(constraint).toMatchObject({
       center: { x: 8, y: 5.5 },
-      endAngleDegrees: 270,
       entryEndpoint: "start",
       id: "arc-track-1",
       kind: "arc-track",
-      radius: 1,
       side: "inside",
-      startAngleDegrees: 90,
     });
+    expect(constraint.radius).toBeCloseTo(1.5, 6);
+    expect(constraint.startAngleDegrees).toBeCloseTo(90, 6);
+    expect(constraint.endAngleDegrees).toBeCloseTo(270, 6);
   });
 
   it("chooses the end arc endpoint when the selected board end approaches the opposite tangent", async () => {
@@ -67,16 +67,16 @@ describe("createBoardAnchoredArcTrackConstraint", () => {
       id: "arc-track-2",
     });
 
-    expect(constraint).toEqual({
+    expect(constraint).toMatchObject({
       center: { x: 12, y: 5.5 },
-      endAngleDegrees: 90,
       entryEndpoint: "end",
       id: "arc-track-2",
       kind: "arc-track",
-      radius: 1,
       side: "inside",
-      startAngleDegrees: -90,
     });
+    expect(constraint.radius).toBeCloseTo(1.5, 6);
+    expect(constraint.startAngleDegrees).toBeCloseTo(-90, 6);
+    expect(constraint.endAngleDegrees).toBeCloseTo(90, 6);
   });
 
   it("applies the requested arc-span preset while preserving the tangent entry endpoint", async () => {
@@ -91,15 +91,41 @@ describe("createBoardAnchoredArcTrackConstraint", () => {
       spanDegrees: 90,
     });
 
-    expect(constraint).toEqual({
+    expect(constraint).toMatchObject({
       center: { x: 8, y: 5.5 },
-      endAngleDegrees: 180,
       entryEndpoint: "start",
       id: "arc-track-3",
       kind: "arc-track",
-      radius: 1,
       side: "inside",
-      startAngleDegrees: 90,
     });
+    expect(constraint.radius).toBeCloseTo(1.5, 6);
+    expect(constraint.startAngleDegrees).toBeCloseTo(90, 6);
+    expect(constraint.endAngleDegrees).toBeCloseTo(180, 6);
+  });
+
+  it("keeps tilted-board start-endpoint arcs tangent-aligned in the same entry direction", async () => {
+    const { createBoardAnchoredArcTrackConstraint } =
+      await loadCreateBoardAnchoredArcTrackConstraint();
+
+    const constraint = createBoardAnchoredArcTrackConstraint({
+      board: createBoard({
+        rotationDegrees: 30,
+      }),
+      center: { x: 8.017949, y: 3.933012 },
+      endpointKey: "start",
+      id: "arc-track-4",
+      spanDegrees: 90,
+    });
+
+    expect(constraint).toMatchObject({
+      center: { x: 8.017949, y: 3.933012 },
+      entryEndpoint: "start",
+      id: "arc-track-4",
+      kind: "arc-track",
+      side: "inside",
+    });
+    expect(constraint.radius).toBeCloseTo(1, 4);
+    expect(constraint.startAngleDegrees).toBeCloseTo(60, 4);
+    expect(constraint.endAngleDegrees).toBeCloseTo(150, 4);
   });
 });

@@ -35,9 +35,70 @@ function createArcTrackViaLibraryDrop(screenPosition: { x: number; y: number }) 
 }
 
 const BOARD_START_ENDPOINT_DROP_POSITION = { x: 318, y: 272 };
+const TILTED_BOARD_START_ENDPOINT_DROP_POSITION = { x: 331, y: 243 };
+const BOARD_GUIDE_METERS = {
+  height: 0.18,
+  width: 1.2,
+  x: 3.18,
+  y: 2.72,
+};
 
 function readBoardCenterY() {
   return 2.72 + 0.18 / 2;
+}
+
+function readBoardStartEndpointForRotationDegrees(rotationDegrees: number) {
+  const rotationRadians = (rotationDegrees * Math.PI) / 180;
+  const axisX = {
+    x: Math.cos(rotationRadians),
+    y: Math.sin(rotationRadians),
+  };
+  const axisY = {
+    x: -axisX.y,
+    y: axisX.x,
+  };
+  const center = {
+    x: BOARD_GUIDE_METERS.x + BOARD_GUIDE_METERS.width / 2,
+    y: BOARD_GUIDE_METERS.y + BOARD_GUIDE_METERS.height / 2,
+  };
+  const topCenter = {
+    x: center.x - axisY.x * (BOARD_GUIDE_METERS.height / 2),
+    y: center.y - axisY.y * (BOARD_GUIDE_METERS.height / 2),
+  };
+
+  return {
+    point: {
+      x: topCenter.x - axisX.x * (BOARD_GUIDE_METERS.width / 2),
+      y: topCenter.y - axisX.y * (BOARD_GUIDE_METERS.width / 2),
+    },
+    tangent: {
+      x: -axisX.x,
+      y: -axisX.y,
+    },
+  };
+}
+
+function readArcTrackEntryTangent(input: {
+  center: { x: number; y: number };
+  endpoint: { x: number; y: number };
+  entryEndpoint: "start" | "end";
+}) {
+  const radius = Math.hypot(input.endpoint.x - input.center.x, input.endpoint.y - input.center.y);
+  const radiusUnit = {
+    x: (input.endpoint.x - input.center.x) / radius,
+    y: (input.endpoint.y - input.center.y) / radius,
+  };
+  const increasingTangent = {
+    x: radiusUnit.y,
+    y: -radiusUnit.x,
+  };
+
+  return input.entryEndpoint === "start"
+    ? increasingTangent
+    : {
+        x: -increasingTangent.x,
+        y: -increasingTangent.y,
+      };
 }
 
 function readBlockSupportAlongUpNormal(rotationDegrees: number) {
@@ -435,6 +496,181 @@ describe("App selection sync", () => {
     expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
     expect(arcTrackEntity).not.toHaveProperty("thickness");
     expect(screen.queryByText(/missing centralAngleDegrees/i)).toBeNull();
+  });
+
+  it("keeps tilted-board anchored arc-track payload aligned with the selected endpoint tangent", async () => {
+    const compileRequests: Array<{ scene: { entities: unknown[] } }> = [];
+    const commands: string[] = [];
+    let tickCount = 0;
+    (globalThis as {
+      __TAURI_INTERNALS__?: {
+        invoke: (command: string, payload?: Record<string, unknown>) => Promise<unknown>;
+      };
+    }).__TAURI_INTERNALS__ = {
+      invoke: async (command, payload) => {
+        commands.push(command);
+
+        if (command === "compile_scene") {
+          const request = (payload as { request: { scene: { entities: unknown[] } } }).request;
+          compileRequests.push(request);
+
+          return {
+            status: "paused",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: true,
+            canResume: true,
+            blockReason: "rebuild-required",
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "stale",
+          };
+        }
+
+        if (command === "start_runtime") {
+          return {
+            status: "running",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: false,
+            canResume: true,
+            blockReason: null,
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "calculating",
+          };
+        }
+
+        if (command === "tick_runtime") {
+          tickCount += 1;
+
+          return {
+            status: "paused",
+            currentFrame: {
+              frameNumber: tickCount,
+              entities: [],
+            },
+            currentTimeSeconds: tickCount / 30,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: false,
+            canResume: true,
+            blockReason: null,
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: true,
+            resultState: "ready",
+          };
+        }
+
+        if (command === "reset_runtime") {
+          return {
+            status: "paused",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: true,
+            canResume: true,
+            blockReason: "rebuild-required",
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "stale",
+          };
+        }
+
+        throw new Error(`unexpected command: ${command}`);
+      },
+    };
+
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+    fireEvent.change(screen.getByLabelText("Angle"), { target: { value: "30" } });
+    createArcTrackViaLibraryDrop(TILTED_BOARD_START_ENDPOINT_DROP_POSITION);
+
+    expect((screen.getByLabelText("Rotation") as HTMLInputElement).value).toBe("105");
+
+    fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
+    fireEvent.click(transport.getByRole("button", { name: /^calculate$/i }));
+
+    await waitFor(() => expect(commands.includes("start_runtime")).toBe(true));
+    await waitFor(() => expect(commands.includes("tick_runtime")).toBe(true));
+
+    const latestRequestWithArcTrack = [...compileRequests]
+      .reverse()
+      .find((request) =>
+        request.scene.entities.some(
+          (entity) =>
+            typeof entity === "object" &&
+            entity !== null &&
+            "id" in entity &&
+            entity.id === "arc-track-1",
+        ),
+      );
+    const arcTrackEntity = latestRequestWithArcTrack?.scene.entities.find(
+      (entity): entity is {
+        id: string;
+        kind: string;
+        center: { x: number; y: number };
+        anchorEntityId: string;
+        anchorEntityKind: string;
+        anchorEndpoint: string;
+        entryEndpoint: "start" | "end";
+        radius: number;
+        rotationDegrees: number;
+        sweepAngleDegrees: number;
+      } =>
+        typeof entity === "object" &&
+        entity !== null &&
+        "id" in entity &&
+        entity.id === "arc-track-1",
+    );
+
+    expect(arcTrackEntity).toMatchObject({
+      id: "arc-track-1",
+      kind: "arc-track",
+      anchorEntityId: "board-1",
+      anchorEntityKind: "board",
+      anchorEndpoint: "start",
+      center: { x: 2.805385, y: 3.298083 },
+      entryEndpoint: "start",
+      radius: 1,
+      rotationDegrees: 105,
+      sweepAngleDegrees: 90,
+    });
+
+    if (!arcTrackEntity) {
+      throw new Error("expected compile request to include the tilted board arc-track");
+    }
+
+    const boardStartEndpoint = readBoardStartEndpointForRotationDegrees(30);
+    const entryTangent = readArcTrackEntryTangent({
+      center: arcTrackEntity.center,
+      endpoint: boardStartEndpoint.point,
+      entryEndpoint: arcTrackEntity.entryEndpoint,
+    });
+
+    expect(entryTangent.x).toBeCloseTo(boardStartEndpoint.tangent.x, 6);
+    expect(entryTangent.y).toBeCloseTo(boardStartEndpoint.tangent.y, 6);
+    expect(
+      Math.hypot(
+        boardStartEndpoint.point.x - arcTrackEntity.center.x,
+        boardStartEndpoint.point.y - arcTrackEntity.center.y,
+      ),
+    ).toBeCloseTo(1, 6);
   });
 
   it("shows a ball handing off from a board into anchored arc-guide motion after the local junction crossing", async () => {
