@@ -2,17 +2,18 @@ use std::collections::{HashMap, HashSet};
 
 use crate::analyzer::{AnalyzerDefinition, CompiledAnalyzer};
 use crate::arc_track::{
-    validated_arc_start_and_span, ArcTrackCapturePolicy, ArcTrackEntityCompileMetadata,
-    CompiledArcTrack,
+    ArcTrackCapturePolicy, ArcTrackEntityCompileMetadata, CompiledArcTrack,
+    validated_arc_start_and_span,
 };
 use crate::constraint::ArcTrackSide;
 use crate::constraint::{
-    compile_constraint, CompiledConstraint, ConstraintCompileError, ConstraintDefinition,
+    CompiledConstraint, ConstraintCompileError, ConstraintDefinition, compile_constraint,
 };
 use crate::entity::{
-    is_convex_polygon, CompiledEntity, CompiledShape, EntityDefinition, ShapeDefinition,
+    CompiledEntity, CompiledShape, EntityDefinition, ShapeDefinition, is_convex_polygon,
 };
 use crate::force::{ForceSourceDefinition, GravityForce};
+use crate::guide_network::{CompiledGuideNetwork, compile_guide_network};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -28,6 +29,7 @@ pub struct CompiledScene {
     pub entities: Vec<CompiledEntity>,
     pub constraints: Vec<CompiledConstraint>,
     pub arc_tracks: Vec<CompiledArcTrack>,
+    pub guide_network: CompiledGuideNetwork,
     pub gravity: GravityForce,
     pub analyzers: Vec<CompiledAnalyzer>,
 }
@@ -173,10 +175,17 @@ pub fn compile_scene(request: &CompileSceneRequest) -> Result<CompiledScene, Sce
         compiled_analyzers.push(CompiledAnalyzer::from(analyzer));
     }
 
+    let guide_network = compile_guide_network(
+        &compiled_entities,
+        &compiled_constraints,
+        &compiled_arc_tracks,
+    );
+
     Ok(CompiledScene {
         entities: compiled_entities,
         constraints: compiled_constraints,
         arc_tracks: compiled_arc_tracks,
+        guide_network,
         gravity,
         analyzers: compiled_analyzers,
     })
@@ -196,6 +205,12 @@ pub fn compile_scene_with_arc_track_metadata(
         arc_track.capture_policy = metadata.capture_policy();
         arc_track.anchor = metadata.anchor.clone();
     }
+
+    compiled.guide_network = compile_guide_network(
+        &compiled.entities,
+        &compiled.constraints,
+        &compiled.arc_tracks,
+    );
 
     Ok(compiled)
 }

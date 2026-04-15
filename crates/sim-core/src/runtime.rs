@@ -11,6 +11,11 @@ use crate::arc_track::{
     CompiledArcTrack, compiled_arc_track_from_constraint, validated_arc_start_and_span,
 };
 use crate::entity::{CompiledShape, Vector2};
+use crate::guide_network::CompiledGuideNetwork;
+use crate::guide_runtime::{
+    RuntimeGuideAttachment, RuntimeGuideState, advance_guide_attachments,
+    attach_free_bodies_to_guides, attached_body_ids,
+};
 use crate::scene::CompiledScene;
 use crate::solver::{
     RuntimeArcTrackAttachment, RuntimeArcTrackGeometry, RuntimeBodyShape, RuntimeBodyState,
@@ -41,7 +46,9 @@ pub struct RuntimeScene {
     bodies: Vec<RuntimeBodyState>,
     constraints: Vec<crate::constraint::CompiledConstraint>,
     arc_tracks: Vec<CompiledArcTrack>,
+    guide_network: CompiledGuideNetwork,
     attached_arc_track_by_body_id: HashMap<String, RuntimeArcTrackAttachment>,
+    attached_guide_by_body_id: HashMap<String, RuntimeGuideAttachment>,
     analyzer_blueprints: Vec<CompiledAnalyzer>,
     analyzers: Vec<TrajectoryAnalyzerState>,
     frame_number: u64,
@@ -56,6 +63,7 @@ impl RuntimeScene {
             entities,
             constraints,
             arc_tracks,
+            guide_network,
             gravity,
             analyzers,
         } = compiled;
@@ -113,7 +121,9 @@ impl RuntimeScene {
             bodies: baseline,
             constraints,
             arc_tracks: runtime_arc_tracks,
+            guide_network,
             attached_arc_track_by_body_id: HashMap::new(),
+            attached_guide_by_body_id: HashMap::new(),
             analyzer_blueprints,
             analyzers,
             frame_number: 0,
@@ -147,12 +157,25 @@ impl RuntimeScene {
         let substep_delta_seconds = self.fixed_delta_seconds / substep_count as f64;
 
         for _ in 0..substep_count {
+            attach_free_bodies_to_guides(
+                &mut self.bodies,
+                &self.guide_network,
+                &mut self.attached_guide_by_body_id,
+            );
+            let guide_attached_body_ids = attached_body_ids(&self.attached_guide_by_body_id);
             step_bodies(
                 &mut self.bodies,
                 &self.constraints,
                 &self.arc_tracks,
                 &mut self.attached_arc_track_by_body_id,
+                &guide_attached_body_ids,
                 self.gravity,
+                substep_delta_seconds,
+            );
+            advance_guide_attachments(
+                &mut self.bodies,
+                &self.guide_network,
+                &mut self.attached_guide_by_body_id,
                 substep_delta_seconds,
             );
         }
@@ -170,6 +193,7 @@ impl RuntimeScene {
     pub fn reset(&mut self) -> RuntimeFramePayload {
         self.bodies = self.baseline.clone();
         self.attached_arc_track_by_body_id.clear();
+        self.attached_guide_by_body_id.clear();
         self.frame_number = 0;
         self.elapsed_time_seconds = 0.0;
         self.analyzers = self
@@ -193,6 +217,10 @@ impl RuntimeScene {
             .iter()
             .map(|analyzer| (analyzer.id().to_string(), analyzer.samples().to_vec()))
             .collect()
+    }
+
+    pub fn guide_state(&self, entity_id: &str) -> RuntimeGuideState {
+        RuntimeGuideState::from_attachment(self.attached_guide_by_body_id.get(entity_id))
     }
 
     pub fn elapsed_time_seconds(&self) -> f64 {

@@ -4,6 +4,8 @@ pub mod bridge;
 pub mod constraint;
 pub mod entity;
 pub mod force;
+pub mod guide_network;
+pub mod guide_runtime;
 pub mod playback;
 pub mod runtime;
 pub mod scene;

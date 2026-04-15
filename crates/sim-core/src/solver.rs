@@ -93,6 +93,7 @@ pub fn step_bodies(
     constraints: &[CompiledConstraint],
     arc_tracks: &[CompiledArcTrack],
     attached_arc_track_by_body_id: &mut HashMap<String, RuntimeArcTrackAttachment>,
+    guide_attached_body_ids: &HashSet<String>,
     gravity: Vector2,
     delta_seconds: f64,
 ) {
@@ -100,6 +101,7 @@ pub fn step_bodies(
     let attached_body_ids = attached_arc_track_by_body_id
         .keys()
         .cloned()
+        .chain(guide_attached_body_ids.iter().cloned())
         .collect::<HashSet<_>>();
     let static_surfaces = bodies
         .iter()
@@ -146,6 +148,7 @@ pub fn step_bodies(
         &index_by_id,
         &previous_positions,
         attached_arc_track_by_body_id,
+        &attached_body_ids,
         delta_seconds,
     );
     attachment_delta_seconds_by_body_id.extend(newly_captured_body_ids);
@@ -720,6 +723,7 @@ fn capture_arc_entries(
     index_by_id: &HashMap<String, usize>,
     previous_positions: &[Vector2],
     attached_arc_track_by_body_id: &mut HashMap<String, RuntimeArcTrackAttachment>,
+    attached_body_ids: &HashSet<String>,
     delta_seconds: f64,
 ) -> HashMap<String, f64> {
     let mut newly_captured_body_ids = HashMap::new();
@@ -774,7 +778,7 @@ fn capture_arc_entries(
             for (body_index, body) in bodies.iter_mut().enumerate() {
                 if body.is_static
                     || body.shape != RuntimeBodyShape::Ball
-                    || attached_arc_track_by_body_id.contains_key(&body.entity_id)
+                    || attached_body_ids.contains(&body.entity_id)
                 {
                     continue;
                 }
