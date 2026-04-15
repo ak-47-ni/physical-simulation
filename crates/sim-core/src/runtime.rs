@@ -7,12 +7,14 @@ mod contact_substeps;
 use std::collections::HashMap;
 
 use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySample};
-use crate::arc_track::{CompiledArcTrack, compiled_arc_track_from_constraint, validated_arc_start_and_span};
+use crate::arc_track::{
+    CompiledArcTrack, compiled_arc_track_from_constraint, validated_arc_start_and_span,
+};
 use crate::entity::{CompiledShape, Vector2};
 use crate::scene::CompiledScene;
 use crate::solver::{
-    RuntimeArcTrackGeometry, RuntimeBodyShape, RuntimeBodyState, inverse_inertia_for_body, project_track_bindings,
-    step_bodies,
+    RuntimeArcTrackAttachment, RuntimeArcTrackGeometry, RuntimeBodyShape, RuntimeBodyState,
+    inverse_inertia_for_body, project_track_bindings, step_bodies,
 };
 use serde::{Deserialize, Serialize};
 
@@ -39,7 +41,7 @@ pub struct RuntimeScene {
     bodies: Vec<RuntimeBodyState>,
     constraints: Vec<crate::constraint::CompiledConstraint>,
     arc_tracks: Vec<CompiledArcTrack>,
-    attached_arc_track_by_body_id: HashMap<String, String>,
+    attached_arc_track_by_body_id: HashMap<String, RuntimeArcTrackAttachment>,
     analyzer_blueprints: Vec<CompiledAnalyzer>,
     analyzers: Vec<TrajectoryAnalyzerState>,
     frame_number: u64,
@@ -259,9 +261,7 @@ fn shape_half_extents(shape: &CompiledShape) -> Vector2 {
             Vector2::new((max_x - min_x) * 0.5, (max_y - min_y) * 0.5)
         }
         CompiledShape::ArcTrack {
-            radius,
-            thickness,
-            ..
+            radius, thickness, ..
         } => {
             let outer_radius = *radius + *thickness * 0.5;
             Vector2::new(outer_radius, outer_radius)
@@ -422,7 +422,10 @@ mod tests {
             Vector2::ZERO,
         );
 
-        let initial_distance = runtime.bodies[1].position.sub(runtime.bodies[0].position).length();
+        let initial_distance = runtime.bodies[1]
+            .position
+            .sub(runtime.bodies[0].position)
+            .length();
         let initial_geometries = runtime
             .bodies
             .iter()
@@ -433,7 +436,10 @@ mod tests {
             runtime.step();
         }
 
-        let final_distance = runtime.bodies[1].position.sub(runtime.bodies[0].position).length();
+        let final_distance = runtime.bodies[1]
+            .position
+            .sub(runtime.bodies[0].position)
+            .length();
         assert!(
             final_distance < initial_distance,
             "expected spring to change body separation, initial={}, final={}",

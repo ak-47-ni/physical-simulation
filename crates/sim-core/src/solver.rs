@@ -74,15 +74,33 @@ struct RuntimeAnchorEndpointGeometry {
     surface_normal: Vector2,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuntimeArcTrackAttachment {
+    pub arc_track_id: String,
+    pub angle_radians: f64,
+    pub tangential_speed: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct RuntimeArcEntryCapture {
+    hit_seconds: f64,
+    angle_radians: f64,
+    tangential_speed: f64,
+}
+
 pub fn step_bodies(
     bodies: &mut [RuntimeBodyState],
     constraints: &[CompiledConstraint],
     arc_tracks: &[CompiledArcTrack],
-    attached_arc_track_by_body_id: &mut HashMap<String, String>,
+    attached_arc_track_by_body_id: &mut HashMap<String, RuntimeArcTrackAttachment>,
     gravity: Vector2,
     delta_seconds: f64,
 ) {
     let previous_positions = bodies.iter().map(|body| body.position).collect::<Vec<_>>();
+    let attached_body_ids = attached_arc_track_by_body_id
+        .keys()
+        .cloned()
+        .collect::<HashSet<_>>();
     let static_surfaces = bodies
         .iter()
         .filter(|body| body.is_static)
@@ -107,42 +125,44 @@ pub fn step_bodies(
     apply_constraints(bodies, constraints, &index_by_id);
 
     for body in bodies.iter_mut() {
-        if body.is_static {
+        if body.is_static || attached_body_ids.contains(&body.entity_id) {
             continue;
         }
 
-        body.position = body
-            .position
-            .add(body.velocity.scale(delta_seconds))
-            .add(body.acceleration.scale(0.5 * delta_seconds * delta_seconds));
-        body.velocity = body.velocity.add(body.acceleration.scale(delta_seconds));
-        angular_dynamics::integrate_rotation(body, delta_seconds);
+        integrate_free_body(body, delta_seconds);
     }
 
-    resolve_static_contacts(bodies, &static_surfaces, delta_seconds);
-    resolve_dynamic_contacts(bodies, &static_surfaces, delta_seconds);
-    let freshly_captured_body_ids = capture_arc_entries(
+    resolve_static_contacts(bodies, &static_surfaces, &attached_body_ids, delta_seconds);
+    resolve_dynamic_contacts(bodies, &static_surfaces, &attached_body_ids, delta_seconds);
+    enforce_linear_track_bindings(bodies, constraints, &index_by_id);
+    let mut attachment_delta_seconds_by_body_id = attached_arc_track_by_body_id
+        .keys()
+        .cloned()
+        .map(|body_id| (body_id, delta_seconds))
+        .collect::<HashMap<_, _>>();
+    let newly_captured_body_ids = capture_arc_entries(
         bodies,
         arc_tracks,
         &index_by_id,
         &previous_positions,
         attached_arc_track_by_body_id,
+        delta_seconds,
     );
-    enforce_track_bindings(
+    attachment_delta_seconds_by_body_id.extend(newly_captured_body_ids);
+    advance_arc_track_attachments(
         bodies,
-        constraints,
         arc_tracks,
         &index_by_id,
         attached_arc_track_by_body_id,
-        &freshly_captured_body_ids,
+        &attachment_delta_seconds_by_body_id,
     );
 }
 
 pub fn project_track_bindings(
     bodies: &mut [RuntimeBodyState],
     constraints: &[CompiledConstraint],
-    arc_tracks: &[CompiledArcTrack],
-    attached_arc_track_by_body_id: &HashMap<String, String>,
+    _arc_tracks: &[CompiledArcTrack],
+    _attached_arc_track_by_body_id: &HashMap<String, RuntimeArcTrackAttachment>,
 ) {
     let index_by_id = bodies
         .iter()
@@ -150,14 +170,7 @@ pub fn project_track_bindings(
         .map(|(index, body)| (body.entity_id.clone(), index))
         .collect::<HashMap<_, _>>();
 
-    enforce_track_bindings(
-        bodies,
-        constraints,
-        arc_tracks,
-        &index_by_id,
-        &mut attached_arc_track_by_body_id.clone(),
-        &HashSet::new(),
-    );
+    enforce_linear_track_bindings(bodies, constraints, &index_by_id);
 }
 
 pub fn inverse_mass(body: &RuntimeBodyState) -> f64 {
@@ -171,10 +184,11 @@ pub fn inverse_mass(body: &RuntimeBodyState) -> f64 {
 fn resolve_static_contacts(
     bodies: &mut [RuntimeBodyState],
     static_surfaces: &[RuntimeBodyState],
+    attached_body_ids: &HashSet<String>,
     delta_seconds: f64,
 ) {
     for body in bodies.iter_mut() {
-        if body.is_static {
+        if body.is_static || attached_body_ids.contains(&body.entity_id) {
             continue;
         }
 
@@ -191,6 +205,7 @@ fn resolve_static_contacts(
 fn resolve_dynamic_contacts(
     bodies: &mut [RuntimeBodyState],
     static_surfaces: &[RuntimeBodyState],
+    attached_body_ids: &HashSet<String>,
     delta_seconds: f64,
 ) {
     for _ in 0..DYNAMIC_CONTACT_PASSES {
@@ -198,7 +213,11 @@ fn resolve_dynamic_contacts(
             for index_b in (index_a + 1)..bodies.len() {
                 let (body_a, body_b) = get_body_pair_mut(bodies, index_a, index_b);
 
-                if body_a.is_static || body_b.is_static {
+                if body_a.is_static
+                    || body_b.is_static
+                    || attached_body_ids.contains(&body_a.entity_id)
+                    || attached_body_ids.contains(&body_b.entity_id)
+                {
                     continue;
                 }
 
@@ -206,8 +225,17 @@ fn resolve_dynamic_contacts(
             }
         }
 
-        resolve_static_contacts(bodies, static_surfaces, delta_seconds);
+        resolve_static_contacts(bodies, static_surfaces, attached_body_ids, delta_seconds);
     }
+}
+
+fn integrate_free_body(body: &mut RuntimeBodyState, delta_seconds: f64) {
+    body.position = body
+        .position
+        .add(body.velocity.scale(delta_seconds))
+        .add(body.acceleration.scale(0.5 * delta_seconds * delta_seconds));
+    body.velocity = body.velocity.add(body.acceleration.scale(delta_seconds));
+    angular_dynamics::integrate_rotation(body, delta_seconds);
 }
 
 fn resolve_contact_with_surface(
@@ -608,13 +636,10 @@ fn apply_constraints(
     }
 }
 
-fn enforce_track_bindings(
+fn enforce_linear_track_bindings(
     bodies: &mut [RuntimeBodyState],
     constraints: &[CompiledConstraint],
-    arc_tracks: &[CompiledArcTrack],
     index_by_id: &HashMap<String, usize>,
-    attached_arc_track_by_body_id: &mut HashMap<String, String>,
-    freshly_captured_body_ids: &HashSet<String>,
 ) {
     for constraint in constraints {
         match constraint {
@@ -647,39 +672,44 @@ fn enforce_track_bindings(
             CompiledConstraint::Spring { .. } => {}
         }
     }
+}
 
-    for arc_track in arc_tracks {
-        let attached_body_ids = attached_arc_track_by_body_id
+fn advance_arc_track_attachments(
+    bodies: &mut [RuntimeBodyState],
+    arc_tracks: &[CompiledArcTrack],
+    index_by_id: &HashMap<String, usize>,
+    attached_arc_track_by_body_id: &mut HashMap<String, RuntimeArcTrackAttachment>,
+    attachment_delta_seconds_by_body_id: &HashMap<String, f64>,
+) {
+    let attached_body_ids = attached_arc_track_by_body_id
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+
+    for body_id in attached_body_ids {
+        let Some(&index) = index_by_id.get(&body_id) else {
+            attached_arc_track_by_body_id.remove(&body_id);
+            continue;
+        };
+        let Some(step_seconds) = attachment_delta_seconds_by_body_id.get(&body_id).copied() else {
+            continue;
+        };
+        let Some(mut attachment) = attached_arc_track_by_body_id.get(&body_id).cloned() else {
+            continue;
+        };
+        let Some(arc_track) = arc_tracks
             .iter()
-            .filter_map(|(body_id, constraint_id)| {
-                if constraint_id == &arc_track.id {
-                    Some(body_id.clone())
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<_>>();
+            .find(|arc_track| arc_track.id == attachment.arc_track_id)
+        else {
+            attached_arc_track_by_body_id.remove(&body_id);
+            continue;
+        };
+        let body = &mut bodies[index];
 
-        for body_id in attached_body_ids {
-            let Some(&index) = index_by_id.get(&body_id) else {
-                attached_arc_track_by_body_id.remove(&body_id);
-                continue;
-            };
-            let body = &mut bodies[index];
-            let keep_attached = enforce_arc_track_attachment(
-                body,
-                arc_track.center,
-                arc_track.radius,
-                arc_track.start_angle_radians,
-                arc_track.end_angle_radians,
-                arc_track.span_radians,
-                arc_track.side,
-                !freshly_captured_body_ids.contains(&body_id),
-            );
-
-            if !keep_attached {
-                attached_arc_track_by_body_id.remove(&body_id);
-            }
+        if advance_arc_track_attachment(body, arc_track, &mut attachment, step_seconds) {
+            attached_arc_track_by_body_id.insert(body_id, attachment);
+        } else {
+            attached_arc_track_by_body_id.remove(&body_id);
         }
     }
 }
@@ -689,12 +719,13 @@ fn capture_arc_entries(
     arc_tracks: &[CompiledArcTrack],
     index_by_id: &HashMap<String, usize>,
     previous_positions: &[Vector2],
-    attached_arc_track_by_body_id: &mut HashMap<String, String>,
-) -> HashSet<String> {
-    let mut freshly_captured_body_ids = HashSet::new();
+    attached_arc_track_by_body_id: &mut HashMap<String, RuntimeArcTrackAttachment>,
+    delta_seconds: f64,
+) -> HashMap<String, f64> {
+    let mut newly_captured_body_ids = HashMap::new();
     let mut occupied_arc_track_ids = attached_arc_track_by_body_id
         .values()
-        .cloned()
+        .map(|attachment| attachment.arc_track_id.clone())
         .collect::<HashSet<_>>();
 
     for arc_track in arc_tracks {
@@ -752,7 +783,7 @@ fn capture_arc_entries(
                     continue;
                 }
 
-                if let Some((anchor_geometry, ref anchor_body)) = anchored_entry {
+                let capture = if let Some((anchor_geometry, ref anchor_body)) = anchored_entry {
                     let previous_position = previous_positions[body_index];
 
                     if !captures_anchored_arc_entry(
@@ -764,29 +795,50 @@ fn capture_arc_entries(
                     ) {
                         continue;
                     }
-                } else if !captures_free_arc_entry(body, endpoint_geometry) {
+                    Some(RuntimeArcEntryCapture {
+                        hit_seconds: delta_seconds,
+                        angle_radians: endpoint_geometry.angle_radians,
+                        tangential_speed: signed_tangential_speed_for_angle(
+                            body.velocity,
+                            endpoint_geometry.angle_radians,
+                        ),
+                    })
+                } else {
+                    capture_free_arc_entry(
+                        previous_positions[body_index],
+                        body,
+                        endpoint_geometry,
+                        delta_seconds,
+                    )
+                };
+                let Some(capture) = capture else {
                     continue;
-                }
-
-                let tangential_speed = body.velocity.dot(endpoint_geometry.tangent);
-
-                if tangential_speed <= f64::EPSILON {
-                    continue;
-                }
-
-                let tangential_acceleration = body.acceleration.dot(endpoint_geometry.tangent);
-                body.position = endpoint_geometry.position;
-                body.velocity = endpoint_geometry.tangent.scale(tangential_speed);
-                body.acceleration = endpoint_geometry.tangent.scale(tangential_acceleration);
-                attached_arc_track_by_body_id.insert(body.entity_id.clone(), arc_track.id.clone());
+                };
+                let body_id = body.entity_id.clone();
+                sync_body_to_arc_state(
+                    body,
+                    arc_track.center,
+                    arc_track.radius,
+                    capture.angle_radians,
+                    capture.tangential_speed,
+                );
+                attached_arc_track_by_body_id.insert(
+                    body_id.clone(),
+                    RuntimeArcTrackAttachment {
+                        arc_track_id: arc_track.id.clone(),
+                        angle_radians: capture.angle_radians,
+                        tangential_speed: capture.tangential_speed,
+                    },
+                );
                 occupied_arc_track_ids.insert(arc_track.id.clone());
-                freshly_captured_body_ids.insert(body.entity_id.clone());
+                newly_captured_body_ids
+                    .insert(body_id, (delta_seconds - capture.hit_seconds).max(0.0));
                 break 'body_search;
             }
         }
     }
 
-    freshly_captured_body_ids
+    newly_captured_body_ids
 }
 
 fn anchor_endpoint_geometry(
@@ -815,19 +867,84 @@ fn anchor_endpoint_geometry(
     })
 }
 
-fn captures_free_arc_entry(
+fn capture_free_arc_entry(
+    previous_position: Vector2,
     body: &RuntimeBodyState,
     endpoint_geometry: ArcTrackEndpointGeometry,
-) -> bool {
-    let offset_from_entry = body.position.sub(endpoint_geometry.position);
+    delta_seconds: f64,
+) -> Option<RuntimeArcEntryCapture> {
     let speed = body.velocity.length();
+
+    if speed <= f64::EPSILON {
+        return None;
+    }
+
     let alignment = body
         .velocity
         .scale(1.0 / speed)
         .dot(endpoint_geometry.tangent);
 
+    if alignment < ARC_ENTRY_CAPTURE_ALIGNMENT_THRESHOLD {
+        return None;
+    }
+
+    let previous_offset = previous_position.sub(endpoint_geometry.position);
+    let offset_from_entry = body.position.sub(endpoint_geometry.position);
+    let previous_longitudinal = previous_offset.dot(endpoint_geometry.tangent);
+    let current_longitudinal = offset_from_entry.dot(endpoint_geometry.tangent);
+    let sweep_longitudinal = current_longitudinal - previous_longitudinal;
+
+    if sweep_longitudinal > f64::EPSILON
+        && previous_longitudinal < -crate::arc_track::ARC_TRACK_EPSILON
+        && current_longitudinal >= -crate::arc_track::ARC_TRACK_EPSILON
+    {
+        let hit_fraction = (-previous_longitudinal / sweep_longitudinal).clamp(0.0, 1.0);
+        let hit_offset =
+            previous_offset.add(offset_from_entry.sub(previous_offset).scale(hit_fraction));
+        let hit_side = hit_offset.dot(endpoint_geometry.support_direction);
+
+        if hit_offset.length()
+            <= ARC_ENTRY_CAPTURE_DISTANCE_THRESHOLD + crate::arc_track::ARC_TRACK_EPSILON
+            && hit_side >= -ARC_ENTRY_CAPTURE_SIDE_TOLERANCE
+        {
+            let hit_seconds = hit_fraction * delta_seconds;
+            let hit_velocity = body.velocity.sub(
+                body.acceleration
+                    .scale((delta_seconds - hit_seconds).max(0.0)),
+            );
+
+            return Some(RuntimeArcEntryCapture {
+                hit_seconds,
+                angle_radians: endpoint_geometry.angle_radians,
+                tangential_speed: signed_tangential_speed_for_angle(
+                    hit_velocity,
+                    endpoint_geometry.angle_radians,
+                ),
+            });
+        }
+    }
+
+    if previous_longitudinal < -crate::arc_track::ARC_TRACK_EPSILON
+        && captures_free_arc_entry_window(offset_from_entry, endpoint_geometry)
+    {
+        Some(RuntimeArcEntryCapture {
+            hit_seconds: delta_seconds,
+            angle_radians: endpoint_geometry.angle_radians,
+            tangential_speed: signed_tangential_speed_for_angle(
+                body.velocity,
+                endpoint_geometry.angle_radians,
+            ),
+        })
+    } else {
+        None
+    }
+}
+
+fn captures_free_arc_entry_window(
+    offset_from_entry: Vector2,
+    endpoint_geometry: ArcTrackEndpointGeometry,
+) -> bool {
     offset_from_entry.length() <= ARC_ENTRY_CAPTURE_DISTANCE_THRESHOLD
-        && alignment >= ARC_ENTRY_CAPTURE_ALIGNMENT_THRESHOLD
         && offset_from_entry.dot(endpoint_geometry.tangent) <= ARC_ENTRY_CAPTURE_APPROACH_TOLERANCE
         && offset_from_entry.dot(endpoint_geometry.support_direction)
             >= -ARC_ENTRY_CAPTURE_SIDE_TOLERANCE
@@ -850,14 +967,18 @@ fn captures_anchored_arc_entry(
     let previous_longitudinal = previous_offset.dot(anchor_geometry.tangent);
     let overshoot_window = body.half_extents.x + ARC_ENTRY_ANCHORED_JUNCTION_OVERSHOOT_PADDING;
 
-    let supporting_contact = contact_geometry::contact_manifold(body, anchor_body).filter(|contact| {
-        body.acceleration.length() > f64::EPSILON
-            && body.acceleration.dot(contact.normal) < -ARC_ENTRY_ANCHORED_SUPPORT_ACCELERATION_TOLERANCE
-    });
+    let supporting_contact =
+        contact_geometry::contact_manifold(body, anchor_body).filter(|contact| {
+            body.acceleration.length() > f64::EPSILON
+                && body.acceleration.dot(contact.normal)
+                    < -ARC_ENTRY_ANCHORED_SUPPORT_ACCELERATION_TOLERANCE
+        });
 
     if let Some(contact) = supporting_contact {
-        let contact_longitudinal =
-            contact.point.sub(anchor_geometry.position).dot(anchor_geometry.tangent);
+        let contact_longitudinal = contact
+            .point
+            .sub(anchor_geometry.position)
+            .dot(anchor_geometry.tangent);
 
         if previous_longitudinal > overshoot_window
             || contact_longitudinal > overshoot_window
@@ -892,53 +1013,222 @@ fn captures_anchored_arc_entry(
     body.velocity.dot(endpoint_geometry.tangent) > f64::EPSILON
 }
 
-#[allow(clippy::too_many_arguments)]
-fn enforce_arc_track_attachment(
+fn signed_tangential_speed_for_angle(velocity: Vector2, angle_radians: f64) -> f64 {
+    let radial = crate::arc_track::radial_for_angle(angle_radians);
+    let tangent = crate::arc_track::tangent_for_increasing_angle(radial);
+
+    velocity.dot(tangent)
+}
+
+fn sync_body_to_arc_state(
     body: &mut RuntimeBodyState,
     center: Vector2,
     radius: f64,
-    start_angle_radians: f64,
-    end_angle_radians: f64,
-    span_radians: f64,
-    side: ArcTrackSide,
-    allow_detach: bool,
-) -> bool {
-    let projection = crate::arc_track::project_point_to_arc(
-        center,
-        radius,
-        start_angle_radians,
-        end_angle_radians,
-        span_radians,
-        body.position,
-    );
-    let current_angle = crate::arc_track::angle_radians_for_position(body.position.sub(center))
-        .unwrap_or(projection.angle_radians);
-
-    if allow_detach
-        && !crate::arc_track::angle_is_within_arc(current_angle, start_angle_radians, span_radians)
-    {
-        return false;
-    }
-
-    let radial = crate::arc_track::radial_for_angle(projection.angle_radians);
+    angle_radians: f64,
+    tangential_speed: f64,
+) {
+    let radial = crate::arc_track::radial_for_angle(angle_radians);
     let tangent = crate::arc_track::tangent_for_increasing_angle(radial);
-    let tangential_speed = body.velocity.dot(tangent);
     let tangential_acceleration = body.acceleration.dot(tangent);
-    let required_support = radial
-        .scale(-((tangential_speed * tangential_speed) / radius + body.acceleration.dot(radial)))
-        .dot(crate::arc_track::support_direction(radial, side));
 
-    if allow_detach && required_support < -crate::arc_track::ARC_TRACK_EPSILON {
-        return false;
-    }
-
-    body.position = projection.position;
+    body.position = center.add(radial.scale(radius));
     body.velocity = tangent.scale(tangential_speed);
     body.acceleration = tangent
         .scale(tangential_acceleration)
         .sub(radial.scale((tangential_speed * tangential_speed) / radius));
+    body.angular_velocity_radians = 0.0;
+}
+
+fn required_arc_track_support(
+    external_acceleration: Vector2,
+    tangential_speed: f64,
+    radial: Vector2,
+    radius: f64,
+    side: ArcTrackSide,
+) -> f64 {
+    radial
+        .scale(
+            -((tangential_speed * tangential_speed) / radius + external_acceleration.dot(radial)),
+        )
+        .dot(crate::arc_track::support_direction(radial, side))
+}
+
+fn advance_arc_track_attachment(
+    body: &mut RuntimeBodyState,
+    arc_track: &CompiledArcTrack,
+    attachment: &mut RuntimeArcTrackAttachment,
+    delta_seconds: f64,
+) -> bool {
+    if delta_seconds <= f64::EPSILON {
+        sync_body_to_arc_state(
+            body,
+            arc_track.center,
+            arc_track.radius,
+            attachment.angle_radians,
+            attachment.tangential_speed,
+        );
+        return true;
+    }
+
+    let external_acceleration = body.acceleration;
+    let radial = crate::arc_track::radial_for_angle(attachment.angle_radians);
+    let tangent = crate::arc_track::tangent_for_increasing_angle(radial);
+    let tangential_acceleration = external_acceleration.dot(tangent);
+    let required_support = required_arc_track_support(
+        external_acceleration,
+        attachment.tangential_speed,
+        radial,
+        arc_track.radius,
+        arc_track.side,
+    );
+
+    if required_support < -crate::arc_track::ARC_TRACK_EPSILON {
+        body.position = arc_track.center.add(radial.scale(arc_track.radius));
+        body.velocity = tangent.scale(attachment.tangential_speed);
+        body.acceleration = external_acceleration;
+        integrate_free_body(body, delta_seconds);
+        return false;
+    }
+
+    let current_progress =
+        ccw_span_radians(arc_track.start_angle_radians, attachment.angle_radians);
+    let angular_displacement = (attachment.tangential_speed * delta_seconds
+        + 0.5 * tangential_acceleration * delta_seconds * delta_seconds)
+        / arc_track.radius;
+    let next_progress = current_progress + angular_displacement;
+
+    if next_progress < 0.0 || next_progress > arc_track.span_radians {
+        let boundary_progress = if next_progress < 0.0 {
+            0.0
+        } else {
+            arc_track.span_radians
+        };
+        let boundary_angle = if boundary_progress <= 0.0 {
+            arc_track.start_angle_radians
+        } else {
+            arc_track.end_angle_radians
+        };
+        let boundary_distance = (boundary_progress - current_progress) * arc_track.radius;
+        let hit_seconds = solve_arc_boundary_hit_seconds(
+            attachment.tangential_speed,
+            tangential_acceleration,
+            boundary_distance,
+            delta_seconds,
+        );
+        let release_speed = attachment.tangential_speed + tangential_acceleration * hit_seconds;
+        let release_radial = crate::arc_track::radial_for_angle(boundary_angle);
+        let release_tangent = crate::arc_track::tangent_for_increasing_angle(release_radial);
+        let remaining_seconds = (delta_seconds - hit_seconds).max(0.0);
+
+        body.position = arc_track.center.add(release_radial.scale(arc_track.radius));
+        body.velocity = release_tangent.scale(release_speed);
+        body.acceleration = external_acceleration;
+
+        if remaining_seconds > f64::EPSILON {
+            integrate_free_body(body, remaining_seconds);
+        }
+
+        return false;
+    }
+
+    let next_angle = normalize_angle_radians(arc_track.start_angle_radians + next_progress);
+    let next_speed = attachment.tangential_speed + tangential_acceleration * delta_seconds;
+    let next_radial = crate::arc_track::radial_for_angle(next_angle);
+    let next_required_support = required_arc_track_support(
+        external_acceleration,
+        next_speed,
+        next_radial,
+        arc_track.radius,
+        arc_track.side,
+    );
+
+    if next_required_support < -crate::arc_track::ARC_TRACK_EPSILON {
+        let release_fraction =
+            (required_support / (required_support - next_required_support)).clamp(0.0, 1.0);
+        let release_seconds = delta_seconds * release_fraction;
+        let release_progress = current_progress
+            + (attachment.tangential_speed * release_seconds
+                + 0.5 * tangential_acceleration * release_seconds * release_seconds)
+                / arc_track.radius;
+        let release_angle =
+            normalize_angle_radians(arc_track.start_angle_radians + release_progress);
+        let release_speed = attachment.tangential_speed + tangential_acceleration * release_seconds;
+        let release_radial = crate::arc_track::radial_for_angle(release_angle);
+        let release_tangent = crate::arc_track::tangent_for_increasing_angle(release_radial);
+        let remaining_seconds = (delta_seconds - release_seconds).max(0.0);
+
+        body.position = arc_track.center.add(release_radial.scale(arc_track.radius));
+        body.velocity = release_tangent.scale(release_speed);
+        body.acceleration = external_acceleration;
+
+        if remaining_seconds > f64::EPSILON {
+            integrate_free_body(body, remaining_seconds);
+        }
+
+        return false;
+    }
+
+    attachment.angle_radians = next_angle;
+    attachment.tangential_speed = next_speed;
+    sync_body_to_arc_state(
+        body,
+        arc_track.center,
+        arc_track.radius,
+        next_angle,
+        next_speed,
+    );
 
     true
+}
+
+fn solve_arc_boundary_hit_seconds(
+    initial_speed: f64,
+    tangential_acceleration: f64,
+    target_distance: f64,
+    max_seconds: f64,
+) -> f64 {
+    if target_distance.abs() <= f64::EPSILON {
+        return 0.0;
+    }
+
+    if tangential_acceleration.abs() <= f64::EPSILON {
+        return (target_distance / initial_speed).clamp(0.0, max_seconds);
+    }
+
+    let discriminant =
+        initial_speed * initial_speed + 2.0 * tangential_acceleration * target_distance;
+
+    if discriminant < 0.0 {
+        return max_seconds;
+    }
+
+    let sqrt_discriminant = discriminant.sqrt();
+    let candidates = [
+        (-initial_speed + sqrt_discriminant) / tangential_acceleration,
+        (-initial_speed - sqrt_discriminant) / tangential_acceleration,
+    ];
+
+    candidates
+        .into_iter()
+        .filter(|candidate| candidate.is_finite())
+        .filter(|candidate| *candidate >= -f64::EPSILON && *candidate <= max_seconds + f64::EPSILON)
+        .min_by(|left, right| left.partial_cmp(right).expect("times should compare"))
+        .unwrap_or(max_seconds)
+        .clamp(0.0, max_seconds)
+}
+
+fn normalize_angle_radians(angle_radians: f64) -> f64 {
+    let mut normalized = angle_radians % (std::f64::consts::PI * 2.0);
+
+    if normalized < 0.0 {
+        normalized += std::f64::consts::PI * 2.0;
+    }
+
+    normalized
+}
+
+fn ccw_span_radians(start_angle_radians: f64, end_angle_radians: f64) -> f64 {
+    normalize_angle_radians(end_angle_radians - start_angle_radians)
 }
 
 fn get_body_pair_mut(

@@ -160,6 +160,23 @@ fn payload_frame<'a>(
         .expect("entity should exist in frame")
 }
 
+fn free_arc_entry_geometry(
+    center: Vector2,
+    radius: f64,
+    start_angle_degrees: f64,
+    end_angle_degrees: f64,
+    entry_endpoint: ArcTrackEntryEndpoint,
+) -> sim_core::arc_track::ArcTrackEndpointGeometry {
+    sim_core::arc_track::endpoint_geometry(
+        center,
+        radius,
+        start_angle_degrees.to_radians(),
+        end_angle_degrees.to_radians(),
+        ArcTrackSide::Inside,
+        entry_endpoint,
+    )
+}
+
 #[test]
 fn constraint_runtime_spring_acceleration_changes_with_stretch() {
     let mut relaxed_runtime = runtime_for_scene(
@@ -424,5 +441,100 @@ fn constraint_runtime_block_anchored_arc_track_detaches_when_support_would_need_
         released.position.x,
         released.position.y,
         released_radial_distance,
+    );
+}
+
+#[test]
+fn constraint_runtime_continuous_entry_advances_along_arc_with_remaining_substep() {
+    let center = vector2(10.0, 10.0);
+    let radius = 4.0;
+    let start_angle_degrees = 270.0;
+    let end_angle_degrees = 330.0;
+    let entry = free_arc_entry_geometry(
+        center,
+        radius,
+        start_angle_degrees,
+        end_angle_degrees,
+        ArcTrackEntryEndpoint::Start,
+    );
+    let authored_position = entry.position.add(entry.tangent.scale(-0.1));
+    let mut runtime = runtime_for_scene(
+        vec![ball("slider", authored_position, entry.tangent.scale(19.0))],
+        vec![ConstraintDefinition::ArcTrack {
+            id: "arc-track".to_string(),
+            center,
+            radius,
+            start_angle_degrees,
+            end_angle_degrees,
+            side: ArcTrackSide::Inside,
+            entry_endpoint: ArcTrackEntryEndpoint::Start,
+        }],
+        Vector2::ZERO,
+        0.05,
+    );
+
+    let first_frame = runtime.step();
+    let slider = payload_frame(&first_frame, "slider");
+    let radial_distance = slider.position.sub(center).length();
+    let advanced_distance = slider.position.sub(entry.position).length();
+
+    assert!(
+        (radial_distance - radius).abs() < 5e-2,
+        "expected continuous sweep entry to attach to the arc, got position=({:.3}, {:.3}) radial_distance={:.3}",
+        slider.position.x,
+        slider.position.y,
+        radial_distance,
+    );
+    assert!(
+        advanced_distance > 0.3,
+        "expected continuous entry to keep integrating along the arc after hit time instead of snapping to the endpoint, got advanced_distance={:.3} position=({:.3}, {:.3}) entry=({:.3}, {:.3})",
+        advanced_distance,
+        slider.position.x,
+        slider.position.y,
+        entry.position.x,
+        entry.position.y,
+    );
+}
+
+#[test]
+fn constraint_runtime_continuous_entry_rejects_wrong_direction_sweep() {
+    let center = vector2(10.0, 10.0);
+    let radius = 4.0;
+    let start_angle_degrees = 270.0;
+    let end_angle_degrees = 330.0;
+    let entry = free_arc_entry_geometry(
+        center,
+        radius,
+        start_angle_degrees,
+        end_angle_degrees,
+        ArcTrackEntryEndpoint::Start,
+    );
+    let authored_position = entry.position.add(entry.tangent.scale(0.1));
+    let authored_velocity = entry.tangent.scale(-19.0);
+    let mut runtime = runtime_for_scene(
+        vec![ball("slider", authored_position, authored_velocity)],
+        vec![ConstraintDefinition::ArcTrack {
+            id: "arc-track".to_string(),
+            center,
+            radius,
+            start_angle_degrees,
+            end_angle_degrees,
+            side: ArcTrackSide::Inside,
+            entry_endpoint: ArcTrackEntryEndpoint::Start,
+        }],
+        Vector2::ZERO,
+        0.05,
+    );
+
+    let first_frame = runtime.step();
+    let slider = payload_frame(&first_frame, "slider");
+    let radial_distance = slider.position.sub(center).length();
+
+    assert!(
+        (radial_distance - radius).abs() > 0.07,
+        "expected wrong-direction sweep to remain in free motion instead of attaching, got position=({:.3}, {:.3}) radial_distance={:.3}",
+        slider.position.x,
+        slider.position.y,
+        radial_distance,
     );
 }
