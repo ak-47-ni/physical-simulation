@@ -51,8 +51,40 @@ function toCartesian(vector: Vector2): Vector2 {
   };
 }
 
+function toCanvas(vector: Vector2): Vector2 {
+  return {
+    x: vector.x,
+    y: -vector.y,
+  };
+}
+
 function dot(a: Vector2, b: Vector2): number {
   return a.x * b.x + a.y * b.y;
+}
+
+function getBoardAnchoredArcTrackEntryAngleDegrees(
+  constraint: BoardAnchoredArcTrackConstraintDraft,
+): number {
+  return constraint.entryEndpoint === "start"
+    ? constraint.startAngleDegrees
+    : constraint.endAngleDegrees;
+}
+
+export function getBoardAnchoredArcTrackEntryTangent(
+  constraint: BoardAnchoredArcTrackConstraintDraft,
+): Vector2 {
+  const increasingArcTangent = getIncreasingArcTangent(
+    getBoardAnchoredArcTrackEntryAngleDegrees(constraint),
+  );
+  const cartesianEntryTangent =
+    constraint.entryEndpoint === "start"
+      ? increasingArcTangent
+      : {
+          x: -increasingArcTangent.x,
+          y: -increasingArcTangent.y,
+        };
+
+  return toCanvas(cartesianEntryTangent);
 }
 
 export function createBoardAnchoredArcTrackConstraint(

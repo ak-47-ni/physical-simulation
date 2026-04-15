@@ -673,6 +673,180 @@ describe("App selection sync", () => {
     ).toBeCloseTo(1, 6);
   });
 
+  it("preserves tilted-board guide attachment metadata after anchored arc-track geometry edits", async () => {
+    const compileRequests: Array<{ scene: { entities: unknown[] } }> = [];
+    const commands: string[] = [];
+    let tickCount = 0;
+    (globalThis as {
+      __TAURI_INTERNALS__?: {
+        invoke: (command: string, payload?: Record<string, unknown>) => Promise<unknown>;
+      };
+    }).__TAURI_INTERNALS__ = {
+      invoke: async (command, payload) => {
+        commands.push(command);
+
+        if (command === "compile_scene") {
+          const request = (payload as { request: { scene: { entities: unknown[] } } }).request;
+          compileRequests.push(request);
+
+          return {
+            status: "paused",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: true,
+            canResume: true,
+            blockReason: "rebuild-required",
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "stale",
+          };
+        }
+
+        if (command === "start_runtime") {
+          return {
+            status: "running",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: false,
+            canResume: true,
+            blockReason: null,
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "calculating",
+          };
+        }
+
+        if (command === "tick_runtime") {
+          tickCount += 1;
+
+          return {
+            status: "paused",
+            currentFrame: {
+              frameNumber: tickCount,
+              entities: [],
+            },
+            currentTimeSeconds: tickCount / 30,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: false,
+            canResume: true,
+            blockReason: null,
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: true,
+            resultState: "ready",
+          };
+        }
+
+        if (command === "reset_runtime") {
+          return {
+            status: "paused",
+            currentFrame: null,
+            currentTimeSeconds: 0,
+            timeScale: 1,
+            dirtyScopes: [],
+            rebuildRequired: true,
+            canResume: true,
+            blockReason: "rebuild-required",
+            playbackMode: "precomputed",
+            totalDurationSeconds: 20,
+            preparingProgress: null,
+            canSeek: false,
+            resultState: "stale",
+          };
+        }
+
+        throw new Error(`unexpected command: ${command}`);
+      },
+    };
+
+    render(<App />);
+    const transport = within(screen.getByTestId("bottom-transport-bar"));
+
+    fireEvent.click(screen.getByTestId("scene-entity-board-1"));
+    fireEvent.change(screen.getByLabelText("Angle"), { target: { value: "30" } });
+    createArcTrackViaLibraryDrop(TILTED_BOARD_START_ENDPOINT_DROP_POSITION);
+
+    fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "1.23" } });
+    fireEvent.change(screen.getByLabelText("Sweep angle"), { target: { value: "120" } });
+
+    expect((screen.getByLabelText("Radius") as HTMLInputElement).value).toBe("1.2");
+    expect((screen.getByLabelText("Sweep angle") as HTMLInputElement).value).toBe("120");
+    expect((screen.getByLabelText("Rotation") as HTMLInputElement).value).toBe("120");
+
+    fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
+    fireEvent.click(transport.getByRole("button", { name: /^calculate$/i }));
+
+    await waitFor(() => expect(commands.includes("start_runtime")).toBe(true));
+    await waitFor(() => expect(commands.includes("tick_runtime")).toBe(true));
+
+    const latestRequestWithArcTrack = [...compileRequests]
+      .reverse()
+      .find((request) =>
+        request.scene.entities.some(
+          (entity) =>
+            typeof entity === "object" &&
+            entity !== null &&
+            "id" in entity &&
+            entity.id === "arc-track-1",
+        ),
+      );
+    const arcTrackEntity = latestRequestWithArcTrack?.scene.entities.find(
+      (entity): entity is {
+        id: string;
+        kind: string;
+        center: { x: number; y: number };
+        anchorEntityId: string;
+        anchorEntityKind: string;
+        anchorEndpoint: string;
+        entryEndpoint: "start" | "end";
+        radius: number;
+        rotationDegrees: number;
+        sweepAngleDegrees: number;
+      } =>
+        typeof entity === "object" &&
+        entity !== null &&
+        "id" in entity &&
+        entity.id === "arc-track-1",
+    );
+
+    expect(arcTrackEntity).toMatchObject({
+      id: "arc-track-1",
+      kind: "arc-track",
+      anchorEntityId: "board-1",
+      anchorEntityKind: "board",
+      anchorEndpoint: "start",
+      center: { x: 2.705385, y: 3.471288 },
+      entryEndpoint: "start",
+      radius: 1.2,
+      rotationDegrees: 120,
+      sweepAngleDegrees: 120,
+    });
+
+    if (!arcTrackEntity) {
+      throw new Error("expected compile request to include the edited tilted board arc-track");
+    }
+
+    const boardStartEndpoint = readBoardStartEndpointForRotationDegrees(30);
+    const entryTangent = readArcTrackEntryTangent({
+      center: arcTrackEntity.center,
+      endpoint: boardStartEndpoint.point,
+      entryEndpoint: arcTrackEntity.entryEndpoint,
+    });
+
+    expect(entryTangent.x).toBeCloseTo(boardStartEndpoint.tangent.x, 6);
+    expect(entryTangent.y).toBeCloseTo(boardStartEndpoint.tangent.y, 6);
+  });
+
   it("shows a ball handing off from a board into anchored arc-guide motion after the local junction crossing", async () => {
     const compileRequests: Array<{
       scene: {

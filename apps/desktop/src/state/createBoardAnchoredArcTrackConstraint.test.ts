@@ -104,7 +104,10 @@ describe("createBoardAnchoredArcTrackConstraint", () => {
   });
 
   it("keeps tilted-board start-endpoint arcs tangent-aligned in the same entry direction", async () => {
-    const { createBoardAnchoredArcTrackConstraint } =
+    const {
+      createBoardAnchoredArcTrackConstraint,
+      getBoardAnchoredArcTrackEntryTangent,
+    } =
       await loadCreateBoardAnchoredArcTrackConstraint();
 
     const constraint = createBoardAnchoredArcTrackConstraint({
@@ -127,5 +130,7 @@ describe("createBoardAnchoredArcTrackConstraint", () => {
     expect(constraint.radius).toBeCloseTo(1, 4);
     expect(constraint.startAngleDegrees).toBeCloseTo(60, 4);
     expect(constraint.endAngleDegrees).toBeCloseTo(150, 4);
+    expect(getBoardAnchoredArcTrackEntryTangent(constraint).x).toBeCloseTo(-0.866025, 6);
+    expect(getBoardAnchoredArcTrackEntryTangent(constraint).y).toBeCloseTo(-0.5, 6);
   });
 });
