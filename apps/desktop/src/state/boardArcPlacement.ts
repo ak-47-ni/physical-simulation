@@ -12,6 +12,10 @@ export type BoardArcEndpoint = {
   tangent: Vector2;
 };
 
+export type BoardGuideSurface = BoardArcEndpointMap & {
+  normal: Vector2;
+};
+
 export type BoardArcSnapTarget = {
   boardDistance: number;
   boardId: string;
@@ -113,6 +117,15 @@ export function getBoardArcEndpoints(
       point: add(topEdgeMidpoint, halfWidthOffset),
       tangent: axisX,
     },
+  };
+}
+
+export function getBoardGuideSurface(
+  board: BoardArcAnchorEntity,
+): BoardGuideSurface {
+  return {
+    ...getBoardArcEndpoints(board),
+    normal: scale(getBoardAxisY(board), -1),
   };
 }
 

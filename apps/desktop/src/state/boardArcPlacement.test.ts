@@ -72,6 +72,26 @@ describe("boardArcPlacement", () => {
     expect(endpoints.end.tangent.y).toBeCloseTo(0.5, 6);
   });
 
+  it("publishes the board top-edge guide surface normal for guide-network handoff facts", async () => {
+    const { getBoardGuideSurface } = (await loadBoardArcPlacement()) as typeof import("./boardArcPlacement");
+    const guideSurface = getBoardGuideSurface(createBoard());
+
+    expect(guideSurface.start.point.x).toBeCloseTo(8.517949, 6);
+    expect(guideSurface.start.point.y).toBeCloseTo(3.066987, 6);
+    expect(guideSurface.end.point.x).toBeCloseTo(11.982051, 6);
+    expect(guideSurface.end.point.y).toBeCloseTo(5.066987, 6);
+    expect(guideSurface.normal.x).toBeCloseTo(0.5, 6);
+    expect(guideSurface.normal.y).toBeCloseTo(-0.866025, 6);
+    expect(
+      guideSurface.start.tangent.x * guideSurface.normal.x +
+        guideSurface.start.tangent.y * guideSurface.normal.y,
+    ).toBeCloseTo(0, 6);
+    expect(
+      guideSurface.end.tangent.x * guideSurface.normal.x +
+        guideSurface.end.tangent.y * guideSurface.normal.y,
+    ).toBeCloseTo(0, 6);
+  });
+
   it("detects top-edge block endpoints and travel tangents from rotated block geometry", async () => {
     const { getBoardArcEndpoints } = (await loadBoardArcPlacement()) as typeof import("./boardArcPlacement");
     const endpoints = getBoardArcEndpoints(createBlock() as never);
