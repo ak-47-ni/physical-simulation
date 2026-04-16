@@ -10,6 +10,7 @@ use crate::arc_track::{
 use crate::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use crate::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use crate::force::ForceSourceDefinition;
+use crate::guide_runtime::RuntimeGuideState;
 use crate::playback::{
     InvalidPlaybackConfig, PRECOMPUTE_CHUNK_STEPS, PlaybackConfig, PlaybackMode, PrecomputeSession,
     PreparedPlayback,
@@ -96,6 +97,7 @@ pub enum BridgeBlockReason {
 pub struct BridgeStatusSnapshot {
     pub status: BridgeStatus,
     pub current_frame: Option<RuntimeFramePayload>,
+    pub guide_states: Vec<BridgeGuideStateSnapshot>,
     pub current_time_seconds: f64,
     pub time_scale: f64,
     pub playback_mode: PlaybackMode,
@@ -106,6 +108,25 @@ pub struct BridgeStatusSnapshot {
     pub rebuild_required: bool,
     pub can_resume: bool,
     pub block_reason: Option<BridgeBlockReason>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "guideState", rename_all = "kebab-case")]
+pub enum BridgeGuideStateSnapshot {
+    Free {
+        #[serde(rename = "entityId")]
+        entity_id: String,
+    },
+    Attached {
+        #[serde(rename = "entityId")]
+        entity_id: String,
+        #[serde(rename = "guideSegmentId")]
+        guide_segment_id: String,
+        #[serde(rename = "guideProgress")]
+        guide_progress: f64,
+        #[serde(rename = "guideSpeed")]
+        guide_speed: f64,
+    },
 }
 
 impl SimulationBridge {
@@ -445,10 +466,18 @@ impl SimulationBridge {
         let current_frame = self
             .cached_current_frame()
             .or_else(|| self.runtime.as_ref().map(RuntimeScene::current_frame));
+        let guide_states = match (&current_frame, self.playback_config.mode) {
+            (Some(frame), PlaybackMode::Realtime) => read_bridge_guide_states(
+                self.runtime.as_ref(),
+                frame,
+            ),
+            _ => Vec::new(),
+        };
 
         BridgeStatusSnapshot {
             status: self.status,
             current_frame,
+            guide_states,
             current_time_seconds,
             time_scale: self.time_scale,
             playback_mode: self.playback_config.mode,
@@ -621,6 +650,34 @@ impl SimulationBridge {
         self.playback_cursor_frame =
             (self.playback_cursor_frame + step_count).min(prepared_playback.last_index());
     }
+}
+
+fn read_bridge_guide_states(
+    runtime: Option<&RuntimeScene>,
+    frame: &RuntimeFramePayload,
+) -> Vec<BridgeGuideStateSnapshot> {
+    let Some(runtime) = runtime else {
+        return Vec::new();
+    };
+
+    frame.entities
+        .iter()
+        .map(|entity| match runtime.guide_state(&entity.entity_id) {
+            RuntimeGuideState::Free => BridgeGuideStateSnapshot::Free {
+                entity_id: entity.entity_id.clone(),
+            },
+            RuntimeGuideState::OnGuide {
+                segment_id,
+                progress,
+                speed,
+            } => BridgeGuideStateSnapshot::Attached {
+                entity_id: entity.entity_id.clone(),
+                guide_segment_id: segment_id,
+                guide_progress: progress,
+                guide_speed: speed,
+            },
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

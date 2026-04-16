@@ -152,6 +152,42 @@ describe("runtimeBridge", () => {
     });
   });
 
+  it("captures per-entity guide attachment metadata from bridge status snapshots", () => {
+    const state = applyRuntimeBridgeStatusSnapshot(
+      createInitialRuntimeBridgeState(),
+      createStatusSnapshot({
+        currentFrame: createRuntimeFramePayload({
+          frameNumber: 12,
+          entities: [
+            {
+              entityId: "ball-1",
+              position: { x: 2.4, y: 1.1 },
+              rotation: 0,
+            },
+          ],
+        }),
+        guideStates: [
+          {
+            entityId: "ball-1",
+            guideState: "attached",
+            guideSegmentId: "guide:arc-track-1:arc",
+            guideProgress: 0.42,
+            guideSpeed: -1.6,
+          },
+        ],
+      }),
+    );
+
+    expect(state.guideStates).toEqual({
+      "ball-1": {
+        guideState: "attached",
+        guideSegmentId: "guide:arc-track-1:arc",
+        guideProgress: 0.42,
+        guideSpeed: -1.6,
+      },
+    });
+  });
+
   it("stores runtime command errors and clears them after a successful status snapshot", () => {
     const failed = setRuntimeBridgeErrorMessage(
       createInitialRuntimeBridgeState(),

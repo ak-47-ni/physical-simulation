@@ -64,9 +64,25 @@ export type RuntimeTrajectorySample = {
   acceleration: Vector2;
 };
 
+export type RuntimeEntityGuideState =
+  | {
+      guideState: "free";
+    }
+  | {
+      guideState: "attached";
+      guideSegmentId: string;
+      guideProgress: number;
+      guideSpeed: number;
+    };
+
+export type RuntimeGuideStateSnapshot = {
+  entityId: string;
+} & RuntimeEntityGuideState;
+
 export type RuntimeBridgeState = {
   status: RuntimeBridgeStatus;
   currentFrame: RuntimeFrameView | null;
+  guideStates: Record<string, RuntimeEntityGuideState>;
   currentTimeSeconds: number;
   timeScale: number;
   dirtyScopes: DirtyEditScope[];
@@ -85,6 +101,7 @@ export type RuntimeBridgeState = {
 export type RuntimeBridgeStatusSnapshot = {
   status: RuntimeBridgeState["status"];
   currentFrame: RuntimeFramePayload | null;
+  guideStates?: RuntimeGuideStateSnapshot[];
   currentTimeSeconds: number;
   timeScale: number;
   dirtyScopes: DirtyEditScope[];
@@ -135,6 +152,7 @@ export function createInitialRuntimeBridgeState(): RuntimeBridgeState {
   return {
     status: "idle",
     currentFrame: null,
+    guideStates: {},
     currentTimeSeconds: 0,
     timeScale: 1,
     dirtyScopes: [],
@@ -194,6 +212,7 @@ export function applyRuntimeBridgeStatusSnapshot(
   const nextState = clearRuntimeBridgeFeedback({
     ...state,
     status: snapshot.status,
+    guideStates: readRuntimeGuideStates(snapshot.guideStates),
     currentTimeSeconds: snapshot.currentTimeSeconds,
     timeScale: snapshot.timeScale,
     dirtyScopes: [...snapshot.dirtyScopes],
@@ -230,6 +249,7 @@ export function markRuntimeBridgeSceneDirty(
     rebuildRequired,
     canResume: !rebuildRequired,
     blockReason: rebuildRequired ? "rebuild-required" : null,
+    guideStates: {},
     preparingProgress: null,
     canSeek: rebuildRequired ? false : state.canSeek,
     resultState: rebuildRequired
@@ -690,6 +710,28 @@ function readRuntimeResultStateFromSnapshot(
   }
 
   return state.resultState;
+}
+
+function readRuntimeGuideStates(
+  snapshots: RuntimeGuideStateSnapshot[] | undefined,
+): Record<string, RuntimeEntityGuideState> {
+  if (!snapshots || snapshots.length === 0) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    snapshots.map((snapshot) => [
+      snapshot.entityId,
+      snapshot.guideState === "free"
+        ? { guideState: "free" as const }
+        : {
+            guideState: "attached" as const,
+            guideSegmentId: snapshot.guideSegmentId,
+            guideProgress: snapshot.guideProgress,
+            guideSpeed: snapshot.guideSpeed,
+          },
+    ]),
+  );
 }
 
 function clampRuntimeTimeSeconds(timeSeconds: number, totalDurationSeconds: number): number {

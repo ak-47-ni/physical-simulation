@@ -709,6 +709,93 @@ describe("desktopRuntimeBridgePort", () => {
     expect(port.getSnapshot().bridge.canSeek).toBe(false);
   });
 
+  it("publishes backend guide attachment metadata through tauri status snapshots", async () => {
+    const request = createRotatedBlockLocalTangentHandoffRequest();
+    const commands: string[] = [];
+    const fallbackPort = createMockRuntimeBridgePort();
+    const port = createDesktopRuntimeBridgePort({
+      fallbackPort,
+      invoke: async <T>(command: string, payload?: Record<string, unknown>) => {
+        commands.push(command);
+
+        if (command === "compile_scene") {
+          expect(payload).toEqual({ request });
+          return createStatusSnapshot({
+            currentFrame: createRuntimeFramePayload({
+              frameNumber: 0,
+              entities: [
+                {
+                  entityId: "ball-1",
+                  position: { x: 1.96, y: 1.56 },
+                  rotation: 0,
+                },
+              ],
+            }),
+            guideStates: [
+              {
+                entityId: "ball-1",
+                guideState: "attached",
+                guideSegmentId: "guide:block-1:top",
+                guideProgress: 0.6,
+                guideSpeed: 1.1,
+              },
+            ],
+          }) as T;
+        }
+
+        if (command === "step_runtime") {
+          return createStatusSnapshot({
+            currentFrame: createRuntimeFramePayload({
+              frameNumber: 1,
+              entities: [
+                {
+                  entityId: "ball-1",
+                  position: { x: 2.48, y: 3.04 },
+                  rotation: 0,
+                },
+              ],
+            }),
+            currentTimeSeconds: 1 / 60,
+            guideStates: [
+              {
+                entityId: "ball-1",
+                guideState: "attached",
+                guideSegmentId: "guide:arc-track-1:arc",
+                guideProgress: 0.12,
+                guideSpeed: -1.1,
+              },
+            ],
+          }) as T;
+        }
+
+        throw new Error(`unexpected command: ${command}`);
+      },
+    });
+
+    await port.compile(request);
+
+    expect(port.getSnapshot().bridge.guideStates).toEqual({
+      "ball-1": {
+        guideState: "attached",
+        guideSegmentId: "guide:block-1:top",
+        guideProgress: 0.6,
+        guideSpeed: 1.1,
+      },
+    });
+
+    await port.step();
+
+    expect(commands).toEqual(["compile_scene", "step_runtime"]);
+    expect(port.getSnapshot().bridge.guideStates).toEqual({
+      "ball-1": {
+        guideState: "attached",
+        guideSegmentId: "guide:arc-track-1:arc",
+        guideProgress: 0.12,
+        guideSpeed: -1.1,
+      },
+    });
+  });
+
   it("preserves backend rebound peaks across friction-only recompiles", async () => {
     const lowFrictionRequest = createElasticBounceRequest(0);
     const highFrictionRequest = createElasticBounceRequest(0.9);
