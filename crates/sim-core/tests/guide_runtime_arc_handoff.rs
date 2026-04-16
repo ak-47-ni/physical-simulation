@@ -181,6 +181,8 @@ fn guide_runtime_arc_segment_detaches_to_free_when_support_is_insufficient() {
     let (mut runtime, arc_center) =
         runtime_for_board_arc_scene(initial_position, initial_velocity, 0.025);
     let mut closest_distance = f64::INFINITY;
+    let mut saw_arc_guide = false;
+    let mut first_free_after_arc: Option<(Vector2, Vector2)> = None;
 
     for _ in 0..24 {
         let frame = runtime.step();
@@ -192,6 +194,17 @@ fn guide_runtime_arc_segment_detaches_to_free_when_support_is_insufficient() {
         let distance = (ball_frame.position.sub(arc_center).length() - 1.25).abs();
 
         closest_distance = closest_distance.min(distance);
+        match runtime.guide_state("ball") {
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if segment_id == "guide:arc-track:arc" =>
+            {
+                saw_arc_guide = true;
+            }
+            RuntimeGuideState::Free if saw_arc_guide && first_free_after_arc.is_none() => {
+                first_free_after_arc = Some((ball_frame.position, ball_frame.velocity));
+            }
+            RuntimeGuideState::Free | RuntimeGuideState::OnGuide { .. } => {}
+        }
     }
 
     assert!(
@@ -202,17 +215,12 @@ fn guide_runtime_arc_segment_detaches_to_free_when_support_is_insufficient() {
         runtime.guide_state("ball"),
         RuntimeGuideState::Free
     ));
-
-    let frame = runtime
-        .current_frame()
-        .entities
-        .into_iter()
-        .find(|entity| entity.entity_id == "ball")
-        .expect("ball should exist");
-    let radial = frame.position.sub(arc_center);
+    let (first_free_position, first_free_velocity) = first_free_after_arc
+        .expect("ball should detach into a free frame after entering the connected arc guide");
+    let radial = first_free_position.sub(arc_center);
 
     assert!(
-        radial.dot(frame.velocity).abs() > 5e-2,
-        "detached ball should no longer move perfectly tangent to the arc"
+        radial.dot(first_free_velocity).abs() > 5e-2,
+        "detached ball should immediately leave the arc with a non-tangential free-flight velocity"
     );
 }
