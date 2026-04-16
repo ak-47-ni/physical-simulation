@@ -253,3 +253,25 @@ fn guide_runtime_board_arc_handoff_result_is_substep_invariant() {
         RuntimeGuideState::OnGuide { ref segment_id, .. } if segment_id == "guide:arc-track:arc"
     ));
 }
+
+#[test]
+fn guide_runtime_terminal_zone_handoff_does_not_wait_for_exact_endpoint_crossing() {
+    let board_center = vector2(0.0, 0.0);
+    let (_, tangent, surface_normal) =
+        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+    let mut runtime = runtime_for_board_arc_scene(
+        vector2(1.985, -0.25).add(surface_normal.scale(0.4)),
+        tangent.scale(0.2),
+        0.025,
+    );
+
+    runtime.step();
+
+    assert!(
+        matches!(
+            runtime.guide_state("ball"),
+            RuntimeGuideState::OnGuide { ref segment_id, .. } if segment_id == "guide:arc-track:arc"
+        ),
+        "terminal-zone handoff should switch to the successor arc before exact endpoint overshoot"
+    );
+}

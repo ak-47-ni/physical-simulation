@@ -14,6 +14,8 @@ use crate::solver::{RuntimeBodyShape, RuntimeBodyState};
 const LINEAR_GUIDE_ATTACH_NORMAL_TOLERANCE: f64 = 0.08;
 const LINEAR_GUIDE_ATTACH_LONGITUDINAL_TOLERANCE: f64 = 0.08;
 const LINEAR_GUIDE_MIN_TANGENTIAL_SPEED: f64 = 1e-4;
+const GUIDE_TERMINAL_ZONE_MIN_LENGTH: f64 = 0.02;
+const GUIDE_TERMINAL_ZONE_BODY_RADIUS_FACTOR: f64 = 0.25;
 const GUIDE_HANDOFF_SPEED_EPSILON: f64 = 1e-6;
 const GUIDE_HANDOFF_LOOP_LIMIT: usize = 8;
 
@@ -55,6 +57,8 @@ pub fn attach_free_bodies_to_guides(
     bodies: &mut [RuntimeBodyState],
     guide_network: &CompiledGuideNetwork,
     attachments: &mut HashMap<String, RuntimeGuideAttachment>,
+    reattach_blocked_until_frame_by_body_id: &HashMap<String, u64>,
+    current_frame_number: u64,
 ) {
     if guide_network.segments.is_empty() {
         return;
@@ -64,6 +68,9 @@ pub fn attach_free_bodies_to_guides(
         if body.is_static
             || body.shape != RuntimeBodyShape::Ball
             || attachments.contains_key(&body.entity_id)
+            || reattach_blocked_until_frame_by_body_id
+                .get(&body.entity_id)
+                .is_some_and(|blocked_until_frame| *blocked_until_frame >= current_frame_number)
         {
             continue;
         }
@@ -79,6 +86,8 @@ pub fn advance_guide_attachments(
     bodies: &mut [RuntimeBodyState],
     guide_network: &CompiledGuideNetwork,
     attachments: &mut HashMap<String, RuntimeGuideAttachment>,
+    reattach_blocked_until_frame_by_body_id: &mut HashMap<String, u64>,
+    current_frame_number: u64,
     delta_seconds: f64,
 ) {
     if guide_network.segments.is_empty() {
@@ -106,6 +115,8 @@ pub fn advance_guide_attachments(
         if advance_single_attachment(body, guide_network, &mut attachment, delta_seconds) {
             attachments.insert(body_id, attachment);
         } else {
+            reattach_blocked_until_frame_by_body_id
+                .insert(body_id.clone(), current_frame_number.saturating_add(1));
             attachments.remove(&body_id);
         }
     }
@@ -191,6 +202,15 @@ fn advance_linear_guide(
 ) -> GuideAdvanceOutcome {
     let external_acceleration = body.acceleration;
     let tangential_acceleration = external_acceleration.dot(linear.direction);
+    if let Some(next_attachment) =
+        try_terminal_zone_handoff(body, guide_network, attachment, linear)
+    {
+        *attachment = next_attachment;
+        sync_body_to_current_guide(body, guide_network, attachment);
+        return GuideAdvanceOutcome::HandedOff {
+            remaining: delta_seconds,
+        };
+    }
     let next_progress = attachment.progress
         + attachment.speed * delta_seconds
         + 0.5 * tangential_acceleration * delta_seconds * delta_seconds;
@@ -245,6 +265,41 @@ fn advance_linear_guide(
     body.acceleration = external_acceleration;
     integrate_free_body(body, remaining_seconds);
     GuideAdvanceOutcome::Detached
+}
+
+fn try_terminal_zone_handoff(
+    body: &RuntimeBodyState,
+    guide_network: &CompiledGuideNetwork,
+    attachment: &RuntimeGuideAttachment,
+    linear: &LinearGuideSegment,
+) -> Option<RuntimeGuideAttachment> {
+    let terminal_zone_length = linear_terminal_zone_length(body, linear);
+
+    if attachment.speed > GUIDE_HANDOFF_SPEED_EPSILON
+        && linear.length - attachment.progress <= terminal_zone_length
+    {
+        return try_handoff(
+            body,
+            guide_network,
+            linear.id.as_str(),
+            GuideSegmentEndpoint::End,
+            attachment.speed,
+        );
+    }
+
+    if attachment.speed < -GUIDE_HANDOFF_SPEED_EPSILON
+        && attachment.progress <= terminal_zone_length
+    {
+        return try_handoff(
+            body,
+            guide_network,
+            linear.id.as_str(),
+            GuideSegmentEndpoint::Start,
+            attachment.speed,
+        );
+    }
+
+    None
 }
 
 fn advance_arc_guide(
@@ -442,6 +497,14 @@ fn sync_body_to_current_guide(
             sync_body_to_arc_guide(body, arc, attachment.progress, attachment.speed);
         }
     }
+}
+
+fn linear_terminal_zone_length(body: &RuntimeBodyState, linear: &LinearGuideSegment) -> f64 {
+    let body_radius = body.half_extents.x.max(body.half_extents.y);
+
+    (body_radius * GUIDE_TERMINAL_ZONE_BODY_RADIUS_FACTOR)
+        .max(GUIDE_TERMINAL_ZONE_MIN_LENGTH)
+        .min(linear.length)
 }
 
 fn sync_body_to_linear_guide(

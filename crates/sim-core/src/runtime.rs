@@ -49,6 +49,7 @@ pub struct RuntimeScene {
     guide_network: CompiledGuideNetwork,
     attached_arc_track_by_body_id: HashMap<String, RuntimeArcTrackAttachment>,
     attached_guide_by_body_id: HashMap<String, RuntimeGuideAttachment>,
+    guide_reattach_blocked_until_frame_by_body_id: HashMap<String, u64>,
     analyzer_blueprints: Vec<CompiledAnalyzer>,
     analyzers: Vec<TrajectoryAnalyzerState>,
     frame_number: u64,
@@ -124,6 +125,7 @@ impl RuntimeScene {
             guide_network,
             attached_arc_track_by_body_id: HashMap::new(),
             attached_guide_by_body_id: HashMap::new(),
+            guide_reattach_blocked_until_frame_by_body_id: HashMap::new(),
             analyzer_blueprints,
             analyzers,
             frame_number: 0,
@@ -152,6 +154,8 @@ impl RuntimeScene {
     }
 
     pub fn step(&mut self) -> RuntimeFramePayload {
+        self.guide_reattach_blocked_until_frame_by_body_id
+            .retain(|_, blocked_until_frame| *blocked_until_frame >= self.frame_number);
         let substep_count =
             contact_substeps::recommended_substep_count(&self.bodies, self.fixed_delta_seconds);
         let substep_delta_seconds = self.fixed_delta_seconds / substep_count as f64;
@@ -161,6 +165,8 @@ impl RuntimeScene {
                 &mut self.bodies,
                 &self.guide_network,
                 &mut self.attached_guide_by_body_id,
+                &self.guide_reattach_blocked_until_frame_by_body_id,
+                self.frame_number,
             );
             let guide_attached_body_ids = attached_body_ids(&self.attached_guide_by_body_id);
             step_bodies(
@@ -176,6 +182,8 @@ impl RuntimeScene {
                 &mut self.bodies,
                 &self.guide_network,
                 &mut self.attached_guide_by_body_id,
+                &mut self.guide_reattach_blocked_until_frame_by_body_id,
+                self.frame_number,
                 substep_delta_seconds,
             );
         }
@@ -194,6 +202,7 @@ impl RuntimeScene {
         self.bodies = self.baseline.clone();
         self.attached_arc_track_by_body_id.clear();
         self.attached_guide_by_body_id.clear();
+        self.guide_reattach_blocked_until_frame_by_body_id.clear();
         self.frame_number = 0;
         self.elapsed_time_seconds = 0.0;
         self.analyzers = self

@@ -151,6 +151,13 @@ pub fn compile_guide_network(
         let Some(anchor_geometry) = box_geometry_for_anchor(anchor_entity, anchor.endpoint) else {
             continue;
         };
+        let Some(board_segment) = network.segment(&board_segment_id) else {
+            continue;
+        };
+        let board_end_node_id = match board_segment {
+            CompiledGuideSegment::Linear(linear) => linear.end_node_id.clone(),
+            CompiledGuideSegment::Arc(_) => continue,
+        };
 
         for entry_endpoint in capture_policy_endpoints(arc_track.capture_policy) {
             let arc_entry = endpoint_geometry(
@@ -162,17 +169,23 @@ pub fn compile_guide_network(
                 entry_endpoint,
             );
 
-            if anchor_geometry.position.sub(arc_entry.position).length()
-                > GUIDE_JUNCTION_POSITION_TOLERANCE
-                || anchor_geometry.tangent.dot(arc_entry.tangent) < GUIDE_JUNCTION_TANGENT_ALIGNMENT
-            {
-                continue;
-            }
-
             let to_endpoint = match entry_endpoint {
                 ArcTrackEntryEndpoint::Start => GuideSegmentEndpoint::Start,
                 ArcTrackEntryEndpoint::End => GuideSegmentEndpoint::End,
             };
+
+            align_arc_junction_to_node(
+                &mut network,
+                arc_guide_segment_id(&arc_track.id).as_str(),
+                to_endpoint,
+                &board_end_node_id,
+            );
+
+            let _geometry_matches_authoritative_anchor =
+                anchor_geometry.position.sub(arc_entry.position).length()
+                    <= GUIDE_JUNCTION_POSITION_TOLERANCE
+                    && anchor_geometry.tangent.dot(arc_entry.tangent)
+                        >= GUIDE_JUNCTION_TANGENT_ALIGNMENT;
 
             push_connection_once(
                 &mut network,
@@ -187,6 +200,30 @@ pub fn compile_guide_network(
     }
 
     network
+}
+
+fn align_arc_junction_to_node(
+    network: &mut CompiledGuideNetwork,
+    segment_id: &str,
+    endpoint: GuideSegmentEndpoint,
+    node_id: &str,
+) {
+    let Some(segment) = network
+        .segments
+        .iter_mut()
+        .find(|segment| segment.id() == segment_id)
+    else {
+        return;
+    };
+
+    let CompiledGuideSegment::Arc(arc) = segment else {
+        return;
+    };
+
+    match endpoint {
+        GuideSegmentEndpoint::Start => arc.start_node_id = node_id.to_string(),
+        GuideSegmentEndpoint::End => arc.end_node_id = node_id.to_string(),
+    }
 }
 
 fn add_arc_guide_segment(network: &mut CompiledGuideNetwork, arc_track: &CompiledArcTrack) {
