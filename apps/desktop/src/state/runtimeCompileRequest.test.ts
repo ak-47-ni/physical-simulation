@@ -7,7 +7,10 @@ import {
 
 import { createSceneAuthoringSettings } from "./sceneAuthoringSettings";
 import { createInitialSceneEntities } from "./editorStore";
-import { createEditorSceneStateFromSceneDocument } from "./editorSceneDocument";
+import {
+  createEditorSceneStateFromSceneDocument,
+  createSceneDocumentFromEditorState,
+} from "./editorSceneDocument";
 import {
   createRuntimeCompileRequest,
   createRuntimeCompileRequestFromEditorState,
@@ -716,6 +719,79 @@ describe("runtimeCompileRequest", () => {
     expect(arcTrackEntity?.center.y).toBeCloseTo(4.6, 6);
     expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
     expect(arcTrackEntity).not.toHaveProperty("thickness");
+  });
+
+  it("keeps tilted board junction metadata identical after scene round-trip recompilation", () => {
+    const settings = createSceneAuthoringSettings({
+      gravity: 980,
+      lengthUnit: "cm",
+      velocityUnit: "cm/s",
+      massUnit: "g",
+      pixelsPerMeter: 1,
+    });
+    const entities = [
+      {
+        id: "ball-tilted-1",
+        kind: "ball" as const,
+        label: "Ball Tilted 1",
+        x: 120,
+        y: 160,
+        radius: 24,
+        mass: 1200,
+        friction: 0,
+        restitution: 1,
+        locked: false,
+        velocityX: 90,
+        velocityY: -20,
+      },
+      createTiltedBoardEntity(),
+      createTiltedBoardAnchoredArcTrackEntity(),
+    ];
+    const initialRequest = createRuntimeCompileRequestFromEditorState({
+      entities,
+      settings,
+    });
+    const persistedScene = createSceneDocumentFromEditorState({
+      entities,
+    });
+    const restored = createEditorSceneStateFromSceneDocument({
+      scene: persistedScene,
+    });
+    const restoredRequest = createRuntimeCompileRequestFromEditorState({
+      entities: restored.entities,
+      settings,
+    });
+
+    const initialArcTrackEntity = initialRequest.scene.entities.find(
+      (entity): entity is {
+        id: string;
+        kind: string;
+        anchorEntityId: string;
+        anchorEntityKind: string;
+        anchorEndpoint: string;
+        center: { x: number; y: number };
+        entryEndpoint: string;
+        radius: number;
+        rotationDegrees: number;
+        sweepAngleDegrees: number;
+      } => entity.id === "arc-track-tilted-1",
+    );
+    const restoredArcTrackEntity = restoredRequest.scene.entities.find(
+      (entity): entity is {
+        id: string;
+        kind: string;
+        anchorEntityId: string;
+        anchorEntityKind: string;
+        anchorEndpoint: string;
+        center: { x: number; y: number };
+        entryEndpoint: string;
+        radius: number;
+        rotationDegrees: number;
+        sweepAngleDegrees: number;
+      } => entity.id === "arc-track-tilted-1",
+    );
+
+    expect(restoredArcTrackEntity).toEqual(initialArcTrackEntity);
   });
 
   it("keeps linear and arc guide source metadata aligned in one compile request", () => {

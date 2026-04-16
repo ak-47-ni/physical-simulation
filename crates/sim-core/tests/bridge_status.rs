@@ -98,3 +98,24 @@ fn bridge_status_snapshot_serializes_dirty_scope_metadata_with_frontend_keys() {
     assert_eq!(value["dirtyScopes"], json!(["analysis", "physics"]));
     assert_eq!(value["rebuildRequired"], json!(true));
 }
+
+#[test]
+fn bridge_status_snapshot_serializes_runtime_guide_states_with_frontend_keys() {
+    let mut bridge = SimulationBridge::new(0.1);
+    bridge
+        .compile_scene(runtime_scene_request())
+        .expect("scene should compile");
+
+    let value = serde_json::to_value(bridge.status_snapshot()).expect("snapshot should serialize");
+    let guide_state = value["guideStates"]
+        .as_array()
+        .and_then(|states| {
+            states
+                .iter()
+                .find(|state| state["entityId"] == json!("block-1"))
+                .cloned()
+        })
+        .expect("entity guide state should serialize");
+
+    assert_eq!(guide_state["guideState"], json!("free"));
+}
