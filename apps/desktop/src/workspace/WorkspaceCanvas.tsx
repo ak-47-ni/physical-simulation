@@ -1,6 +1,8 @@
 import { useEffect, useState, type CSSProperties, type MouseEvent } from "react";
 
 import type { SceneDisplaySettings } from "../io/sceneFile";
+import { getBoardGuideSurface } from "../state/boardArcPlacement";
+import { getBoardAnchoredArcTrackEntryTangent } from "../state/createBoardAnchoredArcTrackConstraint";
 import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
 import type { EditorSceneEntity } from "../state/editorStore";
 import {
@@ -546,6 +548,105 @@ function createArcTrackGuideStyle(start: { x: number; y: number }, end: { x: num
   };
 }
 
+type SelectedArcTrackJunctionDebugSurface = {
+  anchorEndpoint: "start" | "end";
+  anchorEntityId: string;
+  anchorEntityKind: "board" | "block";
+  anchorPoint: { x: number; y: number };
+  anchorTangent: { x: number; y: number };
+  entryEndpoint: "start" | "end";
+  entryPoint: { x: number; y: number };
+  entryTangent: { x: number; y: number };
+  guideNormal: { x: number; y: number };
+  junctionAligned: boolean;
+  positionError: number;
+  tangentDot: number;
+};
+
+function roundJunctionDebugValue(value: number): number {
+  return Number(value.toFixed(6));
+}
+
+function normalizeJunctionDebugError(value: number): number {
+  return value < 0.00001 ? 0 : roundJunctionDebugValue(value);
+}
+
+function formatJunctionDebugValue(value: number): string {
+  return `${roundJunctionDebugValue(value)}`;
+}
+
+function formatJunctionDebugPoint(point: { x: number; y: number }): string {
+  return `${formatJunctionDebugValue(point.x)}, ${formatJunctionDebugValue(point.y)}`;
+}
+
+function createSelectedArcTrackJunctionDebugSurface(
+  entities: EditorSceneEntity[],
+  selectedEntityId: string | null,
+): SelectedArcTrackJunctionDebugSurface | null {
+  const selectedArcTrack = entities.find(
+    (entity): entity is Extract<EditorSceneEntity, { kind: "arc-track" }> =>
+      entity.id === selectedEntityId && entity.kind === "arc-track",
+  );
+
+  if (!selectedArcTrack) {
+    return null;
+  }
+
+  const anchorEntity = entities.find(
+    (entity): entity is Extract<EditorSceneEntity, { kind: "block" | "board" }> =>
+      entity.id === selectedArcTrack.anchorEntityId &&
+      entity.kind === selectedArcTrack.anchorEntityKind,
+  );
+
+  if (!anchorEntity) {
+    return null;
+  }
+
+  const guideSurface = getBoardGuideSurface(anchorEntity);
+  const anchor = guideSurface[selectedArcTrack.anchorEndpoint];
+  const halfSweepDegrees = selectedArcTrack.sweepAngleDegrees / 2;
+  const startAngleDegrees = selectedArcTrack.rotationDegrees - halfSweepDegrees;
+  const endAngleDegrees = selectedArcTrack.rotationDegrees + halfSweepDegrees;
+  const entryAngleDegrees =
+    selectedArcTrack.entryEndpoint === "start" ? startAngleDegrees : endAngleDegrees;
+  const entryAngleRadians = (entryAngleDegrees * Math.PI) / 180;
+  const entryPoint = {
+    x: selectedArcTrack.center.x + selectedArcTrack.radius * Math.cos(entryAngleRadians),
+    y: selectedArcTrack.center.y - selectedArcTrack.radius * Math.sin(entryAngleRadians),
+  };
+  const entryTangent = getBoardAnchoredArcTrackEntryTangent({
+    center: selectedArcTrack.center,
+    endAngleDegrees,
+    entryEndpoint: selectedArcTrack.entryEndpoint,
+    id: selectedArcTrack.id,
+    kind: "arc-track",
+    radius: selectedArcTrack.radius,
+    side: "inside",
+    startAngleDegrees,
+  });
+  const positionError = normalizeJunctionDebugError(
+    Math.hypot(entryPoint.x - anchor.point.x, entryPoint.y - anchor.point.y),
+  );
+  const tangentDot = roundJunctionDebugValue(
+    Math.max(-1, Math.min(1, anchor.tangent.x * entryTangent.x + anchor.tangent.y * entryTangent.y)),
+  );
+
+  return {
+    anchorEndpoint: selectedArcTrack.anchorEndpoint,
+    anchorEntityId: selectedArcTrack.anchorEntityId,
+    anchorEntityKind: selectedArcTrack.anchorEntityKind,
+    anchorPoint: anchor.point,
+    anchorTangent: anchor.tangent,
+    entryEndpoint: selectedArcTrack.entryEndpoint,
+    entryPoint,
+    entryTangent,
+    guideNormal: guideSurface.normal,
+    junctionAligned: positionError === 0 && tangentDot === 1,
+    positionError,
+    tangentDot,
+  };
+}
+
 export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   const {
     authoringPlacementPreview = null,
@@ -857,6 +958,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     constraintPlacement.boardEndpointKey &&
     constraintPlacement.previewConstraint &&
     (constraintPlacement.mode === "pick-radius" || constraintPlacement.mode === "pick-span");
+  const selectedArcTrackJunctionDebugSurface = createSelectedArcTrackJunctionDebugSurface(
+    entities,
+    state.selectedEntityId,
+  );
 
   function handleConstraintClick(
     event: MouseEvent<HTMLButtonElement>,
@@ -1145,6 +1250,61 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             pointerEvents: "none",
           }}
         />
+
+        {selectedArcTrackJunctionDebugSurface ? (
+          <div
+            data-anchor-endpoint={selectedArcTrackJunctionDebugSurface.anchorEndpoint}
+            data-anchor-entity={`${selectedArcTrackJunctionDebugSurface.anchorEntityKind}:${selectedArcTrackJunctionDebugSurface.anchorEntityId}`}
+            data-entry-endpoint={selectedArcTrackJunctionDebugSurface.entryEndpoint}
+            data-junction-aligned={String(selectedArcTrackJunctionDebugSurface.junctionAligned)}
+            data-position-error={formatJunctionDebugValue(
+              selectedArcTrackJunctionDebugSurface.positionError,
+            )}
+            data-tangent-dot={formatJunctionDebugValue(
+              selectedArcTrackJunctionDebugSurface.tangentDot,
+            )}
+            data-testid="workspace-selected-arc-track-junction-debug"
+            style={{
+              position: "absolute",
+              top: "24px",
+              right: "24px",
+              display: "grid",
+              gap: "4px",
+              minWidth: "260px",
+              padding: "10px 12px",
+              borderRadius: "12px",
+              background: "rgba(15, 23, 42, 0.84)",
+              color: "#eff6ff",
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              fontSize: "11px",
+              lineHeight: 1.45,
+              pointerEvents: "none",
+              boxShadow: "0 10px 28px rgba(15, 23, 42, 0.16)",
+              zIndex: 6,
+            }}
+          >
+            <strong style={{ fontSize: "11px", fontWeight: 700 }}>Arc Junction Debug</strong>
+            <div>{`Anchor ${selectedArcTrackJunctionDebugSurface.anchorEntityKind}:${selectedArcTrackJunctionDebugSurface.anchorEntityId} (${selectedArcTrackJunctionDebugSurface.anchorEndpoint})`}</div>
+            <div>{`Entry endpoint: ${selectedArcTrackJunctionDebugSurface.entryEndpoint}`}</div>
+            <div data-testid="workspace-selected-arc-track-junction-anchor-point">
+              {`Anchor point: ${formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.anchorPoint)}`}
+            </div>
+            <div data-testid="workspace-selected-arc-track-junction-entry-point">
+              {`Entry point: ${formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.entryPoint)}`}
+            </div>
+            <div data-testid="workspace-selected-arc-track-junction-anchor-tangent">
+              {`Anchor tangent: ${formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.anchorTangent)}`}
+            </div>
+            <div data-testid="workspace-selected-arc-track-junction-entry-tangent">
+              {`Entry tangent: ${formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.entryTangent)}`}
+            </div>
+            <div data-testid="workspace-selected-arc-track-junction-guide-normal">
+              {`Guide normal: ${formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.guideNormal)}`}
+            </div>
+            <div>{`Position error: ${formatJunctionDebugValue(selectedArcTrackJunctionDebugSurface.positionError)}`}</div>
+            <div>{`Tangent dot: ${formatJunctionDebugValue(selectedArcTrackJunctionDebugSurface.tangentDot)}`}</div>
+          </div>
+        ) : null}
 
         {display.showVelocityVectors
           ? renderedEntities.map((entity) => {

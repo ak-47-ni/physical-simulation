@@ -58,8 +58,13 @@ function createAuthoredArcTrackEntity(
     id: "arc-track-authored-1",
     kind: "arc-track",
     label: "Arc Track Authored 1",
+    anchorEntityId: "board-1",
+    anchorEntityKind: "board",
+    anchorEndpoint: "start",
     center: { x: 4, y: 2 },
+    entryEndpoint: "start",
     radius: 1,
+    sweepAngleDegrees: 90,
     centralAngleDegrees: 90,
     rotationDegrees: 0,
     thickness: 0.18,
@@ -398,5 +403,77 @@ describe("WorkspaceCanvas arc-track overlays", () => {
     expectArcGuidePath("workspace-arc-track-preview-path");
     expect(screen.getByTestId("workspace-arc-track-preview-radius-guide")).toBeDefined();
     expect(screen.getByTestId("workspace-arc-track-preview-tangent-guide")).toBeDefined();
+  });
+
+  it("publishes selected anchored arc-track junction facts from board guide geometry and entry tangent truth", () => {
+    const board = {
+      ...authoredBoardInMeters,
+      id: "board-tilted-1",
+      locked: true,
+      rotationDegrees: 30,
+      width: 4,
+      height: 1,
+      x: 8,
+      y: 4,
+    } as Extract<EditorSceneEntity, { kind: "board" }>;
+    const arcTrack = createAuthoredArcTrackEntity({
+      id: "arc-track-tilted-1",
+      label: "Tilted Arc Track 1",
+      anchorEntityId: board.id,
+      anchorEntityKind: "board",
+      anchorEndpoint: "start",
+      center: { x: 8.017949, y: 3.933012 },
+      entryEndpoint: "start",
+      radius: 1,
+      sweepAngleDegrees: 90,
+      centralAngleDegrees: 90,
+      rotationDegrees: 105,
+    });
+
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        displayEntities={projectRuntimeSceneEntities({
+          editorEntities: [board, arcTrack],
+          runtimeFrame: null,
+          viewport: meterViewport,
+        })}
+        entities={[board, arcTrack]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          selectedEntityId: arcTrack.id,
+        }}
+        viewport={meterViewport}
+      />,
+    );
+
+    const debugSurface = screen.getByTestId("workspace-selected-arc-track-junction-debug");
+
+    expect(debugSurface.getAttribute("data-anchor-entity")).toBe("board:board-tilted-1");
+    expect(debugSurface.getAttribute("data-anchor-endpoint")).toBe("start");
+    expect(debugSurface.getAttribute("data-entry-endpoint")).toBe("start");
+    expect(debugSurface.getAttribute("data-junction-aligned")).toBe("true");
+    expect(debugSurface.getAttribute("data-position-error")).toBe("0");
+    expect(debugSurface.getAttribute("data-tangent-dot")).toBe("1");
+    expect(screen.getByTestId("workspace-selected-arc-track-junction-anchor-point").textContent).toContain(
+      "8.517949, 3.066987",
+    );
+    expect(
+      screen.getByTestId("workspace-selected-arc-track-junction-entry-point").textContent,
+    ).toContain("8.517949, 3.066987");
+    expect(
+      screen.getByTestId("workspace-selected-arc-track-junction-anchor-tangent").textContent,
+    ).toContain("-0.866025, -0.5");
+    expect(
+      screen.getByTestId("workspace-selected-arc-track-junction-entry-tangent").textContent,
+    ).toContain("-0.866025, -0.5");
+    expect(
+      screen.getByTestId("workspace-selected-arc-track-junction-guide-normal").textContent,
+    ).toContain("0.5, -0.866025");
   });
 });
