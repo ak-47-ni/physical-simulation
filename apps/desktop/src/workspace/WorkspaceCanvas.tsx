@@ -2,7 +2,10 @@ import { useEffect, useState, type CSSProperties, type MouseEvent } from "react"
 
 import type { SceneDisplaySettings } from "../io/sceneFile";
 import { getBoardGuideSurface } from "../state/boardArcPlacement";
-import { getBoardAnchoredArcTrackEntryTangent } from "../state/createBoardAnchoredArcTrackConstraint";
+import {
+  getBoardAnchoredArcTrackEntryPoint,
+  getBoardAnchoredArcTrackEntryTangent,
+} from "../state/createBoardAnchoredArcTrackConstraint";
 import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
 import type { EditorSceneEntity } from "../state/editorStore";
 import {
@@ -90,6 +93,7 @@ type WorkspaceCanvasProps = {
     velocityX: number;
     velocityY: number;
   } | null;
+  showArcTrackJunctionDebug?: boolean;
   state: import("../state/editorStore").EditorState;
   viewport?: UnitViewport;
 };
@@ -582,7 +586,12 @@ function formatJunctionDebugPoint(point: { x: number; y: number }): string {
 function createSelectedArcTrackJunctionDebugSurface(
   entities: EditorSceneEntity[],
   selectedEntityId: string | null,
+  enabled: boolean,
 ): SelectedArcTrackJunctionDebugSurface | null {
+  if (!enabled) {
+    return null;
+  }
+
   const selectedArcTrack = entities.find(
     (entity): entity is Extract<EditorSceneEntity, { kind: "arc-track" }> =>
       entity.id === selectedEntityId && entity.kind === "arc-track",
@@ -607,13 +616,16 @@ function createSelectedArcTrackJunctionDebugSurface(
   const halfSweepDegrees = selectedArcTrack.sweepAngleDegrees / 2;
   const startAngleDegrees = selectedArcTrack.rotationDegrees - halfSweepDegrees;
   const endAngleDegrees = selectedArcTrack.rotationDegrees + halfSweepDegrees;
-  const entryAngleDegrees =
-    selectedArcTrack.entryEndpoint === "start" ? startAngleDegrees : endAngleDegrees;
-  const entryAngleRadians = (entryAngleDegrees * Math.PI) / 180;
-  const entryPoint = {
-    x: selectedArcTrack.center.x + selectedArcTrack.radius * Math.cos(entryAngleRadians),
-    y: selectedArcTrack.center.y - selectedArcTrack.radius * Math.sin(entryAngleRadians),
-  };
+  const entryPoint = getBoardAnchoredArcTrackEntryPoint({
+    center: selectedArcTrack.center,
+    endAngleDegrees,
+    entryEndpoint: selectedArcTrack.entryEndpoint,
+    id: selectedArcTrack.id,
+    kind: "arc-track",
+    radius: selectedArcTrack.radius,
+    side: "inside",
+    startAngleDegrees,
+  });
   const entryTangent = getBoardAnchoredArcTrackEntryTangent({
     center: selectedArcTrack.center,
     endAngleDegrees,
@@ -669,6 +681,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     onSelectEntity,
     onViewportOffsetChange,
     selectedRuntimeVelocityVector = null,
+    showArcTrackJunctionDebug = false,
     state,
     viewport = DEFAULT_WORKSPACE_VIEWPORT,
   } = props;
@@ -961,6 +974,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   const selectedArcTrackJunctionDebugSurface = createSelectedArcTrackJunctionDebugSurface(
     entities,
     state.selectedEntityId,
+    showArcTrackJunctionDebug,
   );
 
   function handleConstraintClick(

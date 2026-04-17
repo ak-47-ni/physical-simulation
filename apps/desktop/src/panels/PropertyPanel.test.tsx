@@ -603,8 +603,13 @@ describe("PropertyPanel", () => {
           id: "arc-track-1",
           kind: "arc-track",
           label: "Arc Track 1",
+          anchorEntityId: "board-1",
+          anchorEntityKind: "board",
+          anchorEndpoint: "start",
           center: { x: 3.6, y: 2.4 },
+          entryEndpoint: "start",
           radius: 1.2,
+          sweepAngleDegrees: 135,
           centralAngleDegrees: 135,
           rotationDegrees: 20,
           thickness: 0.18,
@@ -612,25 +617,25 @@ describe("PropertyPanel", () => {
       />,
     );
 
-    expect((screen.getByLabelText("Center X") as HTMLInputElement).value).toBe("3.6");
-    expect((screen.getByLabelText("Center Y") as HTMLInputElement).value).toBe("2.4");
+    expect(screen.getByText("Anchor")).toBeDefined();
+    expect(screen.getByText("board:board-1 (start)")).toBeDefined();
+    expect(screen.getByText("Entry endpoint")).toBeDefined();
+    expect(screen.getByText("start")).toBeDefined();
     expect((screen.getByLabelText("Radius") as HTMLInputElement).value).toBe("1.2");
-    expect((screen.getByLabelText("Central angle") as HTMLInputElement).value).toBe("135");
-    expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("20");
+    expect((screen.getByLabelText("Sweep angle") as HTMLInputElement).value).toBe("135");
+    expect((screen.getByLabelText("Rotation") as HTMLInputElement).value).toBe("20");
     expect(screen.queryByLabelText("Mass")).toBeNull();
     expect(screen.queryByLabelText("Velocity X")).toBeNull();
+    expect(screen.queryByLabelText("Center X")).toBeNull();
+    expect(screen.queryByLabelText("Center Y")).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Center X"), { target: { value: "4.1" } });
-    fireEvent.change(screen.getByLabelText("Center Y"), { target: { value: "2.9" } });
     fireEvent.change(screen.getByLabelText("Radius"), { target: { value: "1.3" } });
-    fireEvent.change(screen.getByLabelText("Central angle"), { target: { value: "210" } });
-    fireEvent.change(screen.getByLabelText("Angle"), { target: { value: "-30" } });
+    fireEvent.change(screen.getByLabelText("Sweep angle"), { target: { value: "210" } });
+    fireEvent.change(screen.getByLabelText("Rotation"), { target: { value: "-30" } });
 
     expect(arcTrackUpdates).toEqual([
-      { center: { x: 4.1, y: 2.4 } },
-      { center: { x: 3.6, y: 2.9 } },
       { radius: 1.3 },
-      { centralAngleDegrees: 210 },
+      { sweepAngleDegrees: 210 },
       { rotationDegrees: -30 },
     ]);
   });

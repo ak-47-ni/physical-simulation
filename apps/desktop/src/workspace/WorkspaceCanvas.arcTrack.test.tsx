@@ -405,7 +405,7 @@ describe("WorkspaceCanvas arc-track overlays", () => {
     expect(screen.getByTestId("workspace-arc-track-preview-tangent-guide")).toBeDefined();
   });
 
-  it("publishes selected anchored arc-track junction facts from board guide geometry and entry tangent truth", () => {
+  it("hides anchored arc-track junction debug facts by default in normal editor selection", () => {
     const board = {
       ...authoredBoardInMeters,
       id: "board-tilted-1",
@@ -443,6 +443,57 @@ describe("WorkspaceCanvas arc-track overlays", () => {
         onMoveEntity={() => undefined}
         onGridVisibleChange={() => undefined}
         onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+        state={{
+          ...createInitialEditorState(),
+          selectedEntityId: arcTrack.id,
+        }}
+        viewport={meterViewport}
+      />,
+    );
+
+    expect(screen.queryByTestId("workspace-selected-arc-track-junction-debug")).toBeNull();
+  });
+
+  it("publishes selected anchored arc-track junction facts from board guide geometry and entry tangent truth when debug is enabled", () => {
+    const board = {
+      ...authoredBoardInMeters,
+      id: "board-tilted-1",
+      locked: true,
+      rotationDegrees: 30,
+      width: 4,
+      height: 1,
+      x: 8,
+      y: 4,
+    } as Extract<EditorSceneEntity, { kind: "board" }>;
+    const arcTrack = createAuthoredArcTrackEntity({
+      id: "arc-track-tilted-1",
+      label: "Tilted Arc Track 1",
+      anchorEntityId: board.id,
+      anchorEntityKind: "board",
+      anchorEndpoint: "start",
+      center: { x: 8.017949, y: 3.933012 },
+      entryEndpoint: "start",
+      radius: 1,
+      sweepAngleDegrees: 90,
+      centralAngleDegrees: 90,
+      rotationDegrees: 105,
+    });
+
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        displayEntities={projectRuntimeSceneEntities({
+          editorEntities: [board, arcTrack],
+          runtimeFrame: null,
+          viewport: meterViewport,
+        })}
+        entities={[board, arcTrack]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        showArcTrackJunctionDebug
         onToolChange={() => undefined}
         state={{
           ...createInitialEditorState(),

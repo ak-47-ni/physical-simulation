@@ -70,6 +70,17 @@ function getBoardAnchoredArcTrackEntryAngleDegrees(
     : constraint.endAngleDegrees;
 }
 
+export function getBoardAnchoredArcTrackEntryPoint(
+  constraint: BoardAnchoredArcTrackConstraintDraft,
+): Vector2 {
+  const angleRadians = (getBoardAnchoredArcTrackEntryAngleDegrees(constraint) * Math.PI) / 180;
+
+  return {
+    x: roundArcValue(constraint.center.x + constraint.radius * Math.cos(angleRadians)),
+    y: roundArcValue(constraint.center.y - constraint.radius * Math.sin(angleRadians)),
+  };
+}
+
 export function getBoardAnchoredArcTrackEntryTangent(
   constraint: BoardAnchoredArcTrackConstraintDraft,
 ): Vector2 {
