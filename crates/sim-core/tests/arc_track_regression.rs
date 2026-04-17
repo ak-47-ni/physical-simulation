@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use sim_core::arc_track::{
     ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
     CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS, angle_radians_for_position,
-    contact_path_radius, effective_center_radius,
+    contact_path_radius, effective_center_radius, endpoint_geometry,
 };
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
@@ -144,6 +144,23 @@ fn inside_effective_radius(radius: f64) -> f64 {
     )
 }
 
+fn free_arc_entry_geometry(
+    center: Vector2,
+    radius: f64,
+    start_angle_degrees: f64,
+    end_angle_degrees: f64,
+    entry_endpoint: ArcTrackEntryEndpoint,
+) -> sim_core::arc_track::ArcTrackEndpointGeometry {
+    endpoint_geometry(
+        center,
+        contact_path_radius(radius, DEFAULT_ARC_TRACK_THICKNESS, ArcTrackSide::Inside),
+        start_angle_degrees.to_radians(),
+        end_angle_degrees.to_radians(),
+        ArcTrackSide::Inside,
+        entry_endpoint,
+    )
+}
+
 fn local_tangent_crossing_ball(
     id: &str,
     anchor_frame: AnchorEndpointFrame,
@@ -259,6 +276,13 @@ fn runtime_entity(runtime: &RuntimeScene, entity_id: &str) -> RuntimeEntityFrame
         .expect("entity should exist in frame")
 }
 
+fn arc_tangential_speed(center: Vector2, entity: &RuntimeEntityFrame) -> f64 {
+    let radial = entity.position.sub(center).normalized();
+    let tangent = radial.perp().scale(-1.0);
+
+    entity.velocity.dot(tangent)
+}
+
 fn payload_frame<'a>(
     frame: &'a RuntimeFramePayload,
     entity_id: &str,
@@ -327,8 +351,13 @@ fn arc_track_regression_detaches_when_support_would_need_to_pull() {
             < 5e-2
     );
 
-    run_steps(&mut runtime, 5);
-    let frame = runtime_entity(&runtime, "ball");
+    let mut frame = runtime.current_frame();
+
+    for _ in 0..5 {
+        let current_frame = runtime.step();
+        frame = current_frame;
+    }
+    let frame = payload_frame(&frame, "ball");
 
     assert!(frame.position.y < 6.0 - 1e-3);
     assert!((frame.position.sub(center).length() - expected_radius).abs() > 5e-2);
@@ -436,6 +465,68 @@ fn arc_track_regression_block_anchored_handoff_preserves_ideal_guide_motion() {
         radial.dot(frame.velocity).abs() < 5e-2,
         "expected ideal guide motion to keep velocity tangent to the arc, got radial_dot_velocity={:.3}",
         radial.dot(frame.velocity),
+    );
+}
+
+#[test]
+fn arc_track_regression_turning_point_reverses_while_staying_on_arc() {
+    let center = vector2(10.0, 10.0);
+    let radius = 4.0;
+    let start_angle_degrees = 270.0;
+    let end_angle_degrees = 330.0;
+    let expected_radius = inside_effective_radius(radius);
+    let entry = free_arc_entry_geometry(
+        center,
+        radius,
+        start_angle_degrees,
+        end_angle_degrees,
+        ArcTrackEntryEndpoint::End,
+    );
+    let authored_position = entry.position.add(entry.tangent.scale(-0.1));
+    let mut runtime = runtime_for_scene(
+        ball("ball", authored_position, entry.tangent.scale(0.8)),
+        ConstraintDefinition::ArcTrack {
+            id: "arc-track".to_string(),
+            center,
+            radius,
+            start_angle_degrees,
+            end_angle_degrees,
+            side: ArcTrackSide::Inside,
+            entry_endpoint: ArcTrackEntryEndpoint::End,
+        },
+        vector2(0.0, -9.81),
+        0.025,
+    );
+
+    let mut saw_negative_arc_speed = false;
+    let mut saw_positive_arc_speed = false;
+
+    for _ in 0..160 {
+        runtime.step();
+        let frame = runtime_entity(&runtime, "ball");
+        let radial_distance = frame.position.sub(center).length();
+
+        if (radial_distance - expected_radius).abs() > 5e-2 {
+            continue;
+        }
+
+        let tangential_speed = arc_tangential_speed(center, &frame);
+        if tangential_speed < -1e-2 {
+            saw_negative_arc_speed = true;
+        }
+        if saw_negative_arc_speed && tangential_speed > 1e-2 {
+            saw_positive_arc_speed = true;
+            break;
+        }
+    }
+
+    assert!(
+        saw_negative_arc_speed,
+        "ball should first enter the arc with the incoming tangential direction from the end entry"
+    );
+    assert!(
+        saw_positive_arc_speed,
+        "turning-point motion should stay rail-supported long enough to reverse tangential direction on the arc"
     );
 }
 

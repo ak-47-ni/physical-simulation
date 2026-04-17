@@ -232,9 +232,16 @@ fn guide_runtime_arc_segment_detaches_to_free_when_support_is_insufficient() {
     let (first_free_position, first_free_velocity) = first_free_after_arc
         .expect("ball should detach into a free frame after entering the connected arc guide");
     let radial = first_free_position.sub(arc_center);
+    let radial_distance = radial.length();
 
     assert!(
         radial.dot(first_free_velocity).abs() > 5e-2,
         "detached ball should immediately leave the arc with a non-tangential free-flight velocity"
+    );
+    assert!(
+        radial_distance >= expected_radius - 1e-3,
+        "detached body should not tunnel inward through the arc shell within the same substep, got radial_distance={:.3} effective_radius={:.3}",
+        radial_distance,
+        expected_radius,
     );
 }

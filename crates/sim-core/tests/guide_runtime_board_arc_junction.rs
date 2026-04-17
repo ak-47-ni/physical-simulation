@@ -280,3 +280,62 @@ fn guide_runtime_terminal_zone_handoff_does_not_pre_switch_before_reaching_the_j
         "terminal-zone logic should not pre-switch to the arc while the ball is still visibly short of the board endpoint"
     );
 }
+
+#[test]
+fn guide_runtime_arc_turning_point_reverses_back_to_board_without_detaching() {
+    let board_center = vector2(0.0, 0.0);
+    let (_, tangent, surface_normal) =
+        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+    let mut runtime = runtime_for_board_arc_scene(
+        vector2(1.25, -0.25).add(surface_normal.scale(0.4)),
+        tangent.scale(0.8),
+        0.025,
+    );
+
+    let mut saw_arc_guide = false;
+    let mut saw_free_after_arc = false;
+    let mut returned_to_board = false;
+
+    for _ in 0..80 {
+        runtime.step();
+
+        match runtime.guide_state("ball") {
+            RuntimeGuideState::OnGuide {
+                ref segment_id,
+                speed,
+                ..
+            } if segment_id == "guide:arc-track:arc" => {
+                saw_arc_guide = true;
+                if speed < 0.0 {
+                    returned_to_board = false;
+                }
+            }
+            RuntimeGuideState::OnGuide {
+                ref segment_id,
+                speed,
+                ..
+            } if saw_arc_guide && segment_id == "guide:board:top" && speed < 0.0 => {
+                returned_to_board = true;
+                break;
+            }
+            RuntimeGuideState::Free if saw_arc_guide => {
+                saw_free_after_arc = true;
+                break;
+            }
+            RuntimeGuideState::Free | RuntimeGuideState::OnGuide { .. } => {}
+        }
+    }
+
+    assert!(
+        saw_arc_guide,
+        "ball should first enter the connected arc guide before reaching its turning point"
+    );
+    assert!(
+        !saw_free_after_arc,
+        "turning-point reversal should stay shell-supported instead of detaching into free flight"
+    );
+    assert!(
+        returned_to_board,
+        "ball should reverse along the rail and hand back to the board guide after slowing to zero"
+    );
+}

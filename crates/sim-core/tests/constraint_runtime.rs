@@ -161,6 +161,16 @@ fn payload_frame<'a>(
         .expect("entity should exist in frame")
 }
 
+fn arc_tangential_speed(
+    center: Vector2,
+    entity: &sim_core::runtime::RuntimeEntityFrame,
+) -> f64 {
+    let radial = entity.position.sub(center).normalized();
+    let tangent = radial.perp().scale(-1.0);
+
+    entity.velocity.dot(tangent)
+}
+
 fn free_arc_entry_geometry(
     center: Vector2,
     radius: f64,
@@ -438,10 +448,12 @@ fn constraint_runtime_block_anchored_arc_track_detaches_when_support_would_need_
         captured.position.sub(center).length(),
     );
 
+    let mut released_frame = runtime.current_frame();
+
     for _ in 0..5 {
-        runtime.step();
+        let frame = runtime.step();
+        released_frame = frame;
     }
-    let released_frame = runtime.current_frame();
     let released = payload_frame(&released_frame, "ball");
     let released_radial_distance = released.position.sub(center).length();
 
@@ -548,5 +560,67 @@ fn constraint_runtime_continuous_entry_rejects_wrong_direction_sweep() {
         slider.position.x,
         slider.position.y,
         radial_distance,
+    );
+}
+
+#[test]
+fn constraint_runtime_arc_track_turning_point_reverses_while_staying_on_arc() {
+    let center = vector2(10.0, 10.0);
+    let radius = 4.0;
+    let start_angle_degrees = 270.0;
+    let end_angle_degrees = 330.0;
+    let expected_radius = inside_effective_radius(radius);
+    let entry = free_arc_entry_geometry(
+        center,
+        radius,
+        start_angle_degrees,
+        end_angle_degrees,
+        ArcTrackEntryEndpoint::End,
+    );
+    let authored_position = entry.position.add(entry.tangent.scale(-0.1));
+    let mut runtime = runtime_for_scene(
+        vec![ball("slider", authored_position, entry.tangent.scale(0.8))],
+        vec![ConstraintDefinition::ArcTrack {
+            id: "arc-track".to_string(),
+            center,
+            radius,
+            start_angle_degrees,
+            end_angle_degrees,
+            side: ArcTrackSide::Inside,
+            entry_endpoint: ArcTrackEntryEndpoint::End,
+        }],
+        vector2(0.0, -9.81),
+        0.025,
+    );
+
+    let mut saw_negative_arc_speed = false;
+    let mut saw_positive_arc_speed = false;
+
+    for _ in 0..160 {
+        let frame = runtime.step();
+        let slider = payload_frame(&frame, "slider");
+        let radial_distance = slider.position.sub(center).length();
+
+        if (radial_distance - expected_radius).abs() > 5e-2 {
+            continue;
+        }
+
+        let tangential_speed = arc_tangential_speed(center, slider);
+        if tangential_speed < -1e-2 {
+            saw_negative_arc_speed = true;
+        }
+        if saw_negative_arc_speed && tangential_speed > 1e-2 {
+            saw_positive_arc_speed = true;
+            break;
+        }
+    }
+
+    assert!(
+        saw_negative_arc_speed,
+        "ball should first enter the arc with the incoming tangential direction from the end entry"
+    );
+    assert!(
+        saw_positive_arc_speed,
+        "turning-point motion should stay rail-supported long enough to reverse tangential direction on the arc"
     );
 }

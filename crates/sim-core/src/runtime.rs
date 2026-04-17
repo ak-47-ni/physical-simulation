@@ -19,7 +19,8 @@ use crate::guide_runtime::{
 use crate::scene::CompiledScene;
 use crate::solver::{
     RuntimeArcTrackAttachment, RuntimeArcTrackGeometry, RuntimeBodyShape, RuntimeBodyState,
-    inverse_inertia_for_body, project_track_bindings, step_bodies,
+    inverse_inertia_for_body, project_track_bindings, resolve_recently_detached_bodies,
+    step_bodies,
 };
 use serde::{Deserialize, Serialize};
 
@@ -178,13 +179,17 @@ impl RuntimeScene {
                 self.gravity,
                 substep_delta_seconds,
             );
-            advance_guide_attachments(
+            let detached_guide_body_delta_seconds_by_id = advance_guide_attachments(
                 &mut self.bodies,
                 &self.guide_network,
                 &mut self.attached_guide_by_body_id,
                 &mut self.guide_reattach_blocked_until_frame_by_body_id,
                 self.frame_number,
                 substep_delta_seconds,
+            );
+            resolve_recently_detached_bodies(
+                &mut self.bodies,
+                &detached_guide_body_delta_seconds_by_id,
             );
         }
         self.frame_number += 1;
