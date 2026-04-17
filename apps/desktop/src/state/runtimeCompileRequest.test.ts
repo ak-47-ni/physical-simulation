@@ -26,6 +26,8 @@ function createAnchoredArcTrackEntity() {
     anchorEndpoint: "start" as const,
     center: { x: 3.18, y: 3.72 },
     entryEndpoint: "start" as const,
+    side: "inside" as const,
+    physicsMode: "hybrid-rail-body" as const,
     radius: 1,
     rotationDegrees: 135,
     sweepAngleDegrees: 90,
@@ -43,6 +45,8 @@ function createBlockAnchoredArcTrackEntity() {
     anchorEndpoint: "start" as const,
     center: { x: 2.48, y: 3.04 },
     entryEndpoint: "start" as const,
+    side: "inside" as const,
+    physicsMode: "hybrid-rail-body" as const,
     radius: 1,
     rotationDegrees: 135,
     sweepAngleDegrees: 90,
@@ -79,6 +83,8 @@ function createTiltedBoardAnchoredArcTrackEntity() {
     anchorEndpoint: "end" as const,
     center: { x: 780, y: 460 },
     entryEndpoint: "end" as const,
+    side: "inside" as const,
+    physicsMode: "hybrid-rail-body" as const,
     radius: 150,
     rotationDegrees: 210,
     sweepAngleDegrees: 135,
@@ -532,6 +538,8 @@ describe("runtimeCompileRequest", () => {
         anchorEndpoint: string;
         center: { x: number; y: number };
         entryEndpoint: string;
+        side: string;
+        physicsMode: string;
         radius: number;
         rotationDegrees: number;
         sweepAngleDegrees: number;
@@ -548,6 +556,8 @@ describe("runtimeCompileRequest", () => {
       anchorEndpoint: "start",
       center: { x: 3.18, y: 3.72 },
       entryEndpoint: "start",
+      side: "inside",
+      physicsMode: "hybrid-rail-body",
       radius: 1,
       rotationDegrees: 135,
       sweepAngleDegrees: 90,
@@ -610,6 +620,8 @@ describe("runtimeCompileRequest", () => {
         anchorEndpoint: string;
         center: { x: number; y: number };
         entryEndpoint: string;
+        side: string;
+        physicsMode: string;
         radius: number;
         rotationDegrees: number;
         sweepAngleDegrees: number;
@@ -636,6 +648,8 @@ describe("runtimeCompileRequest", () => {
       anchorEndpoint: "start",
       center: { x: 2.48, y: 3.04 },
       entryEndpoint: "start",
+      side: "inside",
+      physicsMode: "hybrid-rail-body",
       radius: 1,
       rotationDegrees: 135,
       sweepAngleDegrees: 90,
@@ -693,6 +707,8 @@ describe("runtimeCompileRequest", () => {
         anchorEndpoint: string;
         center: { x: number; y: number };
         entryEndpoint: string;
+        side: string;
+        physicsMode: string;
         radius: number;
         rotationDegrees: number;
         sweepAngleDegrees: number;
@@ -717,6 +733,8 @@ describe("runtimeCompileRequest", () => {
       anchorEntityKind: "board",
       anchorEndpoint: "end",
       entryEndpoint: "end",
+      side: "inside",
+      physicsMode: "hybrid-rail-body",
       radius: 1.5,
       rotationDegrees: 210,
       sweepAngleDegrees: 135,
@@ -777,6 +795,8 @@ describe("runtimeCompileRequest", () => {
         anchorEndpoint: string;
         center: { x: number; y: number };
         entryEndpoint: string;
+        side: string;
+        physicsMode: string;
         radius: number;
         rotationDegrees: number;
         sweepAngleDegrees: number;
@@ -792,6 +812,8 @@ describe("runtimeCompileRequest", () => {
         anchorEndpoint: string;
         center: { x: number; y: number };
         entryEndpoint: string;
+        side: string;
+        physicsMode: string;
         radius: number;
         rotationDegrees: number;
         sweepAngleDegrees: number;
@@ -856,6 +878,8 @@ describe("runtimeCompileRequest", () => {
         anchorEntityKind: string;
         anchorEndpoint: string;
         entryEndpoint: string;
+        side: string;
+        physicsMode: string;
         radius: number;
         rotationDegrees: number;
         sweepAngleDegrees: number;
@@ -877,6 +901,8 @@ describe("runtimeCompileRequest", () => {
       anchorEntityKind: "board",
       anchorEndpoint: "end",
       entryEndpoint: "end",
+      side: "inside",
+      physicsMode: "hybrid-rail-body",
       radius: 1.5,
       rotationDegrees: 210,
       sweepAngleDegrees: 135,

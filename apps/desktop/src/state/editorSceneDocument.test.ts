@@ -63,6 +63,8 @@ const TEST_ARC_TRACK_ENTITY = {
   anchorEndpoint: "start" as const,
   center: { x: 4.2, y: 2.8 },
   entryEndpoint: "start" as const,
+  side: "inside" as const,
+  physicsMode: "hybrid-rail-body" as const,
   radius: 1.1,
   sweepAngleDegrees: 120,
   centralAngleDegrees: 120,
@@ -79,6 +81,8 @@ const TEST_PERSISTED_ARC_TRACK_ENTITY = {
   anchorEndpoint: "start" as const,
   center: { x: 4.2, y: 2.8 },
   entryEndpoint: "start" as const,
+  side: "inside" as const,
+  physicsMode: "hybrid-rail-body" as const,
   radius: 1.1,
   sweepAngleDegrees: 120,
   rotationDegrees: -15,
@@ -94,6 +98,8 @@ const TILTED_BOARD_ARC_TRACK_ENTITY = {
   anchorEndpoint: "end" as const,
   center: { x: 5.8, y: 3.6 },
   entryEndpoint: "end" as const,
+  side: "inside" as const,
+  physicsMode: "hybrid-rail-body" as const,
   radius: 1.5,
   sweepAngleDegrees: 135,
   centralAngleDegrees: 135,
@@ -110,6 +116,8 @@ const TILTED_BOARD_PERSISTED_ARC_TRACK_ENTITY = {
   anchorEndpoint: "end" as const,
   center: { x: 5.8, y: 3.6 },
   entryEndpoint: "end" as const,
+  side: "inside" as const,
+  physicsMode: "hybrid-rail-body" as const,
   radius: 1.5,
   sweepAngleDegrees: 135,
   rotationDegrees: 210,
@@ -129,6 +137,8 @@ describe("editorSceneDocument", () => {
 
     expect(persistedArcTrack).not.toHaveProperty("centralAngleDegrees");
     expect(persistedArcTrack).toHaveProperty("thickness", 0.18);
+    expect(persistedArcTrack).toHaveProperty("side", "inside");
+    expect(persistedArcTrack).toHaveProperty("physicsMode", "hybrid-rail-body");
     expect(scene.constraints).toEqual([
       {
         entityAId: "ball-1",
@@ -367,6 +377,8 @@ describe("editorSceneDocument", () => {
         anchorEndpoint: "start",
         center: { x: 420, y: 280 },
         entryEndpoint: "start",
+        side: "inside",
+        physicsMode: "hybrid-rail-body",
         radius: 110,
         sweepAngleDegrees: 120,
         centralAngleDegrees: 120,
@@ -544,6 +556,8 @@ describe("editorSceneDocument", () => {
       anchorEndpoint: "end",
       center: { x: 5.4, y: 2.1 },
       entryEndpoint: "end",
+      side: "inside",
+      physicsMode: "hybrid-rail-body",
       radius: 0.96,
       sweepAngleDegrees: 135,
       centralAngleDegrees: 135,

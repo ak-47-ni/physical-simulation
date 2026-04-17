@@ -29,6 +29,9 @@ import {
 import { authoringVelocityToRuntime } from "./velocitySemantics";
 import type { EditorSceneEntity } from "./editorStore";
 
+const DEFAULT_RUNTIME_ARC_TRACK_SIDE = "inside" as const;
+const DEFAULT_RUNTIME_ARC_TRACK_PHYSICS_MODE = "hybrid-rail-body" as const;
+
 export type RuntimeSceneEntityPhysics = {
   mass?: number;
   friction?: number;
@@ -62,6 +65,8 @@ export type RuntimeArcTrackSceneEntity = RuntimeBaseSceneEntity & {
   anchorEndpoint: "start" | "end";
   center: Vector2;
   entryEndpoint: "start" | "end";
+  side: "inside" | "outside";
+  physicsMode: "hybrid-rail-body";
   radius: number;
   sweepAngleDegrees: number;
   rotationDegrees: number;
@@ -213,6 +218,9 @@ function cloneRuntimeSceneEntity(
   }
 
   if (entity.kind === "arc-track") {
+    const side = readOptionalString(entity, "side");
+    const physicsMode = readOptionalString(entity, "physicsMode");
+
     return {
       id: entity.id,
       kind: "arc-track",
@@ -222,6 +230,11 @@ function cloneRuntimeSceneEntity(
       anchorEndpoint: entity.anchorEndpoint,
       center: { ...entity.center },
       entryEndpoint: entity.entryEndpoint,
+      side: side === "outside" ? "outside" : DEFAULT_RUNTIME_ARC_TRACK_SIDE,
+      physicsMode:
+        physicsMode === DEFAULT_RUNTIME_ARC_TRACK_PHYSICS_MODE
+          ? physicsMode
+          : DEFAULT_RUNTIME_ARC_TRACK_PHYSICS_MODE,
       radius: entity.radius,
       sweepAngleDegrees:
         readOptionalNumber(entity, "sweepAngleDegrees") ??
@@ -534,6 +547,8 @@ function mapEditorEntityToRuntimeSceneEntity(entity: EditorSceneEntity): Runtime
       anchorEndpoint: entity.anchorEndpoint,
       center: { ...entity.center },
       entryEndpoint: entity.entryEndpoint,
+      side: entity.side,
+      physicsMode: entity.physicsMode,
       radius: entity.radius,
       rotationDegrees: entity.rotationDegrees,
       sweepAngleDegrees: entity.sweepAngleDegrees,

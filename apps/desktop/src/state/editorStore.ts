@@ -51,6 +51,8 @@ export type ArcTrackSceneEntity = {
   anchorEndpoint: "start" | "end";
   center: { x: number; y: number };
   entryEndpoint: "start" | "end";
+  side: "inside" | "outside";
+  physicsMode: "hybrid-rail-body";
   radius: number;
   sweepAngleDegrees: number;
   rotationDegrees: number;
@@ -73,6 +75,8 @@ const DUPLICATE_OFFSET = 24;
 // Classroom rigid bodies use ideal elastic restitution so repeated rebounds stay solver-driven,
 // not product-default damping driven.
 export const DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION = 1;
+const DEFAULT_ARC_TRACK_SIDE = "inside" as const;
+const DEFAULT_ARC_TRACK_PHYSICS_MODE = "hybrid-rail-body" as const;
 
 const DEFAULT_RIGID_BODY_FRICTION_BY_KIND = {
   ball: 0,
@@ -212,6 +216,8 @@ export function createPlacedBodyEntity(
       anchorEndpoint: "start",
       center: { x: position.x, y: position.y },
       entryEndpoint: "start",
+      side: DEFAULT_ARC_TRACK_SIDE,
+      physicsMode: DEFAULT_ARC_TRACK_PHYSICS_MODE,
       radius: BODY_DEFAULTS["arc-track"].radius,
       sweepAngleDegrees: BODY_DEFAULTS["arc-track"].sweepAngleDegrees,
       rotationDegrees: 0,

@@ -49,6 +49,8 @@ type ExpectedArcTrackSceneEntity = {
   anchorEndpoint: "start" | "end";
   center: { x: number; y: number };
   entryEndpoint: "start" | "end";
+  side: "inside" | "outside";
+  physicsMode: "hybrid-rail-body";
   radius: number;
   sweepAngleDegrees: number;
   rotationDegrees: number;
@@ -286,6 +288,8 @@ describe("scene schema", () => {
       anchorEndpoint: "start",
       center: { x: 6, y: 4 },
       entryEndpoint: "start",
+      side: "inside",
+      physicsMode: "hybrid-rail-body",
       radius: 1,
       sweepAngleDegrees: 90,
       rotationDegrees: 30,
@@ -308,6 +312,8 @@ describe("scene schema", () => {
     originalEntity.center.x = 999;
 
     expect(clonedEntity.center).toEqual({ x: 6, y: 4 });
+    expect(clonedEntity).toHaveProperty("side", "inside");
+    expect(clonedEntity).toHaveProperty("physicsMode", "hybrid-rail-body");
     expect(clonedEntity).toHaveProperty("thickness", 0.18);
   });
 
@@ -361,6 +367,8 @@ describe("scene schema", () => {
       anchorEndpoint: "end",
       center: { x: 3.2, y: 2.4 },
       entryEndpoint: "end",
+      side: "outside",
+      physicsMode: "hybrid-rail-body",
       radius: 1.4,
       sweepAngleDegrees: 135,
       rotationDegrees: -20,
@@ -378,6 +386,8 @@ describe("scene schema", () => {
 
     expect(compiledEntity).toEqual(arcTrack);
     expect(compiledEntity.center).not.toBe(arcTrack.center);
+    expect(compiledEntity).toHaveProperty("side", "outside");
+    expect(compiledEntity).toHaveProperty("physicsMode", "hybrid-rail-body");
     expect(compiledEntity).toHaveProperty("thickness", 0.24);
   });
 

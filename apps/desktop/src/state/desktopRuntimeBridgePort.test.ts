@@ -120,6 +120,8 @@ function createRotatedBlockLocalTangentHandoffRequest() {
       anchorEndpoint: "start",
       center: { x: 2.48, y: 3.04 },
       entryEndpoint: "start",
+      side: "inside",
+      physicsMode: "hybrid-rail-body",
       radius: 1,
       rotationDegrees: 135,
       sweepAngleDegrees: 90,
@@ -540,6 +542,8 @@ describe("desktopRuntimeBridgePort", () => {
           anchorEndpoint: string;
           center: { x: number; y: number };
           entryEndpoint: string;
+          side: string;
+          physicsMode: string;
           radius: number;
           rotationDegrees: number;
           sweepAngleDegrees: number;
@@ -556,6 +560,8 @@ describe("desktopRuntimeBridgePort", () => {
       anchorEndpoint: "start",
       center: { x: 3.18, y: 3.72 },
       entryEndpoint: "start",
+      side: "inside",
+      physicsMode: "hybrid-rail-body",
       radius: 1,
       rotationDegrees: 135,
       sweepAngleDegrees: 90,
@@ -621,6 +627,8 @@ describe("desktopRuntimeBridgePort", () => {
           anchorEndpoint: string;
           center: { x: number; y: number };
           entryEndpoint: string;
+          side: string;
+          physicsMode: string;
           radius: number;
           rotationDegrees: number;
           sweepAngleDegrees: number;
@@ -648,6 +656,8 @@ describe("desktopRuntimeBridgePort", () => {
       anchorEndpoint: "start",
       center: { x: 2.48, y: 3.04 },
       entryEndpoint: "start",
+      side: "inside",
+      physicsMode: "hybrid-rail-body",
       radius: 1,
       rotationDegrees: 135,
       sweepAngleDegrees: 90,

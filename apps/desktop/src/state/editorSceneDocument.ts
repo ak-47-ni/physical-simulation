@@ -32,6 +32,8 @@ export const DEFAULT_SCENE_GRAVITY: Vector2 = { x: 0, y: 9.8 };
 export const DEFAULT_GRAVITY_SOURCE_ID = "gravity-primary";
 const DEFAULT_ANALYZER_ID = "traj-primary";
 const DEFAULT_EDITOR_ARC_TRACK_THICKNESS = 0.18;
+const DEFAULT_EDITOR_ARC_TRACK_SIDE = "inside" as const;
+const DEFAULT_EDITOR_ARC_TRACK_PHYSICS_MODE = "hybrid-rail-body" as const;
 
 export type PersistedSpringConstraint = {
   entityAId: string;
@@ -271,6 +273,8 @@ function mapEditorEntityToSceneEntity(entity: EditorSceneEntity): SceneEntity {
       label: entity.label,
       center: cloneVector(entity.center),
       entryEndpoint: entity.entryEndpoint,
+      side: entity.side,
+      physicsMode: entity.physicsMode,
       radius: entity.radius,
       sweepAngleDegrees: entity.sweepAngleDegrees,
       rotationDegrees: entity.rotationDegrees,
@@ -373,6 +377,8 @@ function mapSceneEntityToEditorEntity(entity: SceneEntity): EditorSceneEntity[] 
     const anchorEntityKind = readString(entity, "anchorEntityKind");
     const anchorEndpoint = readString(entity, "anchorEndpoint");
     const entryEndpoint = readString(entity, "entryEndpoint");
+    const side = readString(entity, "side");
+    const physicsMode = readString(entity, "physicsMode");
 
     return [
       {
@@ -385,6 +391,11 @@ function mapSceneEntityToEditorEntity(entity: SceneEntity): EditorSceneEntity[] 
         center: cloneVector(entity.center),
         radius: entity.radius,
         entryEndpoint: entryEndpoint === "end" ? "end" : "start",
+        side: side === "outside" ? "outside" : DEFAULT_EDITOR_ARC_TRACK_SIDE,
+        physicsMode:
+          physicsMode === DEFAULT_EDITOR_ARC_TRACK_PHYSICS_MODE
+            ? physicsMode
+            : DEFAULT_EDITOR_ARC_TRACK_PHYSICS_MODE,
         sweepAngleDegrees,
         centralAngleDegrees: sweepAngleDegrees,
         rotationDegrees: entity.rotationDegrees,
