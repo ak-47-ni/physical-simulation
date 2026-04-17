@@ -1,6 +1,8 @@
 import { useEffect, useState, type CSSProperties, type MouseEvent } from "react";
 
+import { useI18n } from "../i18n";
 import type { SceneDisplaySettings } from "../io/sceneFile";
+import { localizeSystemCopy } from "../localizeSystemCopy";
 import { getBoardGuideSurface } from "../state/boardArcPlacement";
 import {
   getBoardAnchoredArcTrackEntryPoint,
@@ -152,11 +154,6 @@ const actionButtonStyle: CSSProperties = {
   padding: "8px 12px",
   cursor: "pointer",
 };
-
-const authoringLockMessage =
-  "Playback running. Move, placement, and constraint editing are temporarily locked.";
-const rigidBoundaryWorkspaceMessage =
-  "Rigid contacts follow body boundaries. Fill shows shape only.";
 
 function isArcTrackLocked(entity: ArcTrackBodyEntity): boolean {
   return entity.locked ?? false;
@@ -675,7 +672,33 @@ function createSelectedArcTrackJunctionDebugSurface(
   };
 }
 
+function formatBodyKindLabel(
+  bodyKind: LibraryDragSession["bodyKind"],
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  switch (bodyKind) {
+    case "ball":
+      return t("library.item.ball");
+    case "block":
+      return t("library.item.block");
+    case "board":
+      return t("library.item.board");
+    case "polygon":
+      return t("library.item.polygon");
+    case "arc-track":
+      return t("library.item.arcTrack");
+  }
+}
+
+function translateEndpoint(
+  endpoint: "start" | "end",
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  return endpoint === "start" ? t("property.endpoint.start") : t("property.endpoint.end");
+}
+
 export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
+  const { t } = useI18n();
   const {
     authoringPlacementPreview = null,
     authoringLocked = false,
@@ -1034,7 +1057,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       return (
         <button
           key={constraint.id}
-          aria-label={`Select ${constraint.label}`}
+          aria-label={t("workspace.selectItem", { label: constraint.label })}
           data-selected={String(isSelected)}
           data-rest-length={String(constraint.restLength)}
           data-testid={`scene-constraint-spring-${constraint.id}`}
@@ -1086,7 +1109,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     return (
       <button
         key={constraint.id}
-        aria-label={`Select ${constraint.label}`}
+        aria-label={t("workspace.selectItem", { label: constraint.label })}
         data-selected={String(isSelected)}
         data-testid={`scene-constraint-track-${constraint.id}`}
         type="button"
@@ -1254,14 +1277,16 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           {authoringLocked ? (
             <span style={{ color: "#a04b00", fontSize: "13px", fontWeight: 600 }}>
-              {authoringLockMessage}
+              {t("workspace.authoringLocked")}
             </span>
           ) : null}
           {constraintPlacement ? (
             <>
-              <span style={{ color: "#516276", fontSize: "13px" }}>{constraintPlacement.hint}</span>
+              <span style={{ color: "#516276", fontSize: "13px" }}>
+                {localizeSystemCopy(constraintPlacement.hint, t)}
+              </span>
               <button style={actionButtonStyle} type="button" onClick={onCancelPlacement}>
-                Cancel placement
+                {t("workspace.cancelPlacement")}
               </button>
             </>
           ) : null}
@@ -1270,7 +1295,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           data-testid="workspace-rigid-boundary-note"
           style={{ color: "#516276", fontSize: "13px", textAlign: "right" }}
         >
-          {rigidBoundaryWorkspaceMessage}
+          {t("workspace.rigidBoundaryNote")}
         </span>
       </div>
 
@@ -1345,26 +1370,53 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
               zIndex: 6,
             }}
           >
-            <strong style={{ fontSize: "11px", fontWeight: 700 }}>Arc Junction Debug</strong>
-            <div>{`Anchor ${selectedArcTrackJunctionDebugSurface.anchorEntityKind}:${selectedArcTrackJunctionDebugSurface.anchorEntityId} (${selectedArcTrackJunctionDebugSurface.anchorEndpoint})`}</div>
-            <div>{`Entry endpoint: ${selectedArcTrackJunctionDebugSurface.entryEndpoint}`}</div>
+            <strong style={{ fontSize: "11px", fontWeight: 700 }}>{t("workspace.debug.title")}</strong>
+            <div>
+              {t("workspace.debug.anchor", {
+                endpoint: translateEndpoint(selectedArcTrackJunctionDebugSurface.anchorEndpoint, t),
+                entity: `${selectedArcTrackJunctionDebugSurface.anchorEntityKind}:${selectedArcTrackJunctionDebugSurface.anchorEntityId}`,
+              })}
+            </div>
+            <div>
+              {t("workspace.debug.entryEndpoint", {
+                endpoint: translateEndpoint(selectedArcTrackJunctionDebugSurface.entryEndpoint, t),
+              })}
+            </div>
             <div data-testid="workspace-selected-arc-track-junction-anchor-point">
-              {`Anchor point: ${formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.anchorPoint)}`}
+              {t("workspace.debug.anchorPoint", {
+                value: formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.anchorPoint),
+              })}
             </div>
             <div data-testid="workspace-selected-arc-track-junction-entry-point">
-              {`Entry point: ${formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.entryPoint)}`}
+              {t("workspace.debug.entryPoint", {
+                value: formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.entryPoint),
+              })}
             </div>
             <div data-testid="workspace-selected-arc-track-junction-anchor-tangent">
-              {`Anchor tangent: ${formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.anchorTangent)}`}
+              {t("workspace.debug.anchorTangent", {
+                value: formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.anchorTangent),
+              })}
             </div>
             <div data-testid="workspace-selected-arc-track-junction-entry-tangent">
-              {`Entry tangent: ${formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.entryTangent)}`}
+              {t("workspace.debug.entryTangent", {
+                value: formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.entryTangent),
+              })}
             </div>
             <div data-testid="workspace-selected-arc-track-junction-guide-normal">
-              {`Guide normal: ${formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.guideNormal)}`}
+              {t("workspace.debug.guideNormal", {
+                value: formatJunctionDebugPoint(selectedArcTrackJunctionDebugSurface.guideNormal),
+              })}
             </div>
-            <div>{`Position error: ${formatJunctionDebugValue(selectedArcTrackJunctionDebugSurface.positionError)}`}</div>
-            <div>{`Tangent dot: ${formatJunctionDebugValue(selectedArcTrackJunctionDebugSurface.tangentDot)}`}</div>
+            <div>
+              {t("workspace.debug.positionError", {
+                value: formatJunctionDebugValue(selectedArcTrackJunctionDebugSurface.positionError),
+              })}
+            </div>
+            <div>
+              {t("workspace.debug.tangentDot", {
+                value: formatJunctionDebugValue(selectedArcTrackJunctionDebugSurface.tangentDot),
+              })}
+            </div>
           </div>
         ) : null}
 
@@ -1469,7 +1521,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
               libraryDragBlocked,
             )}
           >
-            {libraryDragSession.bodyKind}
+            {formatBodyKindLabel(libraryDragSession.bodyKind, t)}
           </div>
         ) : null}
 
@@ -1480,7 +1532,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             return (
               <button
                 key={entity.id}
-                aria-label={`Select ${entity.label}`}
+                aria-label={t("workspace.selectItem", { label: entity.label })}
                 data-arc-track="true"
                 data-contact-target={String(contactTargetEntityId === entity.id)}
                 data-locked={String(isArcTrackLocked(entity))}
@@ -1516,7 +1568,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
                       padding: "2px 4px",
                     }}
                   >
-                    FIX
+                    {t("workspace.lockBadge")}
                   </span>
                 ) : null}
               </button>
@@ -1526,7 +1578,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           return (
             <button
               key={entity.id}
-              aria-label={`Select ${entity.label}`}
+              aria-label={t("workspace.selectItem", { label: entity.label })}
               data-contact-target={String(contactTargetEntityId === entity.id)}
               data-locked={String(entity.locked)}
               data-selected={String(state.selectedEntityId === entity.id)}
@@ -1556,7 +1608,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
                     padding: "2px 4px",
                   }}
                 >
-                  FIX
+                  {t("workspace.lockBadge")}
                 </span>
               ) : null}
               {display.showLabels ? entity.label : null}

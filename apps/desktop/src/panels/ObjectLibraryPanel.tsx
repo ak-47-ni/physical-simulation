@@ -7,6 +7,7 @@ import type {
 import type { LibraryConstraintKind } from "../state/editorConstraints";
 import type { LibraryBodyKind, LibraryItemKind } from "../state/editorStore";
 import type { LibraryDragSession } from "../workspace/libraryDragSession";
+import { useI18n } from "../i18n";
 
 type ObjectLibraryPanelProps = {
   onSelectItem: (itemId: LibraryItemKind) => void;
@@ -16,12 +17,17 @@ type ObjectLibraryPanelProps = {
 
 type BodyLibraryItem = {
   id: LibraryBodyKind;
-  label: string;
+  labelKey:
+    | "library.item.arcTrack"
+    | "library.item.ball"
+    | "library.item.block"
+    | "library.item.board"
+    | "library.item.polygon";
 };
 
 type ConstraintLibraryItem = {
   id: LibraryConstraintKind;
-  label: string;
+  labelKey: "library.item.spring" | "library.item.track";
 };
 
 const headingStyle: CSSProperties = {
@@ -59,27 +65,32 @@ const bodyChipStyle: CSSProperties = {
 };
 
 const bodyItems: BodyLibraryItem[] = [
-  { id: "ball", label: "Ball" },
-  { id: "block", label: "Block" },
-  { id: "board", label: "Board" },
-  { id: "polygon", label: "Polygon" },
-  { id: "arc-track", label: "Arc Track" },
+  { id: "ball", labelKey: "library.item.ball" },
+  { id: "block", labelKey: "library.item.block" },
+  { id: "board", labelKey: "library.item.board" },
+  { id: "polygon", labelKey: "library.item.polygon" },
+  { id: "arc-track", labelKey: "library.item.arcTrack" },
 ];
 
 const constraintItems: ConstraintLibraryItem[] = [
-  { id: "spring", label: "Spring" },
-  { id: "track", label: "Track" },
+  { id: "spring", labelKey: "library.item.spring" },
+  { id: "track", labelKey: "library.item.track" },
 ];
 
-const chipGroups: Array<{ title: string; items: string[] }> = [
+const chipGroups = [
   {
-    title: "Helpers",
-    items: ["Probe", "Ruler", "Angle tool"],
+    titleKey: "library.group.helpers" as const,
+    items: [
+      "library.item.probe",
+      "library.item.ruler",
+      "library.item.angleTool",
+    ] as const,
   },
 ];
 
 export function ObjectLibraryPanel(props: ObjectLibraryPanelProps) {
   const { onSelectItem, onStartBodyDrag } = props;
+  const { t } = useI18n();
 
   function handleBodyPointerDown(
     bodyKind: LibraryBodyKind,
@@ -115,7 +126,7 @@ export function ObjectLibraryPanel(props: ObjectLibraryPanelProps) {
   return (
     <div style={{ display: "grid", gap: "18px" }}>
       <section key="Bodies" style={groupStyle}>
-        <h2 style={headingStyle}>Bodies</h2>
+        <h2 style={headingStyle}>{t("library.group.bodies")}</h2>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
           {bodyItems.map((item) => (
             <button
@@ -129,13 +140,13 @@ export function ObjectLibraryPanel(props: ObjectLibraryPanelProps) {
               onMouseDown={(event) => handleBodyMouseDown(item.id, event)}
               onPointerDown={(event) => handleBodyPointerDown(item.id, event)}
             >
-              {item.label}
+              {t(item.labelKey)}
             </button>
           ))}
         </div>
       </section>
       <section key="Constraints" style={groupStyle}>
-        <h2 style={headingStyle}>Constraints</h2>
+        <h2 style={headingStyle}>{t("library.group.constraints")}</h2>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
           {constraintItems.map((item) => (
             <button
@@ -148,20 +159,20 @@ export function ObjectLibraryPanel(props: ObjectLibraryPanelProps) {
               type="button"
               onClick={() => onSelectItem(item.id)}
             >
-              {item.label}
+              {t(item.labelKey)}
             </button>
           ))}
-          <span style={chipStyle}>Rod</span>
-          <span style={chipStyle}>Anchor</span>
+          <span style={chipStyle}>{t("library.item.rod")}</span>
+          <span style={chipStyle}>{t("library.item.anchor")}</span>
         </div>
       </section>
       {chipGroups.map((group) => (
-        <section key={group.title} style={groupStyle}>
-          <h2 style={headingStyle}>{group.title}</h2>
+        <section key={group.titleKey} style={groupStyle}>
+          <h2 style={headingStyle}>{t(group.titleKey)}</h2>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
             {group.items.map((item) => (
               <span key={item} style={chipStyle}>
-                {item}
+                {t(item)}
               </span>
             ))}
           </div>

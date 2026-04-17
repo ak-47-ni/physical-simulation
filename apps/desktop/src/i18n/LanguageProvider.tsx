@@ -23,6 +23,12 @@ type I18nContextValue = {
 };
 
 const I18nContext = createContext<I18nContextValue | null>(null);
+const defaultI18nContextValue: I18nContextValue = {
+  locale: "en",
+  locales: SUPPORTED_APP_LOCALES,
+  setLocale: () => undefined,
+  t: (key, variables) => formatMessage(messages.en[key], variables),
+};
 
 export function LanguageProvider(props: PropsWithChildren) {
   const { children } = props;
@@ -52,9 +58,5 @@ export function LanguageProvider(props: PropsWithChildren) {
 export function useI18n(): I18nContextValue {
   const value = useContext(I18nContext);
 
-  if (!value) {
-    throw new Error("useI18n must be used within a LanguageProvider.");
-  }
-
-  return value;
+  return value ?? defaultI18nContextValue;
 }

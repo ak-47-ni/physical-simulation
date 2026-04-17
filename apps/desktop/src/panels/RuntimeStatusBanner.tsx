@@ -6,6 +6,8 @@ import type {
   RuntimeBridgeStatus,
   RuntimePlaybackMode,
 } from "../state/runtimeBridge";
+import { useI18n } from "../i18n";
+import { localizeSystemCopy } from "../localizeSystemCopy";
 
 type RuntimeStatusBannerProps = {
   runtime: {
@@ -25,17 +27,19 @@ const bannerStyle: CSSProperties = {
   lineHeight: 1.5,
 };
 
-const elasticCollisionNote =
-  "Rigid collisions stay elastic, so bounce height should stay consistent. Friction only changes sliding.";
-
-function withElasticCollisionNote(message: string) {
+function withElasticCollisionNote(message: string, elasticCollisionNote: string) {
   return `${message} ${elasticCollisionNote}`;
 }
 
-function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
+function readBannerMessage(
+  runtime: RuntimeStatusBannerProps["runtime"],
+  t: ReturnType<typeof useI18n>["t"],
+): {
   tone: "error" | "warning" | "info";
   message: string;
 } | null {
+  const elasticCollisionNote = t("transport.banner.elasticCollisionNote");
+
   if (runtime.lastErrorMessage) {
     return {
       tone: "error",
@@ -47,7 +51,8 @@ function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
     return {
       tone: "warning",
       message: withElasticCollisionNote(
-        "Results are out of date. Recalculate to review the latest motion.",
+        t("transport.state.resultsOutOfDate"),
+        elasticCollisionNote,
       ),
     };
   }
@@ -55,7 +60,7 @@ function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
   if (runtime.lastBlockedAction) {
     return {
       tone: "warning",
-      message: runtime.lastBlockedAction.message,
+      message: localizeSystemCopy(runtime.lastBlockedAction.message, t) ?? runtime.lastBlockedAction.message,
     };
   }
 
@@ -63,7 +68,8 @@ function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
     return {
       tone: "info",
       message: withElasticCollisionNote(
-        "Calculating the result. Playback and time jump unlock when it finishes.",
+        t("transport.state.calculatingUnlock"),
+        elasticCollisionNote,
       ),
     };
   }
@@ -72,16 +78,8 @@ function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
     return {
       tone: "info",
       message: withElasticCollisionNote(
-        "Showing the calculated result. Pause to inspect or jump to another time.",
-      ),
-    };
-  }
-
-  if (runtime.playbackMode === "precomputed" && runtime.status === "preparing") {
-    return {
-      tone: "info",
-      message: withElasticCollisionNote(
-        "Calculating the result. Playback and time jump unlock when it finishes.",
+        t("transport.state.showingCalculatedResult"),
+        elasticCollisionNote,
       ),
     };
   }
@@ -89,28 +87,28 @@ function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
   if (runtime.playbackMode === "precomputed" && runtime.canSeek && runtime.status === "paused") {
     return {
       tone: "info",
-      message: withElasticCollisionNote("Calculated result ready. Press Play result or jump to a time."),
+      message: withElasticCollisionNote(t("transport.state.resultReady"), elasticCollisionNote),
     };
   }
 
   if (runtime.playbackMode === "precomputed" && !runtime.canSeek) {
     return {
       tone: "info",
-      message: withElasticCollisionNote("Calculate a result to enable play, seek, and time jump."),
+      message: withElasticCollisionNote(t("transport.state.calculateToEnable"), elasticCollisionNote),
     };
   }
 
   if (runtime.status === "running") {
     return {
       tone: "info",
-      message: "Runtime is playing. Motion and live samples should keep updating.",
+      message: t("transport.banner.runtimePlaying"),
     };
   }
 
   if (runtime.status === "paused") {
     return {
       tone: "info",
-      message: "Runtime is paused. Use Step for one frame or Start to continue.",
+      message: t("transport.banner.runtimePaused"),
     };
   }
 
@@ -118,7 +116,8 @@ function readBannerMessage(runtime: RuntimeStatusBannerProps["runtime"]): {
 }
 
 export function RuntimeStatusBanner(props: RuntimeStatusBannerProps) {
-  const feedback = readBannerMessage(props.runtime);
+  const { t } = useI18n();
+  const feedback = readBannerMessage(props.runtime, t);
 
   if (!feedback) {
     return null;

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 
+import { useI18n } from "../../i18n";
 import type { RuntimeBridgeStatus } from "../../state/runtimeBridge";
 
 export type TransportTimelineProgressView = {
@@ -73,6 +74,7 @@ function clampSeconds(timeSeconds: number, totalDurationSeconds: number): number
 }
 
 export function TransportTimeline(props: TransportTimelineProps) {
+  const { t } = useI18n();
   const { onSeek, progress } = props;
   const [draftTime, setDraftTime] = useState(() => formatSeconds(progress.currentTimeSeconds));
   const lastSliderValueRef = useRef<string | null>(null);
@@ -125,21 +127,26 @@ export function TransportTimeline(props: TransportTimelineProps) {
     >
       <div style={rowStyle}>
         <strong style={{ color: "#17304f", fontSize: "13px" }}>
-          {formatSeconds(progress.currentTimeSeconds)} / {formatSeconds(progress.totalDurationSeconds)} s
+          {t("transport.timeline.readout", {
+            current: formatSeconds(progress.currentTimeSeconds),
+            total: formatSeconds(progress.totalDurationSeconds),
+          })}
         </strong>
         {progress.status === "preparing" && progress.preparingProgress !== null ? (
           <span
             data-testid="transport-preparing-progress"
             style={{ color: "#1d4ed8", fontSize: "12px", fontWeight: 600 }}
           >
-            Preparing {Math.round(progress.preparingProgress * 100)}%
+            {t("transport.preparingProgress", {
+              progress: Math.round(progress.preparingProgress * 100),
+            })}
           </span>
         ) : null}
       </div>
 
       <div data-testid={isCompactLayout ? "transport-timeline-compact-row" : undefined}>
         <input
-          aria-label="Playback timeline"
+          aria-label={t("transport.timeline.playbackTimeline")}
           max={progress.totalDurationSeconds}
           min={0}
           step={1 / 60}
@@ -165,35 +172,35 @@ export function TransportTimeline(props: TransportTimelineProps) {
         <div style={isCompactLayout ? compactRowStyle : rowStyle}>
           <label style={{ display: "grid", gap: "4px" }}>
             <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
-              Jump to time
-          </span>
-          <input
-            aria-label="Jump to time"
-            inputMode="decimal"
-            min={0}
-            step={1 / 60}
-            style={{ ...inputStyle, width: "120px" }}
-            type="number"
-            value={draftTime}
-            disabled={!progress.canSeek}
-            onBlur={(event) => {
-              commitSeek(event.currentTarget.value);
-            }}
-            onChange={(event) => {
-              setDraftTime(event.currentTarget.value);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                commitSeek((event.currentTarget as HTMLInputElement).value);
-              }
-            }}
-          />
-        </label>
+              {t("transport.timeline.jumpToTime")}
+            </span>
+            <input
+              aria-label={t("transport.timeline.jumpToTime")}
+              inputMode="decimal"
+              min={0}
+              step={1 / 60}
+              style={{ ...inputStyle, width: "120px" }}
+              type="number"
+              value={draftTime}
+              disabled={!progress.canSeek}
+              onBlur={(event) => {
+                commitSeek(event.currentTarget.value);
+              }}
+              onChange={(event) => {
+                setDraftTime(event.currentTarget.value);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  commitSeek((event.currentTarget as HTMLInputElement).value);
+                }
+              }}
+            />
+          </label>
 
           <span style={hintStyle}>
             {progress.canSeek
-              ? "Drag the timeline or type a target time."
-              : "Seek unlocks after cached playback is ready."}
+              ? t("transport.timeline.dragHint")
+              : t("transport.timeline.seekLockedHint")}
           </span>
         </div>
       </div>

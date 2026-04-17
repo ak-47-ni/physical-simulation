@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
 
+import { useI18n } from "../i18n";
+import { localizeSystemCopy } from "../localizeSystemCopy";
 import type { RuntimeBridgePort } from "../state/runtimeBridge";
 import {
   buildRuntimeTrajectoryReadout,
@@ -16,7 +18,6 @@ import { buildRuntimeLiveSummary } from "./runtimeLiveSummary";
 import {
   ANALYZER_METRICS,
   type AnalyzerState,
-  formatAnalyzerMetric,
   groupAnalyzerSamples,
   useAnalyzerState,
 } from "./useAnalyzerState";
@@ -87,6 +88,7 @@ function readRuntimeAnalysisFeedback(input: {
   playbackMode: "realtime" | "precomputed";
   sampleCount: number;
   status: ReturnType<typeof useRuntimeTrajectorySamples>["status"];
+  t: ReturnType<typeof useI18n>["t"];
 }) {
   if (input.lastErrorMessage) {
     return {
@@ -98,7 +100,9 @@ function readRuntimeAnalysisFeedback(input: {
   if (input.lastBlockedActionMessage) {
     return {
       tone: "warning" as const,
-      message: input.lastBlockedActionMessage,
+      message:
+        localizeSystemCopy(input.lastBlockedActionMessage, input.t) ??
+        input.lastBlockedActionMessage,
     };
   }
 
@@ -107,8 +111,8 @@ function readRuntimeAnalysisFeedback(input: {
       tone: "warning" as const,
       message:
         input.sampleCount > 0
-          ? "Runtime samples are stale after scene edits. Recalculate playback to refresh analysis."
-          : "Scene edits changed the runtime setup. Recalculate playback before collecting analysis.",
+          ? input.t("analysis.feedback.staleSamples")
+          : input.t("analysis.feedback.staleSetup"),
     };
   }
 
@@ -124,15 +128,32 @@ function readRuntimeAnalysisFeedback(input: {
       tone: "info" as const,
       message:
         input.playbackMode === "precomputed"
-          ? "No runtime samples yet. Calculate playback to collect data."
-          : "No runtime samples yet. Start or step the runtime to collect data.",
+          ? input.t("analysis.feedback.noSamplesPrecomputed")
+          : input.t("analysis.feedback.noSamplesRealtime"),
     };
   }
 
   return null;
 }
 
+function formatMetricLabel(
+  metric: (typeof ANALYZER_METRICS)[number],
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  switch (metric) {
+    case "displacement":
+      return t("analysis.metric.displacement");
+    case "velocity":
+      return t("analysis.metric.velocity");
+    case "acceleration":
+      return t("analysis.metric.acceleration");
+    case "energy":
+      return t("analysis.metric.energy");
+  }
+}
+
 export function AnalysisPanel(props: AnalysisPanelProps = {}) {
+  const { locale, t } = useI18n();
   const {
     state: analysisState,
     acceptSample,
@@ -160,6 +181,20 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
     currentFrame: runtimeSnapshot?.currentFrame ?? null,
     currentTimeSeconds:
       runtimeSnapshot?.currentTimeSeconds ?? trajectorySamples.at(-1)?.timeSeconds ?? 0,
+    formatters: {
+      currentAcceleration: (value) => t("analysis.live.currentAcceleration", { value }),
+      currentAccelerationPlaceholder: () => t("analysis.live.currentAccelerationPlaceholder"),
+      currentSpeed: (value) => t("analysis.live.currentSpeed", { value }),
+      currentSpeedPlaceholder: () => t("analysis.live.currentSpeedPlaceholder"),
+      elapsedTime: (time) => t("analysis.live.elapsedTime", { time }),
+      frame: (frame) => t("analysis.live.frame", { frame }),
+      framePlaceholder: () => t("analysis.live.framePlaceholder"),
+      latestHeadline: (frame, time) => t("analysis.live.headline.latest", { frame, time }),
+      liveSamples: (count) => t("analysis.live.liveSamples", { count }),
+      noLiveDataHeadline: () => t("analysis.live.noData"),
+      pausedHeadline: (frame, time) => t("analysis.live.headline.paused", { frame, time }),
+      runningHeadline: (frame, time) => t("analysis.live.headline.running", { frame, time }),
+    },
     status: runtimeSnapshot?.status ?? "idle",
     trajectorySamples,
   });
@@ -171,6 +206,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
     playbackMode: runtimeSnapshot?.playbackMode ?? "realtime",
     sampleCount: trajectorySamples.length,
     status: runtimeTrajectoryState.status,
+    t,
   });
   const showRuntimeSummary =
     Boolean(props.runtimePort && props.analyzerId) ||
@@ -227,7 +263,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
   return (
     <div data-testid="analysis-panel" style={{ display: "grid", gap: "14px" }}>
       <section style={cardStyle}>
-        <strong style={{ color: "#17304f" }}>Analysis overlays</strong>
+        <strong style={{ color: "#17304f" }}>{t("analysis.overlays.title")}</strong>
         <div style={rowStyle}>
           <button
             type="button"
@@ -239,7 +275,9 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
               });
             }}
           >
-            {display.showTrajectories ? "Hide trajectories" : "Show trajectories"}
+            {display.showTrajectories
+              ? t("analysis.overlays.hideTrajectories")
+              : t("analysis.overlays.showTrajectories")}
           </button>
           <button
             type="button"
@@ -252,7 +290,9 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
               });
             }}
           >
-            {display.showVelocityVectors ? "Hide velocity vectors" : "Show velocity vectors"}
+            {display.showVelocityVectors
+              ? t("analysis.overlays.hideVelocityVectors")
+              : t("analysis.overlays.showVelocityVectors")}
           </button>
           <button
             type="button"
@@ -264,10 +304,14 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
               });
             }}
           >
-            {display.showForceVectors ? "Hide force vectors" : "Show force vectors"}
+            {display.showForceVectors
+              ? t("analysis.overlays.hideForceVectors")
+              : t("analysis.overlays.showForceVectors")}
           </button>
           <button type="button" style={buttonStyle} onClick={toggleChartPanel}>
-            {analysisState.overlays.chartPanelOpen ? "Close chart panel" : "Open chart panel"}
+            {analysisState.overlays.chartPanelOpen
+              ? t("analysis.overlays.closeChartPanel")
+              : t("analysis.overlays.openChartPanel")}
           </button>
         </div>
 
@@ -297,12 +341,15 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                     : runtimeSummaryStyle.border,
             }}
           >
-            <strong style={{ color: "#17304f" }}>Runtime analysis</strong>
+            <strong style={{ color: "#17304f" }}>{t("analysis.runtime.title")}</strong>
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-              Tracked entity: {runtimeTrajectoryState.analyzerEntityId ?? "pending compile target"}
+              {t("analysis.runtime.trackedEntity", {
+                label:
+                  runtimeTrajectoryState.analyzerEntityId ?? t("analysis.runtime.pendingCompileTarget"),
+              })}
             </span>
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-              Runtime sample count: {trajectorySamples.length}
+              {t("analysis.runtime.sampleCount", { count: trajectorySamples.length })}
             </span>
             <span style={{ color: "#17304f", fontSize: "13px" }}>{runtimeSummary.headline}</span>
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>{runtimeSummary.frameLabel}</span>
@@ -333,7 +380,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
             ) : null}
             {runtimeFeedback?.tone === "error" || runtimeFeedback?.tone === "warning" ? (
               <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                Teaching samples stay available while runtime feedback updates.
+                {t("analysis.runtime.teachingSamplesRemain")}
               </span>
             ) : null}
           </div>
@@ -341,15 +388,20 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
 
         {analysisState.overlays.chartPanelOpen ? (
           <div data-testid="analysis-chart-panel" style={cardStyle}>
-            <strong style={{ color: "#17304f" }}>Chart panel</strong>
+            <strong style={{ color: "#17304f" }}>{t("analysis.chart.title")}</strong>
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-              Samples ready: {availableSampleCount}
+              {t("analysis.chart.samplesReady", { count: availableSampleCount })}
             </span>
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-              Selected metric: {analysisState.selectedMetric}
+              {t("analysis.chart.selectedMetric", {
+                metric:
+                  locale === "en"
+                    ? analysisState.selectedMetric
+                    : formatMetricLabel(analysisState.selectedMetric, t),
+              })}
             </span>
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-              Samples in view: {chartSamples.length}
+              {t("analysis.chart.samplesInView", { count: chartSamples.length })}
             </span>
             <div style={rowStyle}>
               {ANALYZER_METRICS.map((metric) => (
@@ -361,14 +413,19 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                     selectChartMetric(metric);
                   }}
                 >
-                  View {metric} chart
+                  {t("analysis.chart.viewMetric", {
+                    metric: formatMetricLabel(metric, t),
+                  })}
                 </button>
               ))}
             </div>
             <span style={{ color: "#5d6f88", fontSize: "13px" }}>
               {latestChartSample
-                ? `Latest sample: ${latestChartSample.value} ${latestChartSample.unit}`
-                : "Latest sample: none"}
+                ? t("analysis.chart.latestSample", {
+                    unit: latestChartSample.unit,
+                    value: latestChartSample.value,
+                  })
+                : t("analysis.chart.latestSampleNone")}
             </span>
             {chartSummary ? (
               <div
@@ -382,21 +439,30 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                 }}
               >
                 <strong style={{ color: "#17304f" }}>
-                  {formatAnalyzerMetric(chartSummary.metric)} overview
+                  {t("analysis.chart.metricOverview", {
+                    metric: formatMetricLabel(chartSummary.metric, t),
+                  })}
                 </strong>
                 <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                  Latest: {chartSummary.latestValue} {chartSummary.unit}
+                  {t("analysis.chart.latest", {
+                    unit: chartSummary.unit,
+                    value: chartSummary.latestValue,
+                  })}
                 </span>
                 <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                  Range: {chartSummary.minValue} to {chartSummary.maxValue} {chartSummary.unit}
+                  {t("analysis.chart.range", {
+                    max: chartSummary.maxValue,
+                    min: chartSummary.minValue,
+                    unit: chartSummary.unit,
+                  })}
                 </span>
                 <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                  Series points: {chartSeries.length}
+                  {t("analysis.chart.seriesPoints", { count: chartSeries.length })}
                 </span>
               </div>
             ) : (
               <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                No metric summary yet
+                {t("analysis.chart.noSummary")}
               </span>
             )}
             {runtimeReadout ? (
@@ -410,30 +476,38 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                   border: "1px solid rgba(108, 128, 173, 0.14)",
                 }}
               >
-                <strong style={{ color: "#17304f" }}>Runtime trajectory</strong>
+                <strong style={{ color: "#17304f" }}>{t("analysis.chart.trajectoryTitle")}</strong>
                 <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                  Trajectory samples: {trajectorySamples.length}
+                  {t("analysis.chart.trajectorySamples", { count: trajectorySamples.length })}
                 </span>
                 <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                  Latest runtime time: {runtimeReadout.timeSeconds.toFixed(2)} s
+                  {t("analysis.chart.latestRuntimeTime", {
+                    time: `${runtimeReadout.timeSeconds.toFixed(2)} s`,
+                  })}
                 </span>
                 <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                  Latest position: {runtimeReadout.position.x.toFixed(2)},{" "}
-                  {runtimeReadout.position.y.toFixed(2)}
+                  {t("analysis.chart.latestPosition", {
+                    x: runtimeReadout.position.x.toFixed(2),
+                    y: runtimeReadout.position.y.toFixed(2),
+                  })}
                 </span>
                 {runtimeDerivedSummary ? (
                   <>
                     <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                      Runtime-derived points: {runtimeDerivedSamples.length}
+                      {t("analysis.chart.runtimeDerivedPoints", {
+                        count: runtimeDerivedSamples.length,
+                      })}
                     </span>
                     <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                      Runtime latest value: {runtimeDerivedSummary.latestValue.toFixed(2)}{" "}
-                      {runtimeDerivedSummary.unit}
+                      {t("analysis.chart.runtimeLatestValue", {
+                        unit: runtimeDerivedSummary.unit,
+                        value: runtimeDerivedSummary.latestValue.toFixed(2),
+                      })}
                     </span>
                   </>
                 ) : (
                   <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-                    Runtime-derived metric unavailable
+                    {t("analysis.chart.runtimeDerivedUnavailable")}
                   </span>
                 )}
               </div>
@@ -448,9 +522,11 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                 border: "1px solid rgba(108, 128, 173, 0.14)",
               }}
             >
-              <strong style={{ color: "#17304f" }}>Key points</strong>
+              <strong style={{ color: "#17304f" }}>{t("analysis.chart.keyPoints")}</strong>
               {keyPointRows.length === 0 ? (
-                <span style={{ color: "#5d6f88", fontSize: "13px" }}>No key points yet</span>
+                <span style={{ color: "#5d6f88", fontSize: "13px" }}>
+                  {t("analysis.chart.noKeyPoints")}
+                </span>
               ) : (
                 keyPointRows.map((row) => (
                   <div
@@ -463,13 +539,15 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
                       background: "#f7f9fd",
                     }}
                   >
-                    <strong style={{ color: "#17304f", fontSize: "13px" }}>Point {row.index}</strong>
+                    <strong style={{ color: "#17304f", fontSize: "13px" }}>
+                      {t("analysis.chart.point", { index: row.index })}
+                    </strong>
                     <span style={{ color: "#5d6f88", fontSize: "13px" }}>
                       {row.label}: {row.value} {row.unit}
                     </span>
                     <span style={{ color: "#5d6f88", fontSize: "13px" }}>
                       {row.deltaFromPrevious === null
-                        ? "Delta baseline"
+                        ? t("analysis.chart.deltaBaseline")
                         : `${row.deltaFromPrevious > 0 ? "+" : ""}${row.deltaFromPrevious} ${row.unit}`}
                     </span>
                   </div>
@@ -481,12 +559,12 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
       </section>
 
       <section style={cardStyle}>
-        <strong style={{ color: "#17304f" }}>Probe samples</strong>
+        <strong style={{ color: "#17304f" }}>{t("analysis.probeSamples.title")}</strong>
         <div style={{ display: "grid", gap: "8px" }}>
           <label style={{ display: "grid", gap: "4px", color: "#5d6f88", fontSize: "13px" }}>
-            Sample label
+            {t("analysis.probeSamples.label")}
             <input
-              aria-label="Sample label"
+              aria-label={t("analysis.probeSamples.label")}
               style={inputStyle}
               value={analysisState.draft.label}
               onChange={(event) => {
@@ -495,9 +573,9 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
             />
           </label>
           <label style={{ display: "grid", gap: "4px", color: "#5d6f88", fontSize: "13px" }}>
-            Sample metric
+            {t("analysis.probeSamples.metric")}
             <select
-              aria-label="Sample metric"
+              aria-label={t("analysis.probeSamples.metric")}
               style={inputStyle}
               value={analysisState.draft.metric}
               onChange={(event) => {
@@ -506,15 +584,15 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
             >
               {ANALYZER_METRICS.map((metric) => (
                 <option key={metric} value={metric}>
-                  {formatAnalyzerMetric(metric)}
+                  {formatMetricLabel(metric, t)}
                 </option>
               ))}
             </select>
           </label>
           <label style={{ display: "grid", gap: "4px", color: "#5d6f88", fontSize: "13px" }}>
-            Sample value
+            {t("analysis.probeSamples.value")}
             <input
-              aria-label="Sample value"
+              aria-label={t("analysis.probeSamples.value")}
               style={inputStyle}
               value={analysisState.draft.value}
               onChange={(event) => {
@@ -523,9 +601,9 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
             />
           </label>
           <label style={{ display: "grid", gap: "4px", color: "#5d6f88", fontSize: "13px" }}>
-            Sample unit
+            {t("analysis.probeSamples.unit")}
             <input
-              aria-label="Sample unit"
+              aria-label={t("analysis.probeSamples.unit")}
               style={inputStyle}
               value={analysisState.draft.unit}
               onChange={(event) => {
@@ -535,7 +613,7 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
           </label>
         </div>
         <button type="button" style={buttonStyle} onClick={acceptSample}>
-          Accept sample
+          {t("analysis.probeSamples.accept")}
         </button>
 
         <div style={{ display: "grid", gap: "8px" }}>
@@ -552,7 +630,10 @@ export function AnalysisPanel(props: AnalysisPanelProps = {}) {
               }}
             >
               <strong style={{ color: "#17304f" }}>
-                {formatAnalyzerMetric(group.metric)} samples ({group.samples.length})
+                {t("analysis.probeSamples.group", {
+                  count: group.samples.length,
+                  metric: formatMetricLabel(group.metric, t),
+                })}
               </strong>
               {group.samples.map((sample) => (
                 <div

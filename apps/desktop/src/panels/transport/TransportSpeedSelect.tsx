@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
 
+import { useI18n } from "../../i18n";
+
 type TransportSpeedSelectProps = {
   compact?: boolean;
   presets: readonly number[];
@@ -33,14 +35,15 @@ function formatTimeScaleLabel(timeScale: number): string {
 }
 
 export function TransportSpeedSelect(props: TransportSpeedSelectProps) {
+  const { t } = useI18n();
   const { compact = false, onChange, presets, timeScale } = props;
   const options = presets.includes(timeScale) ? presets : [...presets, timeScale].sort((a, b) => a - b);
 
   return (
     <label style={fieldStyle}>
-      <span style={labelStyle}>Speed</span>
+      <span style={labelStyle}>{t("transport.speed")}</span>
       <select
-        aria-label="Speed"
+        aria-label={t("transport.speed")}
         data-testid="transport-speed-select"
         style={{
           ...selectStyle,

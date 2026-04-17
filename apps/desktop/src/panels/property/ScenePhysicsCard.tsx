@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
 
+import { useI18n } from "../../i18n";
+import { localizeSystemCopy } from "../../localizeSystemCopy";
 import { MeasurementInput } from "./MeasurementInput";
 
 type ScenePhysicsCardProps = {
@@ -103,13 +105,17 @@ function UnitSelect(props: {
 }
 
 export function ScenePhysicsCard(props: ScenePhysicsCardProps) {
+  const { t } = useI18n();
+
   return (
     <section style={cardStyle}>
-      <h2 style={sectionLabelStyle}>Scene physics</h2>
-      {props.lockReason ? <span style={lockCopyStyle}>{props.lockReason}</span> : null}
+      <h2 style={sectionLabelStyle}>{t("property.scenePhysics.title")}</h2>
+      {props.lockReason ? (
+        <span style={lockCopyStyle}>{localizeSystemCopy(props.lockReason, t)}</span>
+      ) : null}
       <MeasurementInput
         disabled={props.disabled}
-        label="Gravity"
+        label={t("property.scenePhysics.gravity")}
         suffix={props.gravityUnitLabel}
         value={props.gravity}
         onChange={props.onGravityChange}
@@ -117,21 +123,21 @@ export function ScenePhysicsCard(props: ScenePhysicsCardProps) {
       <div style={{ display: "grid", gap: "10px", gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
         <UnitSelect
           disabled={props.disabled}
-          label="Length unit"
+          label={t("property.scenePhysics.lengthUnit")}
           options={props.lengthUnitOptions}
           value={props.lengthUnit}
           onChange={props.onLengthUnitChange}
         />
         <UnitSelect
           disabled={props.disabled}
-          label="Velocity unit"
+          label={t("property.scenePhysics.velocityUnit")}
           options={props.velocityUnitOptions}
           value={props.velocityUnit}
           onChange={props.onVelocityUnitChange}
         />
         <UnitSelect
           disabled={props.disabled}
-          label="Mass unit"
+          label={t("property.scenePhysics.massUnit")}
           options={props.massUnitOptions}
           value={props.massUnit}
           onChange={props.onMassUnitChange}
@@ -139,7 +145,7 @@ export function ScenePhysicsCard(props: ScenePhysicsCardProps) {
       </div>
       <MeasurementInput
         disabled={props.disabled}
-        label="Pixels per meter"
+        label={t("property.scenePhysics.pixelsPerMeter")}
         suffix="px/m"
         value={props.pixelsPerMeter}
         onChange={props.onPixelsPerMeterChange}

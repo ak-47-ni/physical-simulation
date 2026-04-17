@@ -2,6 +2,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { useState } from "react";
 
 import type { AnnotationStroke, Vector2 } from "../../../../packages/scene-schema/src";
+import { useI18n } from "../i18n";
 
 export type AnnotationLayerStroke = AnnotationStroke & {
   color: string;
@@ -14,9 +15,9 @@ export type AnnotationLayerState = {
 };
 
 const palette = [
-  { label: "Black ink", value: "#111827" },
-  { label: "Blue ink", value: "#2563eb" },
-  { label: "Red ink", value: "#dc2626" },
+  { labelKey: "annotation.color.black" as const, value: "#111827" },
+  { labelKey: "annotation.color.blue" as const, value: "#2563eb" },
+  { labelKey: "annotation.color.red" as const, value: "#dc2626" },
 ];
 
 const panelStyle: CSSProperties = {
@@ -58,6 +59,7 @@ export function createInitialAnnotationLayerState(): AnnotationLayerState {
 }
 
 export function AnnotationLayer(props: AnnotationLayerProps = {}) {
+  const { t } = useI18n();
   const [internalState, setInternalState] = useState<AnnotationLayerState>(
     createInitialAnnotationLayerState,
   );
@@ -136,7 +138,7 @@ export function AnnotationLayer(props: AnnotationLayerProps = {}) {
               });
             }}
           >
-            {entry.label}
+            {t(entry.labelKey)}
           </button>
         ))}
         <button
@@ -149,7 +151,7 @@ export function AnnotationLayer(props: AnnotationLayerProps = {}) {
             });
           }}
         >
-          Erase last stroke
+          {t("annotation.eraseLastStroke")}
         </button>
         <button
           type="button"
@@ -161,7 +163,7 @@ export function AnnotationLayer(props: AnnotationLayerProps = {}) {
             });
           }}
         >
-          {visible ? "Hide annotations" : "Show annotations"}
+          {visible ? t("annotation.hide") : t("annotation.show")}
         </button>
       </div>
 
@@ -174,7 +176,7 @@ export function AnnotationLayer(props: AnnotationLayerProps = {}) {
       >
         {visible ? (
           <svg
-            aria-label="Annotation strokes"
+            aria-label={t("annotation.canvasLabel")}
             style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
             viewBox="0 0 240 240"
           >

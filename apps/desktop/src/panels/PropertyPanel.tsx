@@ -1,6 +1,8 @@
 import type { CSSProperties } from "react";
 
 import type { SceneDisplaySettings } from "../io/sceneFile";
+import { useI18n } from "../i18n";
+import { localizeSystemCopy } from "../localizeSystemCopy";
 import type { ConstraintPlacementState } from "../state/appEditorHelpers";
 import {
   ARC_TRACK_SPAN_PRESETS,
@@ -316,7 +318,15 @@ function createArcTrackSpanPresetUpdate(
   };
 }
 
+function translateEndpoint(
+  endpoint: "start" | "end",
+  t: ReturnType<typeof useI18n>["t"],
+): string {
+  return endpoint === "start" ? t("property.endpoint.start") : t("property.endpoint.end");
+}
+
 export function PropertyPanel(props: PropertyPanelProps) {
+  const { locale, t } = useI18n();
   const {
     authoringLocked = false,
     authoringLockReason = null,
@@ -383,15 +393,18 @@ export function PropertyPanel(props: PropertyPanelProps) {
       {pendingConstraintPlacement?.kind === "arc-track" &&
       pendingConstraintPlacement.stage === "pick-span" ? (
         <section style={cardStyle}>
-          <h2 style={sectionLabelStyle}>Pending arc track</h2>
+          <h2 style={sectionLabelStyle}>{t("property.pendingArcTrack.title")}</h2>
           <span style={{ color: "#55657f", fontSize: "14px" }}>
-            {pendingConstraintPlacement.hint}
+            {localizeSystemCopy(pendingConstraintPlacement.hint, t)}
           </span>
           {pendingConstraintPlacement.draftRadius !== null &&
           pendingConstraintPlacement.draftRadius !== undefined &&
           lengthUnitLabel ? (
             <strong style={{ color: "#17304f" }}>
-              Radius {pendingConstraintPlacement.draftRadius} {lengthUnitLabel}
+              {t("property.pendingArcTrack.radius", {
+                unit: lengthUnitLabel,
+                value: pendingConstraintPlacement.draftRadius,
+              })}
             </strong>
           ) : null}
           <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -403,7 +416,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 type="button"
                 onClick={() => onApplyPendingArcSpanPreset(spanDegrees)}
               >
-                {`Create ${spanDegrees}° arc`}
+                {t("property.pendingArcTrack.createArc", { degrees: spanDegrees })}
               </button>
             ))}
           </div>
@@ -411,23 +424,23 @@ export function PropertyPanel(props: PropertyPanelProps) {
       ) : null}
 
       <section style={cardStyle}>
-        <h2 style={sectionLabelStyle}>Selection</h2>
+        <h2 style={sectionLabelStyle}>{t("property.selection.title")}</h2>
         <div style={semanticsNoteStyle}>
           <span style={{ color: "#17304f", fontSize: "13px", fontWeight: 600 }}>
-            Rigid-body contact follows body boundaries. Fill stays visual only.
+            {t("property.selection.contactSemanticsTitle")}
           </span>
           <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-            Springs are the only stretch-like exception.
+            {t("property.selection.contactSemanticsSubtitle")}
           </span>
         </div>
         {selectionLockReason ? (
           <span style={{ color: "#9a3412", fontSize: "13px", lineHeight: 1.5 }}>
-            {selectionLockReason}
+            {localizeSystemCopy(selectionLockReason, t)}
           </span>
         ) : null}
         {selectedConstraint ? (
           <>
-            <ReadonlyField label="Constraint" value={selectedConstraint.label} />
+            <ReadonlyField label={t("property.field.constraint")} value={selectedConstraint.label} />
             {selectedConstraint.kind === "spring" ? (
               <>
                 <div
@@ -438,12 +451,12 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   }}
                 >
                   <ReadonlyField
-                    label="Body A"
-                    value={selectedConstraint.entityAId ?? "Unassigned"}
+                    label={t("property.field.bodyA")}
+                    value={selectedConstraint.entityAId ?? t("property.field.unassigned")}
                   />
                   <ReadonlyField
-                    label="Body B"
-                    value={selectedConstraint.entityBId ?? "Unassigned"}
+                    label={t("property.field.bodyB")}
+                    value={selectedConstraint.entityBId ?? t("property.field.unassigned")}
                   />
                 </div>
                 <div
@@ -455,14 +468,14 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 >
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Rest length"
+                    label={t("property.field.restLength")}
                     suffix={lengthUnitLabel ?? undefined}
                     value={selectedConstraint.restLength}
                     onChange={(restLength) => onUpdateSelectedConstraint({ restLength })}
                   />
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Stiffness"
+                    label={t("property.field.stiffness")}
                     value={selectedConstraint.stiffness}
                     onChange={(stiffness) => onUpdateSelectedConstraint({ stiffness })}
                   />
@@ -471,8 +484,8 @@ export function PropertyPanel(props: PropertyPanelProps) {
             ) : selectedConstraint.kind === "track" ? (
               <>
                 <ReadonlyField
-                  label="Attached entity"
-                  value={selectedConstraint.entityId ?? "Unassigned"}
+                  label={t("property.field.attachedEntity")}
+                  value={selectedConstraint.entityId ?? t("property.field.unassigned")}
                 />
                 <div
                   style={{
@@ -483,7 +496,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 >
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Origin X"
+                    label={t("property.field.originX")}
                     suffix={lengthUnitLabel ?? undefined}
                     value={selectedConstraint.origin.x}
                     onChange={(x) =>
@@ -494,7 +507,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   />
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Origin Y"
+                    label={t("property.field.originY")}
                     suffix={lengthUnitLabel ?? undefined}
                     value={selectedConstraint.origin.y}
                     onChange={(y) =>
@@ -505,7 +518,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   />
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Axis X"
+                    label={t("property.field.axisX")}
                     suffix={lengthUnitLabel ?? undefined}
                     value={selectedConstraint.axis.x}
                     onChange={(x) =>
@@ -516,7 +529,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   />
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Axis Y"
+                    label={t("property.field.axisY")}
                     suffix={lengthUnitLabel ?? undefined}
                     value={selectedConstraint.axis.y}
                     onChange={(y) =>
@@ -538,7 +551,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 >
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Center X"
+                    label={t("property.field.centerX")}
                     suffix={lengthUnitLabel ?? undefined}
                     value={selectedConstraint.center.x}
                     onChange={(x) =>
@@ -549,7 +562,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   />
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Center Y"
+                    label={t("property.field.centerY")}
                     suffix={lengthUnitLabel ?? undefined}
                     value={selectedConstraint.center.y}
                     onChange={(y) =>
@@ -560,17 +573,17 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   />
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Radius"
+                    label={t("property.field.radius")}
                     suffix={lengthUnitLabel ?? undefined}
                     value={selectedConstraint.radius}
                     onChange={(radius) => onUpdateSelectedConstraint({ radius })}
                   />
                   <SelectInput
                     disabled={authoringLocked}
-                    label="Side"
+                    label={t("property.field.side")}
                     options={[
-                      { label: "Inside", value: "inside" },
-                      { label: "Outside", value: "outside" },
+                      { label: t("property.side.inside"), value: "inside" },
+                      { label: t("property.side.outside"), value: "outside" },
                     ]}
                     value={selectedConstraint.side}
                     onChange={(side) =>
@@ -581,10 +594,10 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   />
                   <SelectInput
                     disabled={authoringLocked}
-                    label="Entry endpoint"
+                    label={t("property.field.entryEndpoint")}
                     options={[
-                      { label: "Start", value: "start" },
-                      { label: "End", value: "end" },
+                      { label: t("property.endpoint.start"), value: "start" },
+                      { label: t("property.endpoint.end"), value: "end" },
                     ]}
                     value={selectedConstraint.entryEndpoint}
                     onChange={(entryEndpoint) =>
@@ -595,7 +608,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   />
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Start angle"
+                    label={t("property.field.startAngle")}
                     value={selectedConstraint.startAngleDegrees}
                     onChange={(startAngleDegrees) =>
                       onUpdateSelectedConstraint({ startAngleDegrees })
@@ -603,7 +616,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   />
                   <PositionInput
                     disabled={authoringLocked}
-                    label="End angle"
+                    label={t("property.field.endAngle")}
                     value={selectedConstraint.endAngleDegrees}
                     onChange={(endAngleDegrees) =>
                       onUpdateSelectedConstraint({ endAngleDegrees })
@@ -617,13 +630,13 @@ export function PropertyPanel(props: PropertyPanelProps) {
                       disabled={authoringLocked}
                       style={actionButtonStyle}
                       type="button"
-                      onClick={() =>
+                    onClick={() =>
                         onUpdateSelectedConstraint(
                           createArcTrackSpanPresetUpdate(selectedConstraint, spanDegrees),
                         )
                       }
                     >
-                      {`Apply ${spanDegrees}° span`}
+                      {t("property.action.applySpan", { degrees: spanDegrees })}
                     </button>
                   ))}
                 </div>
@@ -635,34 +648,37 @@ export function PropertyPanel(props: PropertyPanelProps) {
               type="button"
               onClick={onDeleteSelectedConstraint}
             >
-              Delete constraint
+              {t("property.action.deleteConstraint")}
             </button>
           </>
         ) : selectedEntity ? (
           <>
             <TextInput
               disabled={authoringLocked}
-              label="Entity name"
+              label={t("property.field.entityName")}
               value={selectedEntity.label}
               onChange={onUpdateSelectedEntityLabel}
             />
             {selectedEntity.kind === "arc-track" ? (
               <>
                 <ReadonlyField
-                  label="Anchor"
+                  label={t("property.field.anchor")}
                   value={`${selectedEntity.anchorEntityKind}:${selectedEntity.anchorEntityId} (${selectedEntity.anchorEndpoint})`}
                 />
                 <ReadonlyField
-                  label="Entry endpoint"
-                  value={selectedEntity.entryEndpoint}
+                  label={t("property.field.entryEndpoint")}
+                  value={
+                    locale === "en"
+                      ? selectedEntity.entryEndpoint
+                      : translateEndpoint(selectedEntity.entryEndpoint, t)
+                  }
                 />
                 <div style={semanticsNoteStyle}>
                   <span style={{ color: "#17304f", fontSize: "13px", fontWeight: 600 }}>
-                    Rigid rail shell
+                    {t("property.arcTrack.rigidShellTitle")}
                   </span>
                   <span style={{ color: "#5d6f88", fontSize: "13px", lineHeight: 1.5 }}>
-                    Balls slide along the rail path while the curved shell still defines
-                    the real boundary.
+                    {t("property.arcTrack.rigidShellDescription")}
                   </span>
                 </div>
                 <div
@@ -674,14 +690,14 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 >
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Radius"
+                    label={t("property.field.radius")}
                     suffix={lengthUnitLabel ?? undefined}
                     value={selectedEntity.radius}
                     onChange={(radius) => onUpdateSelectedArcTrack({ radius })}
                   />
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Sweep angle"
+                    label={t("property.field.sweepAngle")}
                     suffix="°"
                     value={selectedEntity.sweepAngleDegrees}
                     onChange={(sweepAngleDegrees) =>
@@ -691,7 +707,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 </div>
                 <PositionInput
                   disabled={authoringLocked}
-                  label="Rotation"
+                  label={t("property.field.rotation")}
                   suffix="°"
                   value={selectedEntity.rotationDegrees}
                   onChange={(rotationDegrees) =>
@@ -702,7 +718,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
             ) : (
               <>
                 <ReadonlyField
-                  label="Position"
+                  label={t("property.field.position")}
                   value={
                     lengthUnitLabel
                       ? `${selectedEntity.x} ${lengthUnitLabel}, ${selectedEntity.y} ${lengthUnitLabel}`
@@ -711,12 +727,15 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 />
                 {velocityUnitLabel ? (
                   <ReadonlyField
-                    label="Velocity"
+                    label={t("property.field.velocity")}
                     value={`${selectedEntity.velocityX} ${velocityUnitLabel}, ${selectedEntity.velocityY} ${velocityUnitLabel}`}
                   />
                 ) : null}
                 {massUnitLabel ? (
-                  <ReadonlyField label="Mass" value={`${selectedEntity.mass} ${massUnitLabel}`} />
+                  <ReadonlyField
+                    label={t("property.field.mass")}
+                    value={`${selectedEntity.mass} ${massUnitLabel}`}
+                  />
                 ) : null}
                 <div
                   style={{
@@ -727,14 +746,14 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 >
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Position X"
+                    label={t("property.field.positionX")}
                     suffix={lengthUnitLabel ?? undefined}
                     value={selectedEntity.x}
                     onChange={(x) => onUpdateSelectedEntityPosition({ x, y: selectedEntity.y })}
                   />
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Position Y"
+                    label={t("property.field.positionY")}
                     suffix={lengthUnitLabel ?? undefined}
                     value={selectedEntity.y}
                     onChange={(y) => onUpdateSelectedEntityPosition({ x: selectedEntity.x, y })}
@@ -743,7 +762,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 {selectedEntity.kind === "ball" ? (
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Radius"
+                    label={t("property.field.radius")}
                     suffix={lengthUnitLabel ?? undefined}
                     value={selectedEntity.radius}
                     onChange={onUpdateSelectedEntityRadius}
@@ -758,7 +777,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   >
                     <PositionInput
                       disabled={authoringLocked}
-                      label="Width"
+                      label={t("property.field.width")}
                       suffix={lengthUnitLabel ?? undefined}
                       value={selectedEntity.width}
                       onChange={(width) =>
@@ -767,7 +786,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                     />
                     <PositionInput
                       disabled={authoringLocked}
-                      label="Height"
+                      label={t("property.field.height")}
                       suffix={lengthUnitLabel ?? undefined}
                       value={selectedEntity.height}
                       onChange={(height) =>
@@ -779,7 +798,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 {selectedEntity.kind !== "ball" ? (
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Angle"
+                    label={t("property.field.angle")}
                     suffix="°"
                     value={selectedEntity.rotationDegrees ?? 0}
                     onChange={onUpdateSelectedEntityRotation}
@@ -787,8 +806,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 ) : null}
                 {showsCollisionSemanticsHint ? (
                   <span style={collisionSemanticsHintStyle}>
-                    Classroom collisions stay elastic. Surface friction only changes
-                    sliding.
+                    {t("property.collisionSemanticsHint")}
                   </span>
                 ) : null}
                 <div
@@ -800,7 +818,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 >
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Mass"
+                    label={t("property.field.mass")}
                     suffix={massUnitLabel ?? undefined}
                     value={selectedEntity.mass}
                     onChange={(mass) => onUpdateSelectedEntityPhysics({ mass })}
@@ -809,7 +827,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                     <PositionInput
                       ariaLabel="Friction"
                       disabled={authoringLocked}
-                      label="Surface friction"
+                      label={t("property.field.surfaceFriction")}
                       value={selectedEntity.friction}
                       onChange={(friction) => onUpdateSelectedEntityPhysics({ friction })}
                     />
@@ -817,13 +835,13 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   <PositionInput
                     ariaLabel="Restitution"
                     disabled={authoringLocked}
-                    label="Bounce"
+                    label={t("property.field.bounce")}
                     value={selectedEntity.restitution}
                     onChange={(restitution) => onUpdateSelectedEntityPhysics({ restitution })}
                   />
                   <CheckboxInput
                     disabled={authoringLocked}
-                    label="Locked in simulation"
+                    label={t("property.field.lockedInSimulation")}
                     checked={selectedEntity.locked}
                     onChange={(locked) => onUpdateSelectedEntityPhysics({ locked })}
                   />
@@ -837,14 +855,14 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 >
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Velocity X"
+                    label={t("property.field.velocityX")}
                     suffix={velocityUnitLabel ?? undefined}
                     value={selectedEntity.velocityX}
                     onChange={(velocityX) => onUpdateSelectedEntityPhysics({ velocityX })}
                   />
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Velocity Y"
+                    label={t("property.field.velocityY")}
                     suffix={velocityUnitLabel ?? undefined}
                     value={selectedEntity.velocityY}
                     onChange={(velocityY) => onUpdateSelectedEntityPhysics({ velocityY })}
@@ -859,7 +877,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 >
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Speed"
+                    label={t("property.field.speed")}
                     suffix={velocityUnitLabel ?? undefined}
                     value={selectedVelocityPolar?.speed ?? 0}
                     onChange={(speed) =>
@@ -873,7 +891,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   />
                   <PositionInput
                     disabled={authoringLocked}
-                    label="Direction"
+                    label={t("property.field.direction")}
                     suffix="°"
                     value={selectedVelocityPolar?.directionDegrees ?? 0}
                     onChange={(directionDegrees) =>
@@ -895,7 +913,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 type="button"
                 onClick={onDuplicateSelectedEntity}
               >
-                Duplicate entity
+                {t("property.action.duplicateEntity")}
               </button>
               <button
                 disabled={authoringLocked}
@@ -903,39 +921,41 @@ export function PropertyPanel(props: PropertyPanelProps) {
                 type="button"
                 onClick={onDeleteSelectedEntity}
               >
-                Delete entity
+                {t("property.action.deleteEntity")}
               </button>
             </div>
           </>
         ) : (
-          <span style={{ color: "#55657f", fontSize: "14px" }}>No entity selected</span>
+          <span style={{ color: "#55657f", fontSize: "14px" }}>
+            {t("property.empty.noEntitySelected")}
+          </span>
         )}
       </section>
 
       <section style={cardStyle}>
-        <h2 style={sectionLabelStyle}>Display</h2>
+        <h2 style={sectionLabelStyle}>{t("property.display.title")}</h2>
         <CheckboxInput
-          label="Show grid"
+          label={t("property.display.showGrid")}
           checked={display.gridVisible}
           onChange={(gridVisible) => onUpdateDisplaySetting({ gridVisible })}
         />
         <CheckboxInput
-          label="Show labels"
+          label={t("property.display.showLabels")}
           checked={display.showLabels}
           onChange={(showLabels) => onUpdateDisplaySetting({ showLabels })}
         />
         <CheckboxInput
-          label="Show trajectories"
+          label={t("property.display.showTrajectories")}
           checked={display.showTrajectories}
           onChange={(showTrajectories) => onUpdateDisplaySetting({ showTrajectories })}
         />
         <CheckboxInput
-          label="Show velocity vectors"
+          label={t("property.display.showVelocityVectors")}
           checked={display.showVelocityVectors}
           onChange={(showVelocityVectors) => onUpdateDisplaySetting({ showVelocityVectors })}
         />
         <CheckboxInput
-          label="Show force vectors"
+          label={t("property.display.showForceVectors")}
           checked={display.showForceVectors}
           onChange={(showForceVectors) => onUpdateDisplaySetting({ showForceVectors })}
         />

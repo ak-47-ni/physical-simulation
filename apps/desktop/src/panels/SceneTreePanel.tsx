@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 
 import type { EditorConstraint } from "../state/editorConstraints";
 import type { EditorSceneEntity } from "../state/editorStore";
+import { useI18n } from "../i18n";
 
 type SceneTreePanelProps = {
   constraints?: EditorConstraint[];
@@ -24,6 +25,7 @@ const itemButtonStyle: CSSProperties = {
 };
 
 export function SceneTreePanel(props: SceneTreePanelProps) {
+  const { t } = useI18n();
   const {
     constraints = [],
     entities,
@@ -44,10 +46,10 @@ export function SceneTreePanel(props: SceneTreePanelProps) {
           color: "#64748b",
         }}
       >
-        Scene Tree
+        {t("sceneTree.title")}
       </h2>
       <h3 style={{ ...itemButtonStyle, border: "none", background: "transparent", padding: 0 }}>
-        Entities
+        {t("sceneTree.entities")}
       </h3>
       {entities.map((entity) => (
         <button
@@ -67,7 +69,7 @@ export function SceneTreePanel(props: SceneTreePanelProps) {
       {constraints.length > 0 ? (
         <>
           <h3 style={{ ...itemButtonStyle, border: "none", background: "transparent", padding: 0 }}>
-            Constraints
+            {t("sceneTree.constraints")}
           </h3>
           {constraints.map((constraint) => (
             <button

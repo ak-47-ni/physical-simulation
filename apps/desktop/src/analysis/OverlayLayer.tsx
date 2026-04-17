@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 
+import { useI18n } from "../i18n";
 import type { AnalyzerOverlayState } from "./useAnalyzerState";
 
 type OverlayLayerProps = {
@@ -16,26 +17,27 @@ const badgeStyle: CSSProperties = {
 };
 
 export function OverlayLayer(props: OverlayLayerProps) {
+  const { t } = useI18n();
   const { overlays } = props;
 
   return (
     <div data-testid="overlay-layer" style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
       <span data-testid="rigid-boundary-overlay" style={badgeStyle}>
-        Rigid-body contact follows body boundaries; fill stays visual.
+        {t("analysis.overlay.rigidBoundary")}
       </span>
       {overlays.showTrajectories ? (
         <span data-testid="trajectory-overlay" style={badgeStyle}>
-          Trajectories visible
+          {t("analysis.overlay.trajectoriesVisible")}
         </span>
       ) : null}
       {overlays.showVelocityVectors ? (
         <span data-testid="velocity-vector-overlay" style={badgeStyle}>
-          Velocity vectors visible
+          {t("analysis.overlay.velocityVectorsVisible")}
         </span>
       ) : null}
       {overlays.showForceVectors ? (
         <span data-testid="force-vector-overlay" style={badgeStyle}>
-          Force vectors visible
+          {t("analysis.overlay.forceVectorsVisible")}
         </span>
       ) : null}
     </div>

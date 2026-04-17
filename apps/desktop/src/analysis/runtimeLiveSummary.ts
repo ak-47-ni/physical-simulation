@@ -18,6 +18,7 @@ export type RuntimeLiveSummary = {
 type BuildRuntimeLiveSummaryInput = {
   currentFrame: RuntimeFrameView | null;
   currentTimeSeconds: number;
+  formatters?: Partial<RuntimeLiveSummaryFormatters>;
   status: RuntimeBridgeStatus;
   trajectorySamples: RuntimeTrajectorySample[];
 };
@@ -28,32 +29,69 @@ type MotionSnapshot = {
   speedMagnitude: number;
 };
 
+type RuntimeLiveSummaryFormatters = {
+  noLiveDataHeadline: () => string;
+  frame: (frameNumber: number) => string;
+  framePlaceholder: () => string;
+  elapsedTime: (time: string) => string;
+  liveSamples: (count: number) => string;
+  currentSpeed: (value: string) => string;
+  currentSpeedPlaceholder: () => string;
+  currentAcceleration: (value: string) => string;
+  currentAccelerationPlaceholder: () => string;
+  runningHeadline: (frameNumber: number, time: string) => string;
+  pausedHeadline: (frameNumber: number, time: string) => string;
+  latestHeadline: (frameNumber: number, time: string) => string;
+};
+
+const defaultFormatters: RuntimeLiveSummaryFormatters = {
+  noLiveDataHeadline: () => "No live data yet.",
+  frame: (frameNumber) => `Frame: ${frameNumber}`,
+  framePlaceholder: () => "Frame: --",
+  elapsedTime: (time) => `Elapsed time: ${time}`,
+  liveSamples: (count) => `Live samples: ${count}`,
+  currentSpeed: (value) => `Current speed: ${value}`,
+  currentSpeedPlaceholder: () => "Current speed: --",
+  currentAcceleration: (value) => `Current acceleration: ${value}`,
+  currentAccelerationPlaceholder: () => "Current acceleration: --",
+  runningHeadline: (frameNumber, time) => `Running frame ${frameNumber} at ${time}`,
+  pausedHeadline: (frameNumber, time) => `Paused on frame ${frameNumber} at ${time}`,
+  latestHeadline: (frameNumber, time) => `Latest frame ${frameNumber} at ${time}`,
+};
+
 export function buildRuntimeLiveSummary(
   input: BuildRuntimeLiveSummaryInput,
 ): RuntimeLiveSummary {
+  const formatters = { ...defaultFormatters, ...input.formatters };
   const liveMotion = readMotionSnapshot(input.currentFrame, input.trajectorySamples);
 
   if (!liveMotion) {
     return {
       hasLiveData: false,
-      headline: "No live data yet.",
-      frameLabel: "Frame: --",
-      elapsedLabel: `Elapsed time: ${formatSeconds(input.currentTimeSeconds)}`,
-      sampleLabel: `Live samples: ${input.trajectorySamples.length}`,
-      speedLabel: "Current speed: --",
-      accelerationLabel: "Current acceleration: --",
+      headline: formatters.noLiveDataHeadline(),
+      frameLabel: formatters.framePlaceholder(),
+      elapsedLabel: formatters.elapsedTime(formatSeconds(input.currentTimeSeconds)),
+      sampleLabel: formatters.liveSamples(input.trajectorySamples.length),
+      speedLabel: formatters.currentSpeedPlaceholder(),
+      accelerationLabel: formatters.currentAccelerationPlaceholder(),
     };
   }
 
   return {
     hasLiveData: true,
-    headline: buildHeadline(input.status, liveMotion.frameNumber, input.currentTimeSeconds),
-    frameLabel: `Frame: ${liveMotion.frameNumber}`,
-    elapsedLabel: `Elapsed time: ${formatSeconds(input.currentTimeSeconds)}`,
-    sampleLabel: `Live samples: ${input.trajectorySamples.length}`,
-    speedLabel: `Current speed: ${formatMagnitude(liveMotion.speedMagnitude)} m/s`,
-    accelerationLabel:
-      `Current acceleration: ${formatMagnitude(liveMotion.accelerationMagnitude)} m/s^2`,
+    headline: buildHeadline(
+      input.status,
+      liveMotion.frameNumber,
+      input.currentTimeSeconds,
+      formatters,
+    ),
+    frameLabel: formatters.frame(liveMotion.frameNumber),
+    elapsedLabel: formatters.elapsedTime(formatSeconds(input.currentTimeSeconds)),
+    sampleLabel: formatters.liveSamples(input.trajectorySamples.length),
+    speedLabel: formatters.currentSpeed(`${formatMagnitude(liveMotion.speedMagnitude)} m/s`),
+    accelerationLabel: formatters.currentAcceleration(
+      `${formatMagnitude(liveMotion.accelerationMagnitude)} m/s^2`,
+    ),
   };
 }
 
@@ -61,18 +99,19 @@ function buildHeadline(
   status: RuntimeBridgeStatus,
   frameNumber: number,
   currentTimeSeconds: number,
+  formatters: RuntimeLiveSummaryFormatters,
 ): string {
   const timeLabel = formatSeconds(currentTimeSeconds);
 
   if (status === "running") {
-    return `Running frame ${frameNumber} at ${timeLabel}`;
+    return formatters.runningHeadline(frameNumber, timeLabel);
   }
 
   if (status === "paused") {
-    return `Paused on frame ${frameNumber} at ${timeLabel}`;
+    return formatters.pausedHeadline(frameNumber, timeLabel);
   }
 
-  return `Latest frame ${frameNumber} at ${timeLabel}`;
+  return formatters.latestHeadline(frameNumber, timeLabel);
 }
 
 function readMotionSnapshot(

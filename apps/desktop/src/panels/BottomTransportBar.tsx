@@ -1,5 +1,7 @@
 import type { CSSProperties } from "react";
 
+import { useI18n } from "../i18n";
+import { localizeSystemCopy } from "../localizeSystemCopy";
 import {
   DEFAULT_PRECOMPUTED_DURATION_SECONDS,
   DEFAULT_REALTIME_DURATION_CAP_SECONDS,
@@ -130,44 +132,47 @@ const compactPreparingBadgeStyle: CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-function readTransportStateCopy(runtime: BottomTransportRuntimeView): string {
+function readTransportStateCopy(
+  runtime: BottomTransportRuntimeView,
+  t: ReturnType<typeof useI18n>["t"],
+): string {
   if (runtime.lastErrorMessage) {
-    return "Runtime needs attention. Review the runtime message above.";
+    return t("transport.state.runtimeNeedsAttention");
   }
 
   if (runtime.blockReason === "rebuild-required") {
-    return "Results are out of date. Recalculate to review the latest motion.";
+    return t("transport.state.resultsOutOfDate");
   }
 
   if (runtime.lastBlockedAction) {
-    return runtime.lastBlockedAction.message;
+    return localizeSystemCopy(runtime.lastBlockedAction.message, t) ?? runtime.lastBlockedAction.message;
   }
 
   if (runtime.status === "preparing") {
-    return "Calculating the result. Playback and time jump unlock when it finishes.";
+    return t("transport.state.calculatingUnlock");
   }
 
   if (runtime.status === "running" && runtime.playbackMode === "precomputed") {
-    return "Showing the calculated result. Pause to inspect or jump to another time.";
+    return t("transport.state.showingCalculatedResult");
   }
 
   if (runtime.status === "running") {
-    return "Runtime is playing. Pause to inspect the current motion.";
+    return t("transport.state.runtimePlaying");
   }
 
   if (runtime.status === "paused" && runtime.playbackMode === "precomputed" && runtime.canSeek) {
-    return "Calculated result ready. Press Play result or jump to a time.";
+    return t("transport.state.resultReady");
   }
 
   if (runtime.playbackMode === "precomputed" && !runtime.canSeek) {
-    return "Calculate a result to enable play, seek, and time jump.";
+    return t("transport.state.calculateToEnable");
   }
 
   if (runtime.status === "paused" && runtime.currentTimeSeconds > 0) {
-    return "Runtime is paused on the current frame.";
+    return t("transport.state.runtimePaused");
   }
 
-  return `State: ${runtime.status}`;
+  return t("transport.state.statusFallback", { status: runtime.status });
 }
 
 function createFallbackPlaybackSettings(
@@ -203,7 +208,10 @@ function shouldShowCompactBanner(runtime: BottomTransportRuntimeView): boolean {
   );
 }
 
-function readPreparingProgressLabel(runtime: BottomTransportRuntimeView): string | null {
+function readPreparingProgressLabel(
+  runtime: BottomTransportRuntimeView,
+  t: ReturnType<typeof useI18n>["t"],
+): string | null {
   if (
     runtime.status !== "preparing" ||
     runtime.playbackMode !== "precomputed" ||
@@ -212,10 +220,13 @@ function readPreparingProgressLabel(runtime: BottomTransportRuntimeView): string
     return null;
   }
 
-  return `Preparing ${Math.round(runtime.preparingProgress * 100)}%`;
+  return t("transport.preparingProgress", {
+    progress: Math.round(runtime.preparingProgress * 100),
+  });
 }
 
 export function BottomTransportBar(props: BottomTransportBarProps) {
+  const { t } = useI18n();
   const {
     onPause,
     onPrecomputeDurationChange,
@@ -233,27 +244,29 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
   const timeScalePresets = props.timeScalePresets ?? DEFAULT_TIME_SCALE_PRESETS;
   const hasCalculatedResult = runtime.playbackMode === "precomputed" && runtime.canSeek;
   const blockedMessage =
-    runtime.lastBlockedAction?.message ??
+    (runtime.lastBlockedAction?.message
+      ? localizeSystemCopy(runtime.lastBlockedAction.message, t)
+      : undefined) ??
     (runtime.blockReason === "rebuild-required"
-      ? "Results are out of date. Recalculate to review the latest motion."
+      ? t("transport.state.resultsOutOfDate")
       : undefined);
   const stepTitle =
     runtime.status === "running" || runtime.status === "preparing"
-      ? "Pause the runtime before stepping."
+      ? t("transport.stepDisabledWhileRunning")
       : blockedMessage;
-  const transportStateCopy = readTransportStateCopy(runtime);
+  const transportStateCopy = readTransportStateCopy(runtime, t);
   const timelineProgress = createTimelineProgress(runtime);
-  const preparingProgressLabel = readPreparingProgressLabel(runtime);
+  const preparingProgressLabel = readPreparingProgressLabel(runtime, t);
   const primaryActionLabel =
     runtime.playbackMode === "precomputed"
       ? runtime.status === "preparing"
-        ? "Calculating…"
+        ? t("transport.primary.calculating")
         : runtime.blockReason === "rebuild-required"
-          ? "Recalculate"
+          ? t("transport.primary.recalculate")
           : hasCalculatedResult
-            ? "Play result"
-            : "Calculate"
-      : "Start";
+            ? t("transport.primary.playResult")
+            : t("transport.primary.calculate")
+      : t("transport.primary.start");
   const currentTimeReadout = (
     <strong
       style={{
@@ -288,7 +301,7 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
         disabled={runtime.status === "preparing"}
         onClick={onPause}
       >
-        Pause
+        {t("transport.pause")}
       </button>
       <button
         type="button"
@@ -302,14 +315,14 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
         title={stepTitle}
         onClick={onStep}
       >
-        Step
+        {t("transport.step")}
       </button>
       <button
         type="button"
         style={isCompactLayout ? compactButtonStyle : buttonStyle}
         onClick={onReset}
       >
-        Reset
+        {t("transport.reset")}
       </button>
     </div>
   );
@@ -319,10 +332,10 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
       {playbackSettings.mode === "precomputed" ? (
         <label style={fieldStyle}>
           <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
-            Precompute duration
+            {t("transport.field.precomputeDuration")}
           </span>
           <input
-            aria-label="Precompute duration"
+            aria-label={t("transport.field.precomputeDuration")}
             min={1 / 60}
             step={1}
             style={{
@@ -344,7 +357,9 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
         </label>
       ) : isCompactLayout ? null : (
         <span style={{ color: "#17304f", fontSize: "13px", fontWeight: 600 }}>
-          Realtime cap {playbackSettings.realtimeDurationCapSeconds.toFixed(2)} s
+          {t("transport.field.realtimeCap", {
+            duration: `${playbackSettings.realtimeDurationCapSeconds.toFixed(2)} s`,
+          })}
         </span>
       )}
     </div>
