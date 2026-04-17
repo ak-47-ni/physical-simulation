@@ -2,9 +2,10 @@ use std::collections::HashMap;
 
 use sim_core::arc_track::{
     ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
-    CompiledArcTrackAnchor, angle_radians_for_position,
+    CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS, angle_radians_for_position,
+    contact_path_radius,
 };
-use sim_core::constraint::ArcTrackEntryEndpoint;
+use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::guide_runtime::RuntimeGuideState;
@@ -55,7 +56,7 @@ fn arc_track_entity(
         shape: ShapeDefinition::ArcTrack {
             radius,
             central_angle_degrees,
-            thickness: 0.18,
+            thickness: DEFAULT_ARC_TRACK_THICKNESS,
         },
         position: center,
         rotation_radians: rotation_degrees.to_radians(),
@@ -100,7 +101,11 @@ fn anchored_arc_track_entity(
         ArcTrackEntryEndpoint::Start => board_endpoint_tangent.perp(),
         ArcTrackEntryEndpoint::End => board_endpoint_tangent.perp().scale(-1.0),
     };
-    let center = board_endpoint_position.sub(radial.scale(radius));
+    let center = board_endpoint_position.sub(radial.scale(contact_path_radius(
+        radius,
+        DEFAULT_ARC_TRACK_THICKNESS,
+        ArcTrackSide::Inside,
+    )));
     let entry_angle_radians =
         angle_radians_for_position(radial).expect("radial should define angle");
     let start_angle_radians = match entry_endpoint {
@@ -197,8 +202,8 @@ fn guide_runtime_board_top_hands_off_to_connected_arc_segment() {
         } => {
             assert_eq!(segment_id, "guide:arc-track:arc");
             assert!(
-                progress < 1.25 * 90.0_f64.to_radians(),
-                "arc progress should move inward from the connected end"
+                progress < 90.0_f64.to_radians(),
+                "arc angle progress should remain within the authored span after end-entry handoff"
             );
             assert!(
                 speed < 0.0,
@@ -255,7 +260,7 @@ fn guide_runtime_board_arc_handoff_result_is_substep_invariant() {
 }
 
 #[test]
-fn guide_runtime_terminal_zone_handoff_does_not_wait_for_exact_endpoint_crossing() {
+fn guide_runtime_terminal_zone_handoff_does_not_pre_switch_before_reaching_the_junction() {
     let board_center = vector2(0.0, 0.0);
     let (_, tangent, surface_normal) =
         board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
@@ -270,8 +275,8 @@ fn guide_runtime_terminal_zone_handoff_does_not_wait_for_exact_endpoint_crossing
     assert!(
         matches!(
             runtime.guide_state("ball"),
-            RuntimeGuideState::OnGuide { ref segment_id, .. } if segment_id == "guide:arc-track:arc"
+            RuntimeGuideState::OnGuide { ref segment_id, .. } if segment_id == "guide:board:top"
         ),
-        "terminal-zone handoff should switch to the successor arc before exact endpoint overshoot"
+        "terminal-zone logic should not pre-switch to the arc while the ball is still visibly short of the board endpoint"
     );
 }

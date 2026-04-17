@@ -4,6 +4,7 @@ use crate::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, CompiledConstraint}
 use crate::entity::Vector2;
 
 pub const ARC_TRACK_EPSILON: f64 = 1e-6;
+pub const DEFAULT_ARC_TRACK_THICKNESS: f64 = 0.18;
 const TWO_PI: f64 = PI * 2.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +50,7 @@ pub struct CompiledArcTrack {
     pub id: String,
     pub center: Vector2,
     pub radius: f64,
+    pub thickness: f64,
     pub start_angle_radians: f64,
     pub end_angle_radians: f64,
     pub span_radians: f64,
@@ -79,13 +81,35 @@ pub struct LocalTangentHandoffGeometry {
 }
 
 impl CompiledArcTrack {
+    pub fn contact_path_radius(&self) -> f64 {
+        contact_path_radius(self.radius, self.thickness, self.side)
+    }
+
+    pub fn effective_center_radius(&self, body_radius: f64) -> f64 {
+        effective_center_radius(self.contact_path_radius(), body_radius, self.side)
+    }
+
+    pub fn endpoint_geometry(
+        &self,
+        entry_endpoint: ArcTrackEntryEndpoint,
+    ) -> ArcTrackEndpointGeometry {
+        endpoint_geometry(
+            self.center,
+            self.contact_path_radius(),
+            self.start_angle_radians,
+            self.end_angle_radians,
+            self.side,
+            entry_endpoint,
+        )
+    }
+
     pub fn local_tangent_handoff_geometry(
         &self,
         entry_endpoint: ArcTrackEntryEndpoint,
     ) -> LocalTangentHandoffGeometry {
         arc_track_local_tangent_handoff_geometry(
             self.center,
-            self.radius,
+            self.contact_path_radius(),
             self.start_angle_radians,
             self.end_angle_radians,
             self.side,
@@ -154,6 +178,7 @@ pub fn compiled_arc_track_from_constraint(
         id: id.clone(),
         center: *center,
         radius: *radius,
+        thickness: DEFAULT_ARC_TRACK_THICKNESS,
         start_angle_radians: *start_angle_radians,
         end_angle_radians: *end_angle_radians,
         span_radians: *span_radians,
@@ -170,6 +195,26 @@ pub fn capture_policy_for_entry_endpoint(
         Some(ArcTrackEntryEndpoint::Start) => ArcTrackCapturePolicy::Start,
         Some(ArcTrackEntryEndpoint::End) => ArcTrackCapturePolicy::End,
         None => ArcTrackCapturePolicy::Either,
+    }
+}
+
+pub fn contact_path_radius(radius: f64, thickness: f64, side: ArcTrackSide) -> f64 {
+    let half_thickness = thickness * 0.5;
+
+    match side {
+        ArcTrackSide::Inside => radius - half_thickness,
+        ArcTrackSide::Outside => radius + half_thickness,
+    }
+}
+
+pub fn effective_center_radius(
+    contact_path_radius: f64,
+    body_radius: f64,
+    side: ArcTrackSide,
+) -> f64 {
+    match side {
+        ArcTrackSide::Inside => contact_path_radius - body_radius,
+        ArcTrackSide::Outside => contact_path_radius + body_radius,
     }
 }
 

@@ -1,10 +1,11 @@
 use sim_core::arc_track::{
-    box_local_tangent_handoff_geometry, radial_for_angle, ArcTrackAnchorEndpoint,
+    ArcTrackAnchorEndpoint, DEFAULT_ARC_TRACK_THICKNESS, box_local_tangent_handoff_geometry,
+    contact_path_radius, radial_for_angle,
 };
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
-use sim_core::scene::{compile_scene, CompileSceneRequest};
+use sim_core::scene::{CompileSceneRequest, compile_scene};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
@@ -31,7 +32,7 @@ fn compile_arc_track(
             shape: ShapeDefinition::ArcTrack {
                 radius,
                 central_angle_degrees,
-                thickness: 0.18,
+                thickness: DEFAULT_ARC_TRACK_THICKNESS,
             },
             position: center,
             rotation_radians: rotation_degrees.to_radians(),
@@ -92,7 +93,11 @@ fn compiled_arc_track_local_tangent_handoff_geometry_matches_rotated_anchor_endp
     );
     let center = anchor_geometry
         .position
-        .sub(radial_for_angle(arc_end_angle).scale(radius));
+        .sub(radial_for_angle(arc_end_angle).scale(contact_path_radius(
+            radius,
+            DEFAULT_ARC_TRACK_THICKNESS,
+            ArcTrackSide::Inside,
+        )));
     let compiled_arc_track = compile_arc_track(center, radius, 15.0, 45.0);
 
     let handoff_geometry =

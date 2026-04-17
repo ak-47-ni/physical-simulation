@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::arc_track::{
-    ARC_TRACK_EPSILON, radial_for_angle, support_direction, tangent_for_increasing_angle,
+    ARC_TRACK_EPSILON, effective_center_radius, radial_for_angle, support_direction,
+    tangent_for_increasing_angle,
 };
 use crate::constraint::ArcTrackSide;
 use crate::entity::Vector2;
@@ -14,8 +15,8 @@ use crate::solver::{RuntimeBodyShape, RuntimeBodyState};
 const LINEAR_GUIDE_ATTACH_NORMAL_TOLERANCE: f64 = 0.08;
 const LINEAR_GUIDE_ATTACH_LONGITUDINAL_TOLERANCE: f64 = 0.08;
 const LINEAR_GUIDE_MIN_TANGENTIAL_SPEED: f64 = 1e-4;
-const GUIDE_TERMINAL_ZONE_MIN_LENGTH: f64 = 0.02;
-const GUIDE_TERMINAL_ZONE_BODY_RADIUS_FACTOR: f64 = 0.25;
+const GUIDE_TERMINAL_HANDOFF_DEADBAND_MIN_LENGTH: f64 = 1e-3;
+const GUIDE_TERMINAL_HANDOFF_DEADBAND_BODY_RADIUS_FACTOR: f64 = 0.01;
 const GUIDE_HANDOFF_SPEED_EPSILON: f64 = 1e-6;
 const GUIDE_HANDOFF_LOOP_LIMIT: usize = 8;
 
@@ -202,21 +203,19 @@ fn advance_linear_guide(
 ) -> GuideAdvanceOutcome {
     let external_acceleration = body.acceleration;
     let tangential_acceleration = external_acceleration.dot(linear.direction);
-    if let Some(next_attachment) =
-        try_terminal_zone_handoff(body, guide_network, attachment, linear)
-    {
-        *attachment = next_attachment;
-        sync_body_to_current_guide(body, guide_network, attachment);
-        return GuideAdvanceOutcome::HandedOff {
-            remaining: delta_seconds,
-        };
-    }
     let next_progress = attachment.progress
         + attachment.speed * delta_seconds
         + 0.5 * tangential_acceleration * delta_seconds * delta_seconds;
     let next_speed = attachment.speed + tangential_acceleration * delta_seconds;
 
     if (0.0..=linear.length).contains(&next_progress) {
+        if let Some(next_attachment) =
+            try_terminal_zone_handoff(body, guide_network, linear, next_progress, next_speed)
+        {
+            *attachment = next_attachment;
+            sync_body_to_current_guide(body, guide_network, attachment);
+            return GuideAdvanceOutcome::HandedOff { remaining: 0.0 };
+        }
         attachment.progress = next_progress;
         attachment.speed = next_speed;
         sync_body_to_linear_guide(body, linear, attachment.progress, attachment.speed);
@@ -270,32 +269,34 @@ fn advance_linear_guide(
 fn try_terminal_zone_handoff(
     body: &RuntimeBodyState,
     guide_network: &CompiledGuideNetwork,
-    attachment: &RuntimeGuideAttachment,
     linear: &LinearGuideSegment,
+    next_progress: f64,
+    next_speed: f64,
 ) -> Option<RuntimeGuideAttachment> {
-    let terminal_zone_length = linear_terminal_zone_length(body, linear);
+    let terminal_deadband = linear_terminal_handoff_deadband(body, linear);
+    let mut release_body = body.clone();
 
-    if attachment.speed > GUIDE_HANDOFF_SPEED_EPSILON
-        && linear.length - attachment.progress <= terminal_zone_length
+    if next_speed > GUIDE_HANDOFF_SPEED_EPSILON
+        && linear.length - next_progress <= terminal_deadband
     {
+        sync_body_to_linear_guide(&mut release_body, linear, linear.length, next_speed);
         return try_handoff(
-            body,
+            &release_body,
             guide_network,
             linear.id.as_str(),
             GuideSegmentEndpoint::End,
-            attachment.speed,
+            next_speed,
         );
     }
 
-    if attachment.speed < -GUIDE_HANDOFF_SPEED_EPSILON
-        && attachment.progress <= terminal_zone_length
-    {
+    if next_speed < -GUIDE_HANDOFF_SPEED_EPSILON && next_progress <= terminal_deadband {
+        sync_body_to_linear_guide(&mut release_body, linear, 0.0, next_speed);
         return try_handoff(
-            body,
+            &release_body,
             guide_network,
             linear.id.as_str(),
             GuideSegmentEndpoint::Start,
-            attachment.speed,
+            next_speed,
         );
     }
 
@@ -310,6 +311,8 @@ fn advance_arc_guide(
     delta_seconds: f64,
 ) -> GuideAdvanceOutcome {
     let external_acceleration = body.acceleration;
+    let body_radius = body.half_extents.x.max(body.half_extents.y);
+    let effective_radius = effective_center_radius(arc.radius, body_radius, arc.side);
     let angle = angle_for_arc_progress(arc, attachment.progress);
     let radial = radial_for_angle(angle);
     let tangent = tangent_for_increasing_angle(radial);
@@ -317,12 +320,12 @@ fn advance_arc_guide(
         external_acceleration,
         attachment.speed,
         radial,
-        arc.radius,
+        effective_radius,
         arc.side,
     );
 
     if required_support < -ARC_TRACK_EPSILON {
-        body.position = arc.center.add(radial.scale(arc.radius));
+        body.position = arc.center.add(radial.scale(effective_radius));
         body.velocity = tangent.scale(attachment.speed);
         body.acceleration = external_acceleration;
         integrate_free_body(body, delta_seconds);
@@ -331,9 +334,10 @@ fn advance_arc_guide(
 
     let tangential_acceleration = external_acceleration.dot(tangent);
     let next_progress = attachment.progress
-        + attachment.speed * delta_seconds
-        + 0.5 * tangential_acceleration * delta_seconds * delta_seconds;
-    let arc_length = arc.radius * arc.span_radians;
+        + (attachment.speed * delta_seconds
+            + 0.5 * tangential_acceleration * delta_seconds * delta_seconds)
+            / effective_radius;
+    let arc_length = arc.span_radians;
 
     if next_progress < 0.0 || next_progress > arc_length {
         let endpoint = if next_progress < 0.0 {
@@ -346,7 +350,7 @@ fn advance_arc_guide(
         } else {
             arc_length
         };
-        let boundary_distance = boundary_progress - attachment.progress;
+        let boundary_distance = (boundary_progress - attachment.progress) * effective_radius;
         let hit_seconds = solve_boundary_hit_seconds(
             attachment.speed,
             tangential_acceleration,
@@ -386,7 +390,7 @@ fn advance_arc_guide(
         external_acceleration,
         next_speed,
         next_radial,
-        arc.radius,
+        effective_radius,
         arc.side,
     );
 
@@ -395,8 +399,9 @@ fn advance_arc_guide(
             (required_support / (required_support - next_required_support)).clamp(0.0, 1.0);
         let release_seconds = delta_seconds * release_fraction;
         let release_progress = attachment.progress
-            + attachment.speed * release_seconds
-            + 0.5 * tangential_acceleration * release_seconds * release_seconds;
+            + (attachment.speed * release_seconds
+                + 0.5 * tangential_acceleration * release_seconds * release_seconds)
+                / effective_radius;
         let release_speed = attachment.speed + tangential_acceleration * release_seconds;
         let remaining_seconds = (delta_seconds - release_seconds).max(0.0);
 
@@ -448,7 +453,7 @@ fn try_handoff(
         CompiledGuideSegment::Arc(arc) => {
             let progress = match connection.to_endpoint {
                 GuideSegmentEndpoint::Start => 0.0,
-                GuideSegmentEndpoint::End => arc.radius * arc.span_radians,
+                GuideSegmentEndpoint::End => arc.span_radians,
             };
             let angle = angle_for_arc_progress(arc, progress);
             let speed = release_velocity.dot(tangent_for_increasing_angle(radial_for_angle(angle)));
@@ -499,11 +504,11 @@ fn sync_body_to_current_guide(
     }
 }
 
-fn linear_terminal_zone_length(body: &RuntimeBodyState, linear: &LinearGuideSegment) -> f64 {
+fn linear_terminal_handoff_deadband(body: &RuntimeBodyState, linear: &LinearGuideSegment) -> f64 {
     let body_radius = body.half_extents.x.max(body.half_extents.y);
 
-    (body_radius * GUIDE_TERMINAL_ZONE_BODY_RADIUS_FACTOR)
-        .max(GUIDE_TERMINAL_ZONE_MIN_LENGTH)
+    (body_radius * GUIDE_TERMINAL_HANDOFF_DEADBAND_BODY_RADIUS_FACTOR)
+        .max(GUIDE_TERMINAL_HANDOFF_DEADBAND_MIN_LENGTH)
         .min(linear.length)
 }
 
@@ -534,13 +539,15 @@ fn sync_body_to_arc_guide(
     let angle = angle_for_arc_progress(arc, progress);
     let radial = radial_for_angle(angle);
     let tangent = tangent_for_increasing_angle(radial);
+    let body_radius = body.half_extents.x.max(body.half_extents.y);
+    let effective_radius = effective_center_radius(arc.radius, body_radius, arc.side);
     let tangential_acceleration = body.acceleration.dot(tangent);
 
-    body.position = arc.center.add(radial.scale(arc.radius));
+    body.position = arc.center.add(radial.scale(effective_radius));
     body.velocity = tangent.scale(speed);
     body.acceleration = tangent
         .scale(tangential_acceleration)
-        .sub(radial.scale((speed * speed) / arc.radius));
+        .sub(radial.scale((speed * speed) / effective_radius));
     body.angular_velocity_radians = 0.0;
 }
 
@@ -559,7 +566,7 @@ fn required_arc_support(
 }
 
 fn angle_for_arc_progress(arc: &ArcGuideSegment, progress: f64) -> f64 {
-    normalize_angle_radians(arc.start_angle_radians + progress / arc.radius)
+    normalize_angle_radians(arc.start_angle_radians + progress)
 }
 
 fn solve_boundary_hit_seconds(

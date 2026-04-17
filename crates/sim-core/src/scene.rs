@@ -235,7 +235,7 @@ fn compile_entity(entity: &EntityDefinition) -> Result<CompiledSceneItem, SceneC
         ShapeDefinition::ArcTrack {
             radius,
             central_angle_degrees,
-            ..
+            thickness,
         } => {
             if !radius.is_finite() || *radius <= 0.0 {
                 return Err(SceneCompileError::InvalidArcTrackRadius {
@@ -259,6 +259,7 @@ fn compile_entity(entity: &EntityDefinition) -> Result<CompiledSceneItem, SceneC
                 id: entity.id.clone(),
                 center: entity.position,
                 radius: *radius,
+                thickness: *thickness,
                 start_angle_radians,
                 end_angle_radians,
                 span_radians,

@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use sim_core::arc_track::{
     ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
-    CompiledArcTrackAnchor, angle_radians_for_position,
+    CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS, angle_radians_for_position,
+    contact_path_radius, effective_center_radius,
 };
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
@@ -40,7 +41,7 @@ fn arc_track_entity(
         shape: ShapeDefinition::ArcTrack {
             radius,
             central_angle_degrees,
-            thickness: 0.18,
+            thickness: DEFAULT_ARC_TRACK_THICKNESS,
         },
         position: center,
         rotation_radians: rotation_degrees.to_radians(),
@@ -114,8 +115,13 @@ fn anchored_arc_track_entity(
         ArcTrackEntryEndpoint::Start => anchor_frame.tangent.perp(),
         ArcTrackEntryEndpoint::End => anchor_frame.tangent.perp().scale(-1.0),
     };
-    let center = anchor_frame.position.sub(radial.scale(radius));
-    let entry_angle_radians = angle_radians_for_position(radial).expect("radial should define angle");
+    let center = anchor_frame.position.sub(radial.scale(contact_path_radius(
+        radius,
+        DEFAULT_ARC_TRACK_THICKNESS,
+        ArcTrackSide::Inside,
+    )));
+    let entry_angle_radians =
+        angle_radians_for_position(radial).expect("radial should define angle");
     let start_angle_radians = match entry_endpoint {
         ArcTrackEntryEndpoint::Start => entry_angle_radians,
         ArcTrackEntryEndpoint::End => entry_angle_radians - sweep_degrees.to_radians(),
@@ -257,9 +263,18 @@ fn entry_arc() -> ConstraintDefinition {
     }
 }
 
+fn inside_effective_radius(radius: f64) -> f64 {
+    effective_center_radius(
+        contact_path_radius(radius, DEFAULT_ARC_TRACK_THICKNESS, ArcTrackSide::Inside),
+        0.5,
+        ArcTrackSide::Inside,
+    )
+}
+
 #[test]
 fn arc_entry_capture_regression_aligned_ball_enters_at_configured_endpoint() {
     let center = vector2(4.0, 4.0);
+    let expected_radius = inside_effective_radius(2.0);
     let mut runtime = runtime_for_scene(
         ball("ball", vector2(3.6, 2.0), vector2(2.0, 0.0)),
         entry_arc(),
@@ -270,7 +285,7 @@ fn arc_entry_capture_regression_aligned_ball_enters_at_configured_endpoint() {
     run_steps(&mut runtime, 6);
     let frame = runtime_entity(&runtime, "ball");
 
-    assert!((frame.position.sub(center).length() - 2.0).abs() < 5e-2);
+    assert!((frame.position.sub(center).length() - expected_radius).abs() < 5e-2);
     assert!(frame.position.x > 4.0);
     assert!(frame.position.y > 2.0);
 }
@@ -278,6 +293,7 @@ fn arc_entry_capture_regression_aligned_ball_enters_at_configured_endpoint() {
 #[test]
 fn arc_entry_capture_regression_wrong_direction_does_not_enter() {
     let center = vector2(4.0, 4.0);
+    let expected_radius = inside_effective_radius(2.0);
     let mut runtime = runtime_for_scene(
         ball("ball", vector2(5.0, 2.0), vector2(-2.0, 0.0)),
         entry_arc(),
@@ -290,12 +306,13 @@ fn arc_entry_capture_regression_wrong_direction_does_not_enter() {
 
     assert!(frame.position.x < 5.0);
     assert!((frame.position.y - 2.0).abs() < 1e-6);
-    assert!((frame.position.sub(center).length() - 2.0).abs() > 5e-2);
+    assert!((frame.position.sub(center).length() - expected_radius).abs() > 5e-2);
 }
 
 #[test]
 fn arc_entry_capture_regression_distant_ball_does_not_enter() {
     let center = vector2(4.0, 4.0);
+    let expected_radius = inside_effective_radius(2.0);
     let mut runtime = runtime_for_scene(
         ball("ball", vector2(1.0, 2.0), vector2(2.0, 0.0)),
         entry_arc(),
@@ -308,12 +325,13 @@ fn arc_entry_capture_regression_distant_ball_does_not_enter() {
 
     assert!(frame.position.x < 2.0);
     assert!((frame.position.y - 2.0).abs() < 1e-6);
-    assert!((frame.position.sub(center).length() - 2.0).abs() > 0.5);
+    assert!((frame.position.sub(center).length() - expected_radius).abs() > 0.5);
 }
 
 #[test]
 fn arc_entry_capture_regression_frontend_board_anchored_payload_enters_from_junction() {
     let center = vector2(8.0, 5.5);
+    let expected_radius = inside_effective_radius(1.0);
     let mut runtime = runtime_for_scene(
         ball("ball", vector2(8.4, 4.5), vector2(-2.0, 0.0)),
         ConstraintDefinition::ArcTrack {
@@ -334,7 +352,7 @@ fn arc_entry_capture_regression_frontend_board_anchored_payload_enters_from_junc
     let radial_distance = frame.position.sub(center).length();
 
     assert!(
-        (radial_distance - 1.0).abs() < 5e-2,
+        (radial_distance - expected_radius).abs() < 5e-2,
         "expected board-anchored payload to stay on the arc, got position=({:.3}, {:.3}) distance={:.3}",
         frame.position.x,
         frame.position.y,
@@ -346,6 +364,7 @@ fn arc_entry_capture_regression_frontend_board_anchored_payload_enters_from_junc
 #[test]
 fn arc_entry_capture_regression_arc_track_entity_captures_tangent_matched_endpoint() {
     let center = vector2(8.0, 5.5);
+    let expected_radius = inside_effective_radius(1.0);
     let mut runtime = runtime_for_scene_with_arc_entity(
         ball("ball", vector2(8.65, 4.5), vector2(-0.2, 0.0)),
         arc_track_entity("arc-track", center, 1.0, 180.0, 90.0),
@@ -358,7 +377,7 @@ fn arc_entry_capture_regression_arc_track_entity_captures_tangent_matched_endpoi
     let radial_distance = frame.position.sub(center).length();
 
     assert!(
-        (radial_distance - 1.0).abs() < 5e-2,
+        (radial_distance - expected_radius).abs() < 5e-2,
         "expected entity arc-track to capture at the tangent-matched endpoint, got position=({:.3}, {:.3}) distance={:.3}",
         frame.position.x,
         frame.position.y,
@@ -371,6 +390,7 @@ fn arc_entry_capture_regression_arc_track_entity_captures_tangent_matched_endpoi
 #[test]
 fn arc_entry_capture_regression_arc_track_entity_does_not_capture_mid_arc_pass() {
     let center = vector2(8.0, 5.5);
+    let expected_radius = inside_effective_radius(1.0);
     let mut runtime = runtime_for_scene_with_arc_entity(
         ball("ball", vector2(7.1, 5.5), vector2(0.0, -0.2)),
         arc_track_entity("arc-track", center, 1.0, 180.0, 90.0),
@@ -383,7 +403,7 @@ fn arc_entry_capture_regression_arc_track_entity_does_not_capture_mid_arc_pass()
     let radial_distance = frame.position.sub(center).length();
 
     assert!(
-        (radial_distance - 1.0).abs() > 5e-2,
+        (radial_distance - expected_radius).abs() > 5e-2,
         "expected entity arc-track to avoid hidden mid-arc capture, got position=({:.3}, {:.3}) distance={:.3}",
         frame.position.x,
         frame.position.y,
@@ -399,13 +419,28 @@ fn arc_entry_capture_regression_arc_track_entity_does_not_capture_mid_arc_pass()
 
 #[test]
 fn arc_entry_capture_regression_block_anchored_entity_captures_board_endpoint_crossing() {
-    let center = vector2(4.0, 4.0);
+    let anchor_frame = block_anchor_endpoint_frame(
+        vector2(2.0, 2.25),
+        4.0,
+        0.5,
+        0.0,
+        ArcTrackAnchorEndpoint::End,
+    );
+    let arc_track = anchored_arc_track_entity(
+        "arc-track",
+        anchor_frame,
+        2.0,
+        60.0,
+        ArcTrackEntryEndpoint::End,
+    );
+    let center = arc_track.position;
+    let expected_radius = inside_effective_radius(2.0);
     let mut runtime = runtime_for_scene_with_anchored_arc_entity(
         ball("ball", vector2(3.6, 1.5), vector2(2.0, 0.0)),
         block("anchor", vector2(2.0, 2.25), 4.0, 0.5, 0.0),
         ArcTrackAnchorEntityKind::Block,
         ArcTrackAnchorEndpoint::End,
-        arc_track_entity("arc-track", center, 2.0, 60.0, 30.0),
+        arc_track,
         ArcTrackEntryEndpoint::End,
         Vector2::ZERO,
         0.05,
@@ -416,7 +451,7 @@ fn arc_entry_capture_regression_block_anchored_entity_captures_board_endpoint_cr
     let radial_distance = frame.position.sub(center).length();
 
     assert!(
-        (radial_distance - 2.0).abs() < 5e-2,
+        (radial_distance - expected_radius).abs() < 5e-2,
         "expected block-anchored junction handoff to capture the board-supported ball, got position=({:.3}, {:.3}) distance={:.3}",
         frame.position.x,
         frame.position.y,
@@ -428,13 +463,28 @@ fn arc_entry_capture_regression_block_anchored_entity_captures_board_endpoint_cr
 
 #[test]
 fn arc_entry_capture_regression_block_anchored_entity_avoids_hidden_free_ball_capture() {
-    let center = vector2(4.0, 4.0);
+    let anchor_frame = block_anchor_endpoint_frame(
+        vector2(2.0, 2.25),
+        4.0,
+        0.5,
+        0.0,
+        ArcTrackAnchorEndpoint::End,
+    );
+    let arc_track = anchored_arc_track_entity(
+        "arc-track",
+        anchor_frame,
+        2.0,
+        60.0,
+        ArcTrackEntryEndpoint::End,
+    );
+    let center = arc_track.position;
+    let expected_radius = inside_effective_radius(2.0);
     let mut runtime = runtime_for_scene_with_anchored_arc_entity(
         ball("ball", vector2(4.05, 2.3), vector2(0.5, 0.0)),
         block("anchor", vector2(2.0, 2.25), 4.0, 0.5, 0.0),
         ArcTrackAnchorEntityKind::Block,
         ArcTrackAnchorEndpoint::End,
-        arc_track_entity("arc-track", center, 2.0, 60.0, 30.0),
+        arc_track,
         ArcTrackEntryEndpoint::End,
         Vector2::ZERO,
         0.05,
@@ -445,7 +495,7 @@ fn arc_entry_capture_regression_block_anchored_entity_avoids_hidden_free_ball_ca
     let radial_distance = frame.position.sub(center).length();
 
     assert!(
-        (radial_distance - 2.0).abs() > 5e-2,
+        (radial_distance - expected_radius).abs() > 5e-2,
         "expected anchored guide to reject hidden free-ball capture near the junction, got position=({:.3}, {:.3}) distance={:.3}",
         frame.position.x,
         frame.position.y,
@@ -462,12 +512,21 @@ fn arc_entry_capture_regression_rotated_block_uses_local_tangent_crossing_not_ve
     let initial_ball = local_tangent_crossing_ball("ball", anchor_frame, -0.02, 1.0, 0.9);
     let initial_x = initial_ball.position.x;
     let projected_x_after_step = initial_ball.position.x + initial_ball.initial_velocity.x * 0.05;
+    let arc_track = anchored_arc_track_entity(
+        "arc-track",
+        anchor_frame,
+        1.0,
+        90.0,
+        ArcTrackEntryEndpoint::End,
+    );
+    let arc_center = arc_track.position;
+    let expected_radius = inside_effective_radius(1.0);
     let mut runtime = runtime_for_scene_with_anchored_arc_entity(
         initial_ball,
         block("anchor", anchor_center, 4.0, 0.5, 90.0),
         ArcTrackAnchorEntityKind::Block,
         ArcTrackAnchorEndpoint::End,
-        anchored_arc_track_entity("arc-track", anchor_frame, 1.0, 90.0, ArcTrackEntryEndpoint::End),
+        arc_track,
         ArcTrackEntryEndpoint::End,
         Vector2::ZERO,
         0.05,
@@ -475,7 +534,7 @@ fn arc_entry_capture_regression_rotated_block_uses_local_tangent_crossing_not_ve
 
     run_steps(&mut runtime, 1);
     let frame = runtime_entity(&runtime, "ball");
-    let radial_distance = frame.position.sub(vector2(1.25, 4.0)).length();
+    let radial_distance = frame.position.sub(arc_center).length();
 
     assert!(
         projected_x_after_step > anchor_frame.position.x,
@@ -486,7 +545,7 @@ fn arc_entry_capture_regression_rotated_block_uses_local_tangent_crossing_not_ve
         "expected local-tangent crossing setup to avoid any world-x crossing",
     );
     assert!(
-        (radial_distance - 1.0).abs() < 5e-2,
+        (radial_distance - expected_radius).abs() < 5e-2,
         "expected rotated support handoff to capture from local tangent crossing, got position=({:.3}, {:.3}) distance={:.3}",
         frame.position.x,
         frame.position.y,
@@ -500,12 +559,21 @@ fn arc_entry_capture_regression_rotated_block_allows_small_local_tangent_oversho
     let anchor_frame =
         block_anchor_endpoint_frame(anchor_center, 4.0, 0.5, 90.0, ArcTrackAnchorEndpoint::End);
     let initial_ball = local_tangent_crossing_ball("ball", anchor_frame, 0.08, 1.0, 0.9);
+    let arc_track = anchored_arc_track_entity(
+        "arc-track",
+        anchor_frame,
+        1.0,
+        90.0,
+        ArcTrackEntryEndpoint::End,
+    );
+    let arc_center = arc_track.position;
+    let expected_radius = inside_effective_radius(1.0);
     let mut runtime = runtime_for_scene_with_anchored_arc_entity(
         initial_ball,
         block("anchor", anchor_center, 4.0, 0.5, 90.0),
         ArcTrackAnchorEntityKind::Block,
         ArcTrackAnchorEndpoint::End,
-        anchored_arc_track_entity("arc-track", anchor_frame, 1.0, 90.0, ArcTrackEntryEndpoint::End),
+        arc_track,
         ArcTrackEntryEndpoint::End,
         Vector2::ZERO,
         0.05,
@@ -513,10 +581,10 @@ fn arc_entry_capture_regression_rotated_block_allows_small_local_tangent_oversho
 
     run_steps(&mut runtime, 1);
     let frame = runtime_entity(&runtime, "ball");
-    let radial_distance = frame.position.sub(vector2(1.25, 4.0)).length();
+    let radial_distance = frame.position.sub(arc_center).length();
 
     assert!(
-        (radial_distance - 1.0).abs() < 5e-2,
+        (radial_distance - expected_radius).abs() < 5e-2,
         "expected rotated support handoff to allow a small post-endpoint overshoot window, got position=({:.3}, {:.3}) distance={:.3}",
         frame.position.x,
         frame.position.y,

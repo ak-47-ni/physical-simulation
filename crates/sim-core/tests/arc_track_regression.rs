@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use sim_core::arc_track::{
     ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
-    CompiledArcTrackAnchor, angle_radians_for_position,
+    CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS, angle_radians_for_position,
+    contact_path_radius, effective_center_radius,
 };
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
@@ -40,7 +41,7 @@ fn arc_track_entity(
         shape: ShapeDefinition::ArcTrack {
             radius,
             central_angle_degrees,
-            thickness: 0.18,
+            thickness: DEFAULT_ARC_TRACK_THICKNESS,
         },
         position: center,
         rotation_radians: rotation_degrees.to_radians(),
@@ -114,8 +115,13 @@ fn anchored_arc_track_entity(
         ArcTrackEntryEndpoint::Start => anchor_frame.tangent.perp(),
         ArcTrackEntryEndpoint::End => anchor_frame.tangent.perp().scale(-1.0),
     };
-    let center = anchor_frame.position.sub(radial.scale(radius));
-    let entry_angle_radians = angle_radians_for_position(radial).expect("radial should define angle");
+    let center = anchor_frame.position.sub(radial.scale(contact_path_radius(
+        radius,
+        DEFAULT_ARC_TRACK_THICKNESS,
+        ArcTrackSide::Inside,
+    )));
+    let entry_angle_radians =
+        angle_radians_for_position(radial).expect("radial should define angle");
     let start_angle_radians = match entry_endpoint {
         ArcTrackEntryEndpoint::Start => entry_angle_radians,
         ArcTrackEntryEndpoint::End => entry_angle_radians - sweep_degrees.to_radians(),
@@ -127,6 +133,14 @@ fn anchored_arc_track_entity(
         radius,
         sweep_degrees,
         start_angle_radians.to_degrees(),
+    )
+}
+
+fn inside_effective_radius(radius: f64) -> f64 {
+    effective_center_radius(
+        contact_path_radius(radius, DEFAULT_ARC_TRACK_THICKNESS, ArcTrackSide::Inside),
+        0.5,
+        ArcTrackSide::Inside,
     )
 }
 
@@ -259,6 +273,7 @@ fn payload_frame<'a>(
 #[test]
 fn arc_track_regression_bowl_segment_keeps_ball_attached() {
     let center = vector2(4.0, 4.0);
+    let expected_radius = inside_effective_radius(2.0);
     let mut runtime = runtime_for_scene(
         ball("ball", vector2(3.6, 2.0), vector2(2.0, 0.0)),
         ConstraintDefinition::ArcTrack {
@@ -277,7 +292,7 @@ fn arc_track_regression_bowl_segment_keeps_ball_attached() {
     run_steps(&mut runtime, 10);
     let frame = runtime_entity(&runtime, "ball");
 
-    assert!((frame.position.sub(center).length() - 2.0).abs() < 5e-2);
+    assert!((frame.position.sub(center).length() - expected_radius).abs() < 5e-2);
     assert!(frame.position.x > 4.0);
     assert!(frame.position.y > 2.0);
 }
@@ -285,6 +300,7 @@ fn arc_track_regression_bowl_segment_keeps_ball_attached() {
 #[test]
 fn arc_track_regression_detaches_when_support_would_need_to_pull() {
     let center = vector2(4.0, 4.0);
+    let expected_radius = inside_effective_radius(2.0);
     let mut runtime = runtime_for_scene(
         ball("ball", vector2(4.8, 6.0), vector2(-2.0, 0.0)),
         ConstraintDefinition::ArcTrack {
@@ -306,7 +322,7 @@ fn arc_track_regression_detaches_when_support_would_need_to_pull() {
             .position
             .sub(center)
             .length()
-            - 2.0)
+            - expected_radius)
             .abs()
             < 5e-2
     );
@@ -315,12 +331,13 @@ fn arc_track_regression_detaches_when_support_would_need_to_pull() {
     let frame = runtime_entity(&runtime, "ball");
 
     assert!(frame.position.y < 6.0 - 1e-3);
-    assert!((frame.position.sub(center).length() - 2.0).abs() > 5e-2);
+    assert!((frame.position.sub(center).length() - expected_radius).abs() > 5e-2);
 }
 
 #[test]
 fn arc_track_regression_detaches_at_arc_end_and_continues_free_flight() {
     let center = vector2(4.0, 4.0);
+    let expected_radius = inside_effective_radius(2.0);
     let mut runtime = runtime_for_scene(
         ball("ball", vector2(3.7, 2.0), vector2(2.8, 0.0)),
         ConstraintDefinition::ArcTrack {
@@ -339,13 +356,14 @@ fn arc_track_regression_detaches_at_arc_end_and_continues_free_flight() {
     run_steps(&mut runtime, 12);
     let frame = runtime_entity(&runtime, "ball");
 
-    assert!((frame.position.sub(center).length() - 2.0).abs() > 5e-2);
+    assert!((frame.position.sub(center).length() - expected_radius).abs() > 5e-2);
     assert!(frame.velocity.x > 0.0);
 }
 
 #[test]
 fn arc_track_regression_arc_track_entity_guides_ball_then_releases_tangentially() {
     let center = vector2(4.0, 4.0);
+    let expected_radius = inside_effective_radius(2.0);
     let mut runtime = runtime_for_scene_with_arc_entity(
         ball("ball", vector2(3.7, 2.0), vector2(2.8, 0.0)),
         arc_track_entity("arc-track", center, 2.0, 30.0, 60.0),
@@ -357,8 +375,8 @@ fn arc_track_regression_arc_track_entity_guides_ball_then_releases_tangentially(
     let captured = runtime_entity(&runtime, "ball");
 
     assert!(
-        (captured.position.sub(center).length() - 2.0).abs() < 5e-2,
-        "expected entity arc-track to guide the captured ball, got radial distance {:.3}",
+        (captured.position.sub(center).length() - expected_radius).abs() < 5e-2,
+        "expected entity arc-track to place the ball on the effective center path instead of the authored centerline, got radial distance {:.3}",
         captured.position.sub(center).length(),
     );
     assert!(captured.velocity.x > 0.0, "ball_vx={}", captured.velocity.x);
@@ -367,7 +385,7 @@ fn arc_track_regression_arc_track_entity_guides_ball_then_releases_tangentially(
     let released = runtime_entity(&runtime, "ball");
 
     assert!(
-        (released.position.sub(center).length() - 2.0).abs() > 5e-2,
+        (released.position.sub(center).length() - expected_radius).abs() > 5e-2,
         "expected entity arc-track to release back into free motion, got radial distance {:.3}",
         released.position.sub(center).length(),
     );
@@ -376,13 +394,28 @@ fn arc_track_regression_arc_track_entity_guides_ball_then_releases_tangentially(
 
 #[test]
 fn arc_track_regression_block_anchored_handoff_preserves_ideal_guide_motion() {
-    let center = vector2(4.0, 4.0);
+    let anchor_frame = block_anchor_endpoint_frame(
+        vector2(2.0, 2.25),
+        4.0,
+        0.5,
+        0.0,
+        ArcTrackAnchorEndpoint::End,
+    );
+    let arc_track = anchored_arc_track_entity(
+        "arc-track",
+        anchor_frame,
+        2.0,
+        60.0,
+        ArcTrackEntryEndpoint::End,
+    );
+    let center = arc_track.position;
+    let expected_radius = inside_effective_radius(2.0);
     let mut runtime = runtime_for_scene_with_anchored_arc_entity(
         ball("ball", vector2(3.6, 1.5), vector2(2.0, 0.0)),
         block("anchor", vector2(2.0, 2.25), 4.0, 0.5, 0.0),
         ArcTrackAnchorEntityKind::Block,
         ArcTrackAnchorEndpoint::End,
-        arc_track_entity("arc-track", center, 2.0, 60.0, 30.0),
+        arc_track,
         ArcTrackEntryEndpoint::End,
         Vector2::ZERO,
         0.05,
@@ -393,7 +426,7 @@ fn arc_track_regression_block_anchored_handoff_preserves_ideal_guide_motion() {
     let radial = frame.position.sub(center);
 
     assert!(
-        (radial.length() - 2.0).abs() < 5e-2,
+        (radial.length() - expected_radius).abs() < 5e-2,
         "expected anchored handoff to keep the ball on the guide, got position=({:.3}, {:.3}) distance={:.3}",
         frame.position.x,
         frame.position.y,
@@ -411,13 +444,21 @@ fn arc_track_regression_rotated_block_handoff_preserves_ideal_guide_motion() {
     let anchor_center = vector2(2.0, 2.0);
     let anchor_frame =
         block_anchor_endpoint_frame(anchor_center, 4.0, 0.5, 90.0, ArcTrackAnchorEndpoint::End);
-    let arc_center = vector2(1.25, 4.0);
+    let arc_track = anchored_arc_track_entity(
+        "arc-track",
+        anchor_frame,
+        1.0,
+        90.0,
+        ArcTrackEntryEndpoint::End,
+    );
+    let arc_center = arc_track.position;
+    let expected_radius = inside_effective_radius(1.0);
     let mut runtime = runtime_for_scene_with_anchored_arc_entity(
         local_tangent_crossing_ball("ball", anchor_frame, -0.02, 1.0, 0.9),
         block("anchor", anchor_center, 4.0, 0.5, 90.0),
         ArcTrackAnchorEntityKind::Block,
         ArcTrackAnchorEndpoint::End,
-        anchored_arc_track_entity("arc-track", anchor_frame, 1.0, 90.0, ArcTrackEntryEndpoint::End),
+        arc_track,
         ArcTrackEntryEndpoint::End,
         Vector2::ZERO,
         0.05,
@@ -428,7 +469,7 @@ fn arc_track_regression_rotated_block_handoff_preserves_ideal_guide_motion() {
     let radial = frame.position.sub(arc_center);
 
     assert!(
-        (radial.length() - 1.0).abs() < 5e-2,
+        (radial.length() - expected_radius).abs() < 5e-2,
         "expected rotated local-tangent handoff to keep the ball on the guide, got position=({:.3}, {:.3}) distance={:.3}",
         frame.position.x,
         frame.position.y,

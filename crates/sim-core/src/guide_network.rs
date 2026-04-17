@@ -162,7 +162,7 @@ pub fn compile_guide_network(
         for entry_endpoint in capture_policy_endpoints(arc_track.capture_policy) {
             let arc_entry = endpoint_geometry(
                 arc_track.center,
-                arc_track.radius,
+                arc_track.contact_path_radius(),
                 arc_track.start_angle_radians,
                 arc_track.end_angle_radians,
                 arc_track.side,
@@ -227,9 +227,10 @@ fn align_arc_junction_to_node(
 }
 
 fn add_arc_guide_segment(network: &mut CompiledGuideNetwork, arc_track: &CompiledArcTrack) {
+    let contact_path_radius = arc_track.contact_path_radius();
     let start = endpoint_geometry(
         arc_track.center,
-        arc_track.radius,
+        contact_path_radius,
         arc_track.start_angle_radians,
         arc_track.end_angle_radians,
         arc_track.side,
@@ -237,7 +238,7 @@ fn add_arc_guide_segment(network: &mut CompiledGuideNetwork, arc_track: &Compile
     );
     let end = endpoint_geometry(
         arc_track.center,
-        arc_track.radius,
+        contact_path_radius,
         arc_track.start_angle_radians,
         arc_track.end_angle_radians,
         arc_track.side,
@@ -259,7 +260,7 @@ fn add_arc_guide_segment(network: &mut CompiledGuideNetwork, arc_track: &Compile
             start_node_id,
             end_node_id,
             center: arc_track.center,
-            radius: arc_track.radius,
+            radius: contact_path_radius,
             start_angle_radians: arc_track.start_angle_radians,
             end_angle_radians: arc_track.end_angle_radians,
             span_radians: arc_track.span_radians,

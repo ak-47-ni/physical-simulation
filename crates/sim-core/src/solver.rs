@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::arc_track::{
     ArcTrackAnchorEndpoint, ArcTrackCapturePolicy, ArcTrackEndpointGeometry, CompiledArcTrack,
+    effective_center_radius,
 };
 use crate::constraint::{ArcTrackSide, CompiledConstraint};
 use crate::entity::Vector2;
@@ -753,7 +754,7 @@ fn capture_arc_entries(
         'body_search: for entry_endpoint in capture_endpoints.into_iter().flatten() {
             let endpoint_geometry = crate::arc_track::endpoint_geometry(
                 arc_track.center,
-                arc_track.radius,
+                arc_track.contact_path_radius(),
                 arc_track.start_angle_radians,
                 arc_track.end_angle_radians,
                 arc_track.side,
@@ -821,8 +822,7 @@ fn capture_arc_entries(
                 let body_id = body.entity_id.clone();
                 sync_body_to_arc_state(
                     body,
-                    arc_track.center,
-                    arc_track.radius,
+                    arc_track,
                     capture.angle_radians,
                     capture.tangential_speed,
                 );
@@ -1026,20 +1026,22 @@ fn signed_tangential_speed_for_angle(velocity: Vector2, angle_radians: f64) -> f
 
 fn sync_body_to_arc_state(
     body: &mut RuntimeBodyState,
-    center: Vector2,
-    radius: f64,
+    arc_track: &CompiledArcTrack,
     angle_radians: f64,
     tangential_speed: f64,
 ) {
     let radial = crate::arc_track::radial_for_angle(angle_radians);
     let tangent = crate::arc_track::tangent_for_increasing_angle(radial);
     let tangential_acceleration = body.acceleration.dot(tangent);
+    let body_radius = body.half_extents.x.max(body.half_extents.y);
+    let effective_radius =
+        effective_center_radius(arc_track.contact_path_radius(), body_radius, arc_track.side);
 
-    body.position = center.add(radial.scale(radius));
+    body.position = arc_track.center.add(radial.scale(effective_radius));
     body.velocity = tangent.scale(tangential_speed);
     body.acceleration = tangent
         .scale(tangential_acceleration)
-        .sub(radial.scale((tangential_speed * tangential_speed) / radius));
+        .sub(radial.scale((tangential_speed * tangential_speed) / effective_radius));
     body.angular_velocity_radians = 0.0;
 }
 
@@ -1063,11 +1065,14 @@ fn advance_arc_track_attachment(
     attachment: &mut RuntimeArcTrackAttachment,
     delta_seconds: f64,
 ) -> bool {
+    let body_radius = body.half_extents.x.max(body.half_extents.y);
+    let effective_radius =
+        effective_center_radius(arc_track.contact_path_radius(), body_radius, arc_track.side);
+
     if delta_seconds <= f64::EPSILON {
         sync_body_to_arc_state(
             body,
-            arc_track.center,
-            arc_track.radius,
+            arc_track,
             attachment.angle_radians,
             attachment.tangential_speed,
         );
@@ -1082,12 +1087,12 @@ fn advance_arc_track_attachment(
         external_acceleration,
         attachment.tangential_speed,
         radial,
-        arc_track.radius,
+        effective_radius,
         arc_track.side,
     );
 
     if required_support < -crate::arc_track::ARC_TRACK_EPSILON {
-        body.position = arc_track.center.add(radial.scale(arc_track.radius));
+        body.position = arc_track.center.add(radial.scale(effective_radius));
         body.velocity = tangent.scale(attachment.tangential_speed);
         body.acceleration = external_acceleration;
         integrate_free_body(body, delta_seconds);
@@ -1098,7 +1103,7 @@ fn advance_arc_track_attachment(
         ccw_span_radians(arc_track.start_angle_radians, attachment.angle_radians);
     let angular_displacement = (attachment.tangential_speed * delta_seconds
         + 0.5 * tangential_acceleration * delta_seconds * delta_seconds)
-        / arc_track.radius;
+        / effective_radius;
     let next_progress = current_progress + angular_displacement;
 
     if next_progress < 0.0 || next_progress > arc_track.span_radians {
@@ -1112,7 +1117,7 @@ fn advance_arc_track_attachment(
         } else {
             arc_track.end_angle_radians
         };
-        let boundary_distance = (boundary_progress - current_progress) * arc_track.radius;
+        let boundary_distance = (boundary_progress - current_progress) * effective_radius;
         let hit_seconds = solve_arc_boundary_hit_seconds(
             attachment.tangential_speed,
             tangential_acceleration,
@@ -1124,7 +1129,7 @@ fn advance_arc_track_attachment(
         let release_tangent = crate::arc_track::tangent_for_increasing_angle(release_radial);
         let remaining_seconds = (delta_seconds - hit_seconds).max(0.0);
 
-        body.position = arc_track.center.add(release_radial.scale(arc_track.radius));
+        body.position = arc_track.center.add(release_radial.scale(effective_radius));
         body.velocity = release_tangent.scale(release_speed);
         body.acceleration = external_acceleration;
 
@@ -1142,7 +1147,7 @@ fn advance_arc_track_attachment(
         external_acceleration,
         next_speed,
         next_radial,
-        arc_track.radius,
+        effective_radius,
         arc_track.side,
     );
 
@@ -1153,7 +1158,7 @@ fn advance_arc_track_attachment(
         let release_progress = current_progress
             + (attachment.tangential_speed * release_seconds
                 + 0.5 * tangential_acceleration * release_seconds * release_seconds)
-                / arc_track.radius;
+                / effective_radius;
         let release_angle =
             normalize_angle_radians(arc_track.start_angle_radians + release_progress);
         let release_speed = attachment.tangential_speed + tangential_acceleration * release_seconds;
@@ -1161,7 +1166,7 @@ fn advance_arc_track_attachment(
         let release_tangent = crate::arc_track::tangent_for_increasing_angle(release_radial);
         let remaining_seconds = (delta_seconds - release_seconds).max(0.0);
 
-        body.position = arc_track.center.add(release_radial.scale(arc_track.radius));
+        body.position = arc_track.center.add(release_radial.scale(effective_radius));
         body.velocity = release_tangent.scale(release_speed);
         body.acceleration = external_acceleration;
 
@@ -1174,13 +1179,7 @@ fn advance_arc_track_attachment(
 
     attachment.angle_radians = next_angle;
     attachment.tangential_speed = next_speed;
-    sync_body_to_arc_state(
-        body,
-        arc_track.center,
-        arc_track.radius,
-        next_angle,
-        next_speed,
-    );
+    sync_body_to_arc_state(body, arc_track, next_angle, next_speed);
 
     true
 }

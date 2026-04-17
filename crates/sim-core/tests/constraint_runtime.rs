@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use sim_core::arc_track::{
     ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
-    CompiledArcTrackAnchor,
+    CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS, contact_path_radius,
+    effective_center_radius,
 };
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
@@ -57,7 +58,7 @@ fn arc_track_entity(
         shape: ShapeDefinition::ArcTrack {
             radius,
             central_angle_degrees,
-            thickness: 0.18,
+            thickness: DEFAULT_ARC_TRACK_THICKNESS,
         },
         position: center,
         rotation_radians: rotation_degrees.to_radians(),
@@ -169,11 +170,19 @@ fn free_arc_entry_geometry(
 ) -> sim_core::arc_track::ArcTrackEndpointGeometry {
     sim_core::arc_track::endpoint_geometry(
         center,
-        radius,
+        contact_path_radius(radius, DEFAULT_ARC_TRACK_THICKNESS, ArcTrackSide::Inside),
         start_angle_degrees.to_radians(),
         end_angle_degrees.to_radians(),
         ArcTrackSide::Inside,
         entry_endpoint,
+    )
+}
+
+fn inside_effective_radius(radius: f64) -> f64 {
+    effective_center_radius(
+        contact_path_radius(radius, DEFAULT_ARC_TRACK_THICKNESS, ArcTrackSide::Inside),
+        0.5,
+        ArcTrackSide::Inside,
     )
 }
 
@@ -406,6 +415,7 @@ fn constraint_runtime_arc_track_free_state_replays_deterministically_after_reset
 #[test]
 fn constraint_runtime_block_anchored_arc_track_detaches_when_support_would_need_to_pull() {
     let center = vector2(4.0, 4.0);
+    let expected_radius = inside_effective_radius(2.0);
     let mut runtime = runtime_for_scene_with_anchored_arc_entity(
         ball("ball", vector2(4.1, 5.5), vector2(-2.0, 0.0)),
         static_block("anchor", vector2(6.0, 6.25), 4.0, 0.5, 0.0),
@@ -421,7 +431,7 @@ fn constraint_runtime_block_anchored_arc_track_detaches_when_support_would_need_
     let captured = payload_frame(&first_frame, "ball");
 
     assert!(
-        (captured.position.sub(center).length() - 2.0).abs() < 5e-2,
+        (captured.position.sub(center).length() - expected_radius).abs() < 5e-2,
         "expected anchored handoff to capture before detach, got position=({:.3}, {:.3}) distance={:.3}",
         captured.position.x,
         captured.position.y,
@@ -436,7 +446,7 @@ fn constraint_runtime_block_anchored_arc_track_detaches_when_support_would_need_
     let released_radial_distance = released.position.sub(center).length();
 
     assert!(
-        (released_radial_distance - 2.0).abs() > 5e-2,
+        (released_radial_distance - expected_radius).abs() > 5e-2,
         "expected anchored guide to detach when support would need to pull, got position=({:.3}, {:.3}) distance={:.3}",
         released.position.x,
         released.position.y,
@@ -448,6 +458,7 @@ fn constraint_runtime_block_anchored_arc_track_detaches_when_support_would_need_
 fn constraint_runtime_continuous_entry_advances_along_arc_with_remaining_substep() {
     let center = vector2(10.0, 10.0);
     let radius = 4.0;
+    let expected_radius = inside_effective_radius(radius);
     let start_angle_degrees = 270.0;
     let end_angle_degrees = 330.0;
     let entry = free_arc_entry_geometry(
@@ -479,7 +490,7 @@ fn constraint_runtime_continuous_entry_advances_along_arc_with_remaining_substep
     let advanced_distance = slider.position.sub(entry.position).length();
 
     assert!(
-        (radial_distance - radius).abs() < 5e-2,
+        (radial_distance - expected_radius).abs() < 5e-2,
         "expected continuous sweep entry to attach to the arc, got position=({:.3}, {:.3}) radial_distance={:.3}",
         slider.position.x,
         slider.position.y,
@@ -500,6 +511,7 @@ fn constraint_runtime_continuous_entry_advances_along_arc_with_remaining_substep
 fn constraint_runtime_continuous_entry_rejects_wrong_direction_sweep() {
     let center = vector2(10.0, 10.0);
     let radius = 4.0;
+    let expected_radius = inside_effective_radius(radius);
     let start_angle_degrees = 270.0;
     let end_angle_degrees = 330.0;
     let entry = free_arc_entry_geometry(
@@ -531,8 +543,8 @@ fn constraint_runtime_continuous_entry_rejects_wrong_direction_sweep() {
     let radial_distance = slider.position.sub(center).length();
 
     assert!(
-        (radial_distance - radius).abs() > 0.07,
-        "expected wrong-direction sweep to remain in free motion instead of attaching, got position=({:.3}, {:.3}) radial_distance={:.3}",
+        (radial_distance - expected_radius).abs() > 0.07,
+        "expected wrong-direction sweep to remain off the effective center path instead of attaching, got position=({:.3}, {:.3}) radial_distance={:.3}",
         slider.position.x,
         slider.position.y,
         radial_distance,

@@ -8,7 +8,7 @@ use sim_core::constraint::ArcTrackEntryEndpoint;
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::guide_network::{CompiledGuideSegment, GuideSegmentEndpoint};
-use sim_core::scene::{CompileSceneRequest, compile_scene_with_arc_track_metadata};
+use sim_core::scene::{CompileSceneRequest, compile_scene, compile_scene_with_arc_track_metadata};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
@@ -255,4 +255,40 @@ fn guide_network_compile_uses_anchored_metadata_as_authoritative_connection() {
         board_end_node, arc_entry_node,
         "authoritative compile should collapse the junction to the board endpoint node"
     );
+}
+
+#[test]
+fn guide_network_compile_arc_guides_use_contact_path_radius_instead_of_centerline_radius() {
+    let compiled = compile_scene(&CompileSceneRequest {
+        entities: vec![arc_track_entity(
+            "arc-track",
+            vector2(0.0, 0.0),
+            2.5,
+            120.0,
+            0.0,
+        )],
+        constraints: vec![],
+        force_sources: vec![ForceSourceDefinition::Gravity {
+            id: "gravity".to_string(),
+            acceleration: vector2(0.0, -9.81),
+        }],
+        analyzers: vec![],
+    })
+    .expect("scene should compile");
+
+    let arc_segment = compiled
+        .guide_network
+        .segment("guide:arc-track:arc")
+        .expect("arc-track guide should compile");
+
+    match arc_segment {
+        CompiledGuideSegment::Arc(arc) => {
+            assert!(
+                (arc.radius - 2.41).abs() < 1e-9,
+                "inside arc guides should use the inner contact-path radius, got {}",
+                arc.radius
+            );
+        }
+        CompiledGuideSegment::Linear(_) => panic!("arc-track should compile as arc guide"),
+    }
 }

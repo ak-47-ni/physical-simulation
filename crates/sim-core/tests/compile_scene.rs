@@ -8,7 +8,7 @@ use sim_core::constraint::ArcTrackSide;
 use sim_core::constraint::ConstraintDefinition;
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
-use sim_core::scene::{compile_scene, CompileSceneRequest, SceneCompileError};
+use sim_core::scene::{CompileSceneRequest, SceneCompileError, compile_scene};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
@@ -130,6 +130,7 @@ fn compile_scene_compiles_arc_track_entities_as_guides() {
             id: "arc-track-1".to_string(),
             center: vector2(0.0, 0.0),
             radius: 2.5,
+            thickness: 0.18,
             start_angle_radians: 0.0,
             end_angle_radians: 120.0_f64.to_radians(),
             span_radians: 120.0_f64.to_radians(),

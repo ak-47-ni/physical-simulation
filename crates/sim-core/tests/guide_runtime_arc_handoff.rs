@@ -2,9 +2,10 @@ use std::collections::HashMap;
 
 use sim_core::arc_track::{
     ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
-    CompiledArcTrackAnchor, angle_radians_for_position,
+    CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS, angle_radians_for_position,
+    contact_path_radius, effective_center_radius,
 };
-use sim_core::constraint::ArcTrackEntryEndpoint;
+use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::guide_runtime::RuntimeGuideState;
@@ -55,7 +56,7 @@ fn arc_track_entity(
         shape: ShapeDefinition::ArcTrack {
             radius,
             central_angle_degrees,
-            thickness: 0.18,
+            thickness: DEFAULT_ARC_TRACK_THICKNESS,
         },
         position: center,
         rotation_radians: rotation_degrees.to_radians(),
@@ -100,7 +101,11 @@ fn anchored_arc_track_entity(
         ArcTrackEntryEndpoint::Start => board_endpoint_tangent.perp(),
         ArcTrackEntryEndpoint::End => board_endpoint_tangent.perp().scale(-1.0),
     };
-    let center = board_endpoint_position.sub(radial.scale(radius));
+    let center = board_endpoint_position.sub(radial.scale(contact_path_radius(
+        radius,
+        DEFAULT_ARC_TRACK_THICKNESS,
+        ArcTrackSide::Inside,
+    )));
     let entry_angle_radians =
         angle_radians_for_position(radial).expect("radial should define angle");
     let start_angle_radians = match entry_endpoint {
@@ -114,6 +119,14 @@ fn anchored_arc_track_entity(
         radius,
         sweep_degrees,
         start_angle_radians.to_degrees(),
+    )
+}
+
+fn inside_effective_radius(radius: f64, body_radius: f64) -> f64 {
+    effective_center_radius(
+        contact_path_radius(radius, DEFAULT_ARC_TRACK_THICKNESS, ArcTrackSide::Inside),
+        body_radius,
+        ArcTrackSide::Inside,
     )
 }
 
@@ -180,6 +193,7 @@ fn guide_runtime_arc_segment_detaches_to_free_when_support_is_insufficient() {
     let initial_velocity = tangent.scale(1.6);
     let (mut runtime, arc_center) =
         runtime_for_board_arc_scene(initial_position, initial_velocity, 0.025);
+    let expected_radius = inside_effective_radius(1.25, 0.4);
     let mut closest_distance = f64::INFINITY;
     let mut saw_arc_guide = false;
     let mut first_free_after_arc: Option<(Vector2, Vector2)> = None;
@@ -191,7 +205,7 @@ fn guide_runtime_arc_segment_detaches_to_free_when_support_is_insufficient() {
             .iter()
             .find(|entity| entity.entity_id == "ball")
             .expect("ball should exist");
-        let distance = (ball_frame.position.sub(arc_center).length() - 1.25).abs();
+        let distance = (ball_frame.position.sub(arc_center).length() - expected_radius).abs();
 
         closest_distance = closest_distance.min(distance);
         match runtime.guide_state("ball") {

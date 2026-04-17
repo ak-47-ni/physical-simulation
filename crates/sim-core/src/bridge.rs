@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::analyzer::{AnalyzerDefinition, TrajectorySample};
 use crate::arc_track::{
     ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
-    CompiledArcTrackAnchor,
+    CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS,
 };
 use crate::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use crate::entity::{EntityDefinition, ShapeDefinition, Vector2};
@@ -467,10 +467,9 @@ impl SimulationBridge {
             .cached_current_frame()
             .or_else(|| self.runtime.as_ref().map(RuntimeScene::current_frame));
         let guide_states = match (&current_frame, self.playback_config.mode) {
-            (Some(frame), PlaybackMode::Realtime) => read_bridge_guide_states(
-                self.runtime.as_ref(),
-                frame,
-            ),
+            (Some(frame), PlaybackMode::Realtime) => {
+                read_bridge_guide_states(self.runtime.as_ref(), frame)
+            }
             _ => Vec::new(),
         };
 
@@ -660,7 +659,8 @@ fn read_bridge_guide_states(
         return Vec::new();
     };
 
-    frame.entities
+    frame
+        .entities
         .iter()
         .map(|entity| match runtime.guide_state(&entity.entity_id) {
             RuntimeGuideState::Free => BridgeGuideStateSnapshot::Free {
@@ -1020,7 +1020,7 @@ impl SceneEntityPayload {
                     sweep_angle_degrees,
                     central_angle_degrees,
                 )?;
-                let thickness = thickness.unwrap_or(LEGACY_ARC_TRACK_THICKNESS_FALLBACK);
+                let thickness = thickness.unwrap_or(DEFAULT_ARC_TRACK_THICKNESS);
 
                 (
                     ShapeDefinition::ArcTrack {
@@ -1219,8 +1219,6 @@ fn required_scalar(
         missing_field: field.to_string(),
     })
 }
-
-const LEGACY_ARC_TRACK_THICKNESS_FALLBACK: f64 = 0.18;
 
 fn required_arc_track_span_degrees(
     id: &str,
