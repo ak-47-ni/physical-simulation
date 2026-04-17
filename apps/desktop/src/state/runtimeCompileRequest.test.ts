@@ -29,6 +29,7 @@ function createAnchoredArcTrackEntity() {
     radius: 1,
     rotationDegrees: 135,
     sweepAngleDegrees: 90,
+    thickness: 0.18,
   };
 }
 
@@ -45,6 +46,7 @@ function createBlockAnchoredArcTrackEntity() {
     radius: 1,
     rotationDegrees: 135,
     sweepAngleDegrees: 90,
+    thickness: 0.18,
   };
 }
 
@@ -80,6 +82,7 @@ function createTiltedBoardAnchoredArcTrackEntity() {
     radius: 150,
     rotationDegrees: 210,
     sweepAngleDegrees: 135,
+    thickness: 18,
   };
 }
 
@@ -532,6 +535,7 @@ describe("runtimeCompileRequest", () => {
         radius: number;
         rotationDegrees: number;
         sweepAngleDegrees: number;
+        thickness: number;
       } => entity.id === "arc-track-1",
     );
 
@@ -547,9 +551,9 @@ describe("runtimeCompileRequest", () => {
       radius: 1,
       rotationDegrees: 135,
       sweepAngleDegrees: 90,
+      thickness: 0.18,
     });
     expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
-    expect(arcTrackEntity).not.toHaveProperty("thickness");
   });
 
   it("keeps rotated block local-junction handoff payloads aligned to tangent-frame guide motion", () => {
@@ -609,6 +613,7 @@ describe("runtimeCompileRequest", () => {
         radius: number;
         rotationDegrees: number;
         sweepAngleDegrees: number;
+        thickness: number;
       } => entity.id === "arc-track-2",
     );
 
@@ -634,9 +639,9 @@ describe("runtimeCompileRequest", () => {
       radius: 1,
       rotationDegrees: 135,
       sweepAngleDegrees: 90,
+      thickness: 0.18,
     });
     expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
-    expect(arcTrackEntity).not.toHaveProperty("thickness");
   });
 
   it("keeps tilted board anchored arc-track payload fields stable through runtime normalization", () => {
@@ -691,6 +696,7 @@ describe("runtimeCompileRequest", () => {
         radius: number;
         rotationDegrees: number;
         sweepAngleDegrees: number;
+        thickness: number;
       } => entity.id === "arc-track-tilted-1",
     );
 
@@ -714,11 +720,11 @@ describe("runtimeCompileRequest", () => {
       radius: 1.5,
       rotationDegrees: 210,
       sweepAngleDegrees: 135,
+      thickness: 0.18,
     });
     expect(arcTrackEntity?.center.x).toBeCloseTo(7.8, 6);
     expect(arcTrackEntity?.center.y).toBeCloseTo(4.6, 6);
     expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
-    expect(arcTrackEntity).not.toHaveProperty("thickness");
   });
 
   it("keeps tilted board junction metadata identical after scene round-trip recompilation", () => {
@@ -774,6 +780,7 @@ describe("runtimeCompileRequest", () => {
         radius: number;
         rotationDegrees: number;
         sweepAngleDegrees: number;
+        thickness: number;
       } => entity.id === "arc-track-tilted-1",
     );
     const restoredArcTrackEntity = restoredRequest.scene.entities.find(
@@ -788,6 +795,7 @@ describe("runtimeCompileRequest", () => {
         radius: number;
         rotationDegrees: number;
         sweepAngleDegrees: number;
+        thickness: number;
       } => entity.id === "arc-track-tilted-1",
     );
 

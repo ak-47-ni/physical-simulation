@@ -123,6 +123,7 @@ function createRotatedBlockLocalTangentHandoffRequest() {
       radius: 1,
       rotationDegrees: 135,
       sweepAngleDegrees: 90,
+      thickness: 0.18,
     },
   );
 
@@ -492,6 +493,7 @@ describe("desktopRuntimeBridgePort", () => {
         radius: 1,
         rotationDegrees: 135,
         sweepAngleDegrees: 90,
+        thickness: 0.18,
       },
     );
     const request = createRuntimeCompileRequest(scene, ["physics"]);
@@ -541,6 +543,7 @@ describe("desktopRuntimeBridgePort", () => {
           radius: number;
           rotationDegrees: number;
           sweepAngleDegrees: number;
+          thickness: number;
         } => entity.id === "arc-track-1",
       );
 
@@ -556,9 +559,9 @@ describe("desktopRuntimeBridgePort", () => {
       radius: 1,
       rotationDegrees: 135,
       sweepAngleDegrees: 90,
+      thickness: 0.18,
     });
     expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
-    expect(arcTrackEntity).not.toHaveProperty("thickness");
   });
 
   it("preserves rotated block local-junction metadata when compile requests go through tauri invoke", async () => {
@@ -621,6 +624,7 @@ describe("desktopRuntimeBridgePort", () => {
           radius: number;
           rotationDegrees: number;
           sweepAngleDegrees: number;
+          thickness: number;
         } => entity.id === "arc-track-1",
       );
 
@@ -647,9 +651,9 @@ describe("desktopRuntimeBridgePort", () => {
       radius: 1,
       rotationDegrees: 135,
       sweepAngleDegrees: 90,
+      thickness: 0.18,
     });
     expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
-    expect(arcTrackEntity).not.toHaveProperty("thickness");
   });
 
   it("publishes readable runtime failures for seek commands", async () => {

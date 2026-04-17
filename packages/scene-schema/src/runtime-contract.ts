@@ -1,4 +1,5 @@
 import {
+  type ArcTrackSceneEntity,
   type ArcTrackConstraint,
   cloneSceneDocument,
   requiresRuntimeRebuild,
@@ -31,6 +32,8 @@ export type RuntimeCompileRequest = {
 };
 
 export type RuntimeCompileConstraint = SceneConstraint;
+
+export type RuntimeCompileArcTrackEntity = ArcTrackSceneEntity;
 
 export type RuntimeCompileArcTrackConstraint = ArcTrackConstraint;
 

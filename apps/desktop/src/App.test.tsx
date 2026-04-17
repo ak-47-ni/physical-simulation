@@ -330,6 +330,7 @@ describe("App selection sync", () => {
               radius: number;
               rotationDegrees: number;
               sweepAngleDegrees: number;
+              thickness: number;
             } =>
               typeof entity === "object" &&
               entity !== null &&
@@ -349,9 +350,9 @@ describe("App selection sync", () => {
               radius: 1,
               rotationDegrees: 135,
               sweepAngleDegrees: 90,
+              thickness: 0.18,
             });
             expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
-            expect(arcTrackEntity).not.toHaveProperty("thickness");
           }
 
           compileRequests.push(request);
@@ -475,6 +476,7 @@ describe("App selection sync", () => {
         radius?: number;
         rotationDegrees?: number;
         sweepAngleDegrees?: number;
+        thickness?: number;
       } =>
         typeof entity === "object" &&
         entity !== null &&
@@ -493,9 +495,9 @@ describe("App selection sync", () => {
       radius: 1,
       rotationDegrees: 135,
       sweepAngleDegrees: 90,
+      thickness: 0.18,
     });
     expect(arcTrackEntity).not.toHaveProperty("centralAngleDegrees");
-    expect(arcTrackEntity).not.toHaveProperty("thickness");
     expect(screen.queryByText(/missing centralAngleDegrees/i)).toBeNull();
   });
 

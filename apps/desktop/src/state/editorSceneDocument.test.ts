@@ -82,6 +82,7 @@ const TEST_PERSISTED_ARC_TRACK_ENTITY = {
   radius: 1.1,
   sweepAngleDegrees: 120,
   rotationDegrees: -15,
+  thickness: 0.18,
 };
 
 const TILTED_BOARD_ARC_TRACK_ENTITY = {
@@ -112,6 +113,7 @@ const TILTED_BOARD_PERSISTED_ARC_TRACK_ENTITY = {
   radius: 1.5,
   sweepAngleDegrees: 135,
   rotationDegrees: 210,
+  thickness: 0.18,
 };
 
 describe("editorSceneDocument", () => {
@@ -126,7 +128,7 @@ describe("editorSceneDocument", () => {
     const persistedArcTrack = scene.entities.find((entity) => entity.id === TEST_ARC_TRACK_ENTITY.id);
 
     expect(persistedArcTrack).not.toHaveProperty("centralAngleDegrees");
-    expect(persistedArcTrack).not.toHaveProperty("thickness");
+    expect(persistedArcTrack).toHaveProperty("thickness", 0.18);
     expect(scene.constraints).toEqual([
       {
         entityAId: "ball-1",
