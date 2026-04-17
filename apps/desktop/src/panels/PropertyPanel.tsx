@@ -656,6 +656,15 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   label="Entry endpoint"
                   value={selectedEntity.entryEndpoint}
                 />
+                <div style={semanticsNoteStyle}>
+                  <span style={{ color: "#17304f", fontSize: "13px", fontWeight: 600 }}>
+                    Rigid rail shell
+                  </span>
+                  <span style={{ color: "#5d6f88", fontSize: "13px", lineHeight: 1.5 }}>
+                    Balls slide along the rail path while the curved shell still defines
+                    the real boundary.
+                  </span>
+                </div>
                 <div
                   style={{
                     display: "grid",

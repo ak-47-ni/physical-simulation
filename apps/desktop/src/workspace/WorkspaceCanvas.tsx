@@ -10,6 +10,7 @@ import type { EditorConstraint, LibraryConstraintKind } from "../state/editorCon
 import type { EditorSceneEntity } from "../state/editorStore";
 import {
   createArcTrackGuideGeometry,
+  createArcTrackProfileGeometry,
   getArcTrackCenter,
   isArcTrackBodyKind,
   isArcTrackEntity,
@@ -181,7 +182,7 @@ function getEntityVisualStyle(
   isContactTarget: boolean,
 ): CSSProperties {
   if (isArcTrackEntity(entity)) {
-    const overlay = createArcTrackGuideGeometry(entity);
+    const overlay = createArcTrackProfileGeometry(entity);
     const strokeColor = isSelected ? "#2457a6" : "#112540";
     const haloColor = isContactTarget
       ? "0 0 0 4px rgba(27, 167, 132, 0.18)"
@@ -451,7 +452,7 @@ function getPlacementPreviewPalette(
 
 function createPlacementPreviewStyle(preview: ProjectedPlacementPreview): CSSProperties {
   if (isArcTrackEntity(preview.entity)) {
-    const overlay = createArcTrackGuideGeometry(preview.entity);
+    const overlay = createArcTrackProfileGeometry(preview.entity);
 
     return {
       position: "absolute",
@@ -532,6 +533,21 @@ function createArcTrackStrokeColor(
   }
 
   return isSelected ? "#2457a6" : "#17304f";
+}
+
+function createArcTrackShellFillColor(
+  status: WorkspaceCanvasAuthoringPlacementStatus,
+  isSelected: boolean,
+): string {
+  if (status === "snap") {
+    return isSelected ? "rgba(20, 184, 166, 0.24)" : "rgba(20, 184, 166, 0.16)";
+  }
+
+  if (status === "blocked") {
+    return "rgba(220, 38, 38, 0.14)";
+  }
+
+  return isSelected ? "rgba(36, 87, 166, 0.2)" : "rgba(23, 48, 79, 0.12)";
 }
 
 function createArcTrackGuideStyle(start: { x: number; y: number }, end: { x: number; y: number }): CSSProperties {
@@ -1108,29 +1124,61 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     testId: string,
     pathTestId: string,
   ) {
-    const overlay = createArcTrackGuideGeometry(entity);
+    const shell = createArcTrackProfileGeometry(entity);
+    const contactPath = createArcTrackGuideGeometry(entity);
     const isSelected = state.selectedEntityId === entity.id && testId.startsWith("scene-entity-");
     const strokeColor = createArcTrackStrokeColor(status, isSelected);
+    const fillColor = createArcTrackShellFillColor(status, isSelected);
+    const shellPathTestId = pathTestId.replace(/-path$/, "-shell-path");
 
     return (
-      <svg
-        aria-hidden="true"
-        data-testid={testId}
-        height={overlay.bounds.height}
-        style={{ display: "block", overflow: "visible", pointerEvents: "none" }}
-        viewBox={`0 0 ${Math.max(overlay.bounds.width, 1)} ${Math.max(overlay.bounds.height, 1)}`}
-        width={overlay.bounds.width}
-      >
-        <path
-          d={overlay.pathData}
-          data-testid={pathTestId}
-          fill="none"
-          stroke={strokeColor}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={isSelected ? overlay.strokeThickness + 1 : overlay.strokeThickness}
-        />
-      </svg>
+      <>
+        <svg
+          aria-hidden="true"
+          data-testid={testId}
+          height={shell.bounds.height}
+          style={{ display: "block", overflow: "visible", pointerEvents: "none" }}
+          viewBox={`0 0 ${Math.max(shell.bounds.width, 1)} ${Math.max(shell.bounds.height, 1)}`}
+          width={shell.bounds.width}
+        >
+          <path
+            d={shell.pathData}
+            data-testid={shellPathTestId}
+            fill={fillColor}
+            stroke={strokeColor}
+            strokeLinejoin="round"
+            strokeWidth={isSelected ? shell.outlineWidth + 1 : shell.outlineWidth}
+          />
+        </svg>
+        <svg
+          aria-hidden="true"
+          height={contactPath.bounds.height}
+          style={{
+            position: "absolute",
+            left: `${contactPath.bounds.left - shell.bounds.left}px`,
+            top: `${contactPath.bounds.top - shell.bounds.top}px`,
+            overflow: "visible",
+            pointerEvents: "none",
+          }}
+          viewBox={`0 0 ${Math.max(contactPath.bounds.width, 1)} ${Math.max(
+            contactPath.bounds.height,
+            1,
+          )}`}
+          width={contactPath.bounds.width}
+        >
+          <path
+            d={contactPath.pathData}
+            data-testid={pathTestId}
+            fill="none"
+            stroke={strokeColor}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={
+              isSelected ? contactPath.strokeThickness + 1 : contactPath.strokeThickness
+            }
+          />
+        </svg>
+      </>
     );
   }
 

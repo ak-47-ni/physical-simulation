@@ -621,6 +621,12 @@ describe("PropertyPanel", () => {
     expect(screen.getByText("board:board-1 (start)")).toBeDefined();
     expect(screen.getByText("Entry endpoint")).toBeDefined();
     expect(screen.getByText("start")).toBeDefined();
+    expect(screen.getByText("Rigid rail shell")).toBeDefined();
+    expect(
+      screen.getByText(
+        "Balls slide along the rail path while the curved shell still defines the real boundary.",
+      ),
+    ).toBeDefined();
     expect((screen.getByLabelText("Radius") as HTMLInputElement).value).toBe("1.2");
     expect((screen.getByLabelText("Sweep angle") as HTMLInputElement).value).toBe("135");
     expect((screen.getByLabelText("Rotation") as HTMLInputElement).value).toBe("20");

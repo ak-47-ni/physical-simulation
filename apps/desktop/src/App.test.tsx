@@ -287,6 +287,12 @@ describe("App selection sync", () => {
     expect(screen.queryByLabelText("Center X")).toBeNull();
     expect(screen.queryByLabelText("Center Y")).toBeNull();
     expect(screen.queryByTestId("workspace-selected-arc-track-junction-debug")).toBeNull();
+    expect(screen.getByText("Rigid rail shell")).toBeDefined();
+    expect(
+      screen.getByText(
+        "Balls slide along the rail path while the curved shell still defines the real boundary.",
+      ),
+    ).toBeDefined();
     expect((screen.getByLabelText("Radius") as HTMLInputElement).value).toBe("1");
     expect((screen.getByLabelText("Sweep angle") as HTMLInputElement).value).toBe("90");
     expect((screen.getByLabelText("Rotation") as HTMLInputElement).value).toBe("135");
