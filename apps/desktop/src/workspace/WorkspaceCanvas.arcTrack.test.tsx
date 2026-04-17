@@ -81,6 +81,14 @@ function expectArcGuidePath(pathTestId: string) {
   expect(path.getAttribute("stroke-linecap")).toBe("round");
 }
 
+function expectArcShellPath(pathTestId: string) {
+  const path = screen.getByTestId(pathTestId) as SVGPathElement;
+
+  expect(path.getAttribute("d")).not.toBe("");
+  expect(path.getAttribute("d")).toContain("Z");
+  expect(path.getAttribute("fill")).not.toBe("none");
+}
+
 describe("WorkspaceCanvas arc-track overlays", () => {
   it("chooses the nearest board top-edge endpoint even when the drag is over the board span", () => {
     const preview = resolveArcTrackBodyPreview({
@@ -211,7 +219,7 @@ describe("WorkspaceCanvas arc-track overlays", () => {
     expect(selectedEntityIds).toEqual([]);
   });
 
-  it("renders committed arc-track entities as stroked guide lines", () => {
+  it("renders committed arc-track entities as rail shells with a visible contact path", () => {
     const arcTrack = createAuthoredArcTrackEntity();
 
     render(
@@ -237,6 +245,7 @@ describe("WorkspaceCanvas arc-track overlays", () => {
     );
 
     expect(screen.getByTestId(`scene-entity-${arcTrack.id}`).getAttribute("data-arc-track")).toBe("true");
+    expectArcShellPath(`scene-entity-${arcTrack.id}-shell-path`);
     expectArcGuidePath(`scene-entity-${arcTrack.id}-path`);
   });
 
@@ -400,6 +409,7 @@ describe("WorkspaceCanvas arc-track overlays", () => {
     );
 
     expect(screen.getByTestId("workspace-arc-track-preview")).toBeDefined();
+    expectArcShellPath("workspace-arc-track-preview-shell-path");
     expectArcGuidePath("workspace-arc-track-preview-path");
     expect(screen.getByTestId("workspace-arc-track-preview-radius-guide")).toBeDefined();
     expect(screen.getByTestId("workspace-arc-track-preview-tangent-guide")).toBeDefined();

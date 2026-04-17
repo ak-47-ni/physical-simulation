@@ -7,6 +7,7 @@ import {
   createConstraintLineGeometry,
 } from "./constraintOverlayGeometry";
 import {
+  createArcTrackProfileGeometryFromAngles,
   createArcTrackGuideGeometryFromAngles,
 } from "./arcTrackBodyEntity";
 import {
@@ -131,6 +132,13 @@ export function renderArcTrackAuthoringPreview(
     radius: authoringLengthToScreenPixels(input.previewConstraint.radius, input.viewport),
     startAngleDegrees: input.previewConstraint.startAngleDegrees,
   });
+  const previewShell = createArcTrackProfileGeometryFromAngles({
+    center: projectedCenter,
+    endAngleDegrees: input.previewConstraint.endAngleDegrees,
+    radius: authoringLengthToScreenPixels(input.previewConstraint.radius, input.viewport),
+    startAngleDegrees: input.previewConstraint.startAngleDegrees,
+    thickness: authoringLengthToScreenPixels(0.18, input.viewport),
+  });
   const tangentGuideEnd = projectAuthoringPointToScreen(
     {
       x: endpoint.point.x + endpoint.tangent.x * Math.max(0.3, input.previewConstraint.radius * 0.35),
@@ -164,6 +172,31 @@ export function renderArcTrackAuthoringPreview(
             4,
           )}
         />
+        <svg
+          aria-hidden="true"
+          height={previewShell.bounds.height}
+          style={{
+            position: "absolute",
+            left: `${previewShell.bounds.left}px`,
+            top: `${previewShell.bounds.top}px`,
+            overflow: "visible",
+            pointerEvents: "none",
+          }}
+          viewBox={`0 0 ${Math.max(previewShell.bounds.width, 1)} ${Math.max(
+            previewShell.bounds.height,
+            1,
+          )}`}
+          width={previewShell.bounds.width}
+        >
+          <path
+            d={previewShell.pathData}
+            data-testid="workspace-arc-track-preview-shell-path"
+            fill="rgba(20, 184, 166, 0.18)"
+            stroke="#0f766e"
+            strokeLinejoin="round"
+            strokeWidth={previewShell.outlineWidth}
+          />
+        </svg>
         <svg
           aria-hidden="true"
           height={previewArc.bounds.height}
@@ -200,7 +233,7 @@ export function renderArcTrackAuthoringPreview(
         ) : null}
       </div>
       {input.spanPresetOptions?.length ? (
-        <div style={createPresetPanelStyle(previewArc.bounds)}>
+        <div style={createPresetPanelStyle(previewShell.bounds)}>
           {input.spanPresetOptions.map((spanDegrees) => {
             const isSelected = input.selectedSpanDegrees === spanDegrees;
 
