@@ -1,5 +1,15 @@
-import { useEffect, useState, type CSSProperties, type MouseEvent, type PropsWithChildren, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+  type ChangeEvent,
+  type MouseEvent,
+  type PropsWithChildren,
+  type ReactNode,
+} from "react";
 
+import { desktopAppName, desktopAppVersion } from "../app-meta";
+import { isAppLocale, useI18n } from "../i18n";
 import { usePaneLayout, type PaneKey } from "./usePaneLayout";
 
 type ShellLayoutProps = PropsWithChildren<{
@@ -91,7 +101,62 @@ const buttonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
+const topBarMetaRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  marginTop: "6px",
+  flexWrap: "wrap",
+};
+
+const versionBadgeStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  borderRadius: "999px",
+  padding: "6px 10px",
+  background: "rgba(17, 37, 64, 0.08)",
+  color: "#1f3657",
+  fontSize: "12px",
+  fontWeight: 600,
+};
+
+const subtitleStyle: CSSProperties = {
+  marginTop: "4px",
+  color: "#516276",
+  fontSize: "13px",
+};
+
+const actionGroupStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  color: "#516276",
+  fontSize: "14px",
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
+};
+
+const languageFieldStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
+  color: "#314661",
+  fontSize: "13px",
+  fontWeight: 600,
+};
+
+const languageSelectStyle: CSSProperties = {
+  border: "1px solid rgba(17, 37, 64, 0.12)",
+  borderRadius: "999px",
+  background: "#ffffff",
+  color: "#112540",
+  padding: "8px 12px",
+  fontSize: "13px",
+  cursor: "pointer",
+};
+
 function PaneCard(props: {
+  collapsedTitle: string;
   title: string;
   collapsed: boolean;
   collapsedSize: number;
@@ -101,7 +166,8 @@ function PaneCard(props: {
   testId: string;
   children?: ReactNode;
 }) {
-  const { title, collapsed, collapsedSize, size, onToggle, toggleLabel, testId, children } = props;
+  const { collapsedTitle, title, collapsed, collapsedSize, size, onToggle, toggleLabel, testId, children } =
+    props;
 
   return (
     <section
@@ -119,13 +185,13 @@ function PaneCard(props: {
           style={{
             fontSize: collapsed ? "11px" : "14px",
             letterSpacing: collapsed ? "0.08em" : undefined,
-            textTransform: collapsed ? "uppercase" : undefined,
+            textTransform: collapsedTitle === collapsedTitle.toUpperCase() ? "uppercase" : undefined,
           }}
         >
-          {collapsed ? title.slice(0, 3) : title}
+          {collapsed ? collapsedTitle : title}
         </strong>
         <button style={buttonStyle} type="button" onClick={onToggle}>
-          {collapsed ? "Show" : toggleLabel}
+          {toggleLabel}
         </button>
       </div>
       <div
@@ -151,6 +217,7 @@ type ResizeSession = {
 
 export function ShellLayout(props: ShellLayoutProps) {
   const { children, leftPane, rightPane, bottomPane } = props;
+  const { locale, locales, setLocale, t } = useI18n();
   const { layout, resetLayout, resizePane, togglePane } = usePaneLayout();
   const [activeResize, setActiveResize] = useState<ResizeSession | null>(null);
 
@@ -215,23 +282,50 @@ export function ShellLayout(props: ShellLayoutProps) {
     minHeight: "0",
   };
 
+  function handleLocaleChange(event: ChangeEvent<HTMLSelectElement>) {
+    if (!isAppLocale(event.target.value)) {
+      return;
+    }
+
+    setLocale(event.target.value);
+  }
+
   return (
     <div style={appFrameStyle}>
       <div style={shellStyle}>
         <header style={topBarStyle}>
           <div>
             <div style={{ fontSize: "13px", letterSpacing: "0.08em", textTransform: "uppercase", color: "#64748b" }}>
-              Physics Sandbox
+              {desktopAppName}
             </div>
-            <h1 style={{ margin: "6px 0 0", fontSize: "24px" }}>Desktop Editor Shell</h1>
+            <div style={topBarMetaRowStyle}>
+              <h1 style={{ margin: 0, fontSize: "24px" }}>{t("shell.title")}</h1>
+              <span data-testid="shell-version" style={versionBadgeStyle}>
+                {t("shell.version", { version: desktopAppVersion })}
+              </span>
+            </div>
+            <div style={subtitleStyle}>{t("shell.subtitle")}</div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "#516276", fontSize: "14px" }}>
-            <span>Canvas-first</span>
-            <span>Resizable panes</span>
-            <span>Worker C mount-ready</span>
-            <button style={buttonStyle} type="button" onClick={resetLayout}>
-              Reset layout
+          <div style={actionGroupStyle}>
+            <button data-testid="shell-reset-layout" style={buttonStyle} type="button" onClick={resetLayout}>
+              {t("shell.resetLayout")}
             </button>
+            <label style={languageFieldStyle}>
+              <span>{t("shell.languageLabel")}</span>
+              <select
+                aria-label={t("shell.languageLabel")}
+                data-testid="shell-language-select"
+                style={languageSelectStyle}
+                value={locale}
+                onChange={handleLocaleChange}
+              >
+                {locales.map((nextLocale) => (
+                  <option key={nextLocale} value={nextLocale}>
+                    {t(`shell.language.${nextLocale}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
         </header>
 
@@ -239,17 +333,20 @@ export function ShellLayout(props: ShellLayoutProps) {
           <PaneCard
             collapsed={layout.left.collapsed}
             collapsedSize={COLLAPSED_PANE_SIZE.left}
+            collapsedTitle={t("shell.pane.libraryShort")}
             onToggle={() => togglePane("left")}
             size={layout.left.size}
             testId="shell-left-pane"
-            title="Library"
-            toggleLabel={layout.left.collapsed ? "Show library" : "Hide library"}
+            title={t("shell.pane.library")}
+            toggleLabel={
+              layout.left.collapsed ? t("shell.toggle.showLibrary") : t("shell.toggle.hideLibrary")
+            }
           >
             {leftPane}
           </PaneCard>
 
           <div
-            aria-label="Resize library pane"
+            aria-label={t("shell.resize.library")}
             data-testid="shell-resize-left"
             style={{
               ...resizeHandleStyle,
@@ -263,7 +360,7 @@ export function ShellLayout(props: ShellLayoutProps) {
           </section>
 
           <div
-            aria-label="Resize inspector pane"
+            aria-label={t("shell.resize.inspector")}
             data-testid="shell-resize-right"
             style={{
               ...resizeHandleStyle,
@@ -275,18 +372,23 @@ export function ShellLayout(props: ShellLayoutProps) {
           <PaneCard
             collapsed={layout.right.collapsed}
             collapsedSize={COLLAPSED_PANE_SIZE.right}
+            collapsedTitle={t("shell.pane.inspectorShort")}
             onToggle={() => togglePane("right")}
             size={layout.right.size}
             testId="shell-right-pane"
-            title="Inspector"
-            toggleLabel={layout.right.collapsed ? "Show inspector" : "Hide inspector"}
+            title={t("shell.pane.inspector")}
+            toggleLabel={
+              layout.right.collapsed
+                ? t("shell.toggle.showInspector")
+                : t("shell.toggle.hideInspector")
+            }
           >
             {rightPane}
           </PaneCard>
         </div>
 
         <div
-          aria-label="Resize transport pane"
+          aria-label={t("shell.resize.transport")}
           data-testid="shell-resize-bottom"
           style={{
             ...resizeHandleStyle,
@@ -299,11 +401,16 @@ export function ShellLayout(props: ShellLayoutProps) {
           <PaneCard
             collapsed={layout.bottom.collapsed}
             collapsedSize={COLLAPSED_PANE_SIZE.bottom}
+            collapsedTitle={t("shell.pane.transportShort")}
             onToggle={() => togglePane("bottom")}
             size={layout.bottom.size}
             testId="shell-bottom-pane"
-            title="Transport"
-            toggleLabel={layout.bottom.collapsed ? "Show transport" : "Hide transport"}
+            title={t("shell.pane.transport")}
+            toggleLabel={
+              layout.bottom.collapsed
+                ? t("shell.toggle.showTransport")
+                : t("shell.toggle.hideTransport")
+            }
           >
             {bottomPane}
           </PaneCard>
@@ -314,6 +421,8 @@ export function ShellLayout(props: ShellLayoutProps) {
 }
 
 export function WorkspaceMountPlaceholder() {
+  const { t } = useI18n();
+
   return (
     <div style={workspacePlaceholderStyle}>
       <div
@@ -337,7 +446,7 @@ export function WorkspaceMountPlaceholder() {
             fontSize: "12px",
           }}
         >
-          Workspace mount point
+          {t("shell.workspaceMount")}
         </div>
       </div>
     </div>

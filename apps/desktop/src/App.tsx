@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { AnalysisPanel } from "./analysis/AnalysisPanel";
 import { AnnotationLayer, createInitialAnnotationLayerState } from "./annotation/AnnotationLayer";
+import { LanguageProvider } from "./i18n";
 import { createSceneDisplaySettings, type SceneDisplaySettings } from "./io/sceneFile";
 import { ShellLayout } from "./layout/ShellLayout";
 import { ObjectLibraryPanel } from "./panels/ObjectLibraryPanel";
@@ -1391,120 +1392,122 @@ export function App() {
   }
 
   return (
-    <ShellLayout
-      bottomPane={
-        <AnalysisPanel
-          analyzerId={PRIMARY_ANALYZER_ID}
-          display={{
-            showTrajectories: displaySettings.showTrajectories,
-            showVelocityVectors: displaySettings.showVelocityVectors,
-            showForceVectors: displaySettings.showForceVectors,
-          }}
-          onDisplayChange={(nextDisplay) => {
-            handleUpdateDisplaySetting(nextDisplay);
-          }}
-          runtimePort={runtimePort}
-        />
-      }
-      leftPane={
-        <ObjectLibraryPanel
-          onStartBodyDrag={handleStartBodyDrag}
-          onSelectItem={handleSelectLibraryItem}
-          selectedItemId={selectedLibraryItem}
-        />
-      }
-      rightPane={
-        <div style={{ display: "grid", gap: "16px" }}>
-          <PropertyPanel
-            authoringLocked={authoringLocked}
-            authoringLockReason={AUTHORING_LOCK_REASON}
-            display={displaySettings}
-            onApplyPendingArcSpanPreset={handlePendingArcSpanPresetApply}
-            onDeleteSelectedConstraint={handleDeleteSelectedConstraint}
-            onDeleteSelectedEntity={handleDeleteSelectedEntity}
-            onDuplicateSelectedEntity={handleDuplicateSelectedEntity}
-            onScenePhysicsChange={handleScenePhysicsChange}
-            onUpdateDisplaySetting={handleUpdateDisplaySetting}
-            onUpdateSelectedArcTrack={handleUpdateSelectedArcTrack}
-            onUpdateSelectedConstraint={handleUpdateSelectedConstraint}
-            onUpdateSelectedEntityLabel={handleUpdateSelectedEntityLabel}
-            onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
-            onUpdateSelectedEntityPhysics={handleUpdateSelectedEntityPhysics}
-            onUpdateSelectedEntityRadius={handleUpdateSelectedEntityRadius}
-            onUpdateSelectedEntityRotation={handleUpdateSelectedEntityRotation}
-            onUpdateSelectedEntitySize={handleUpdateSelectedEntitySize}
-            pendingConstraintPlacement={constraintPlacement}
-            scenePhysics={scenePhysicsState}
-            selectedConstraint={selectedConstraint}
-            selectedEntity={selectedEntity}
+    <LanguageProvider>
+      <ShellLayout
+        bottomPane={
+          <AnalysisPanel
+            analyzerId={PRIMARY_ANALYZER_ID}
+            display={{
+              showTrajectories: displaySettings.showTrajectories,
+              showVelocityVectors: displaySettings.showVelocityVectors,
+              showForceVectors: displaySettings.showForceVectors,
+            }}
+            onDisplayChange={(nextDisplay) => {
+              handleUpdateDisplaySetting(nextDisplay);
+            }}
+            runtimePort={runtimePort}
           />
-          <SceneTreePanel
+        }
+        leftPane={
+          <ObjectLibraryPanel
+            onStartBodyDrag={handleStartBodyDrag}
+            onSelectItem={handleSelectLibraryItem}
+            selectedItemId={selectedLibraryItem}
+          />
+        }
+        rightPane={
+          <div style={{ display: "grid", gap: "16px" }}>
+            <PropertyPanel
+              authoringLocked={authoringLocked}
+              authoringLockReason={AUTHORING_LOCK_REASON}
+              display={displaySettings}
+              onApplyPendingArcSpanPreset={handlePendingArcSpanPresetApply}
+              onDeleteSelectedConstraint={handleDeleteSelectedConstraint}
+              onDeleteSelectedEntity={handleDeleteSelectedEntity}
+              onDuplicateSelectedEntity={handleDuplicateSelectedEntity}
+              onScenePhysicsChange={handleScenePhysicsChange}
+              onUpdateDisplaySetting={handleUpdateDisplaySetting}
+              onUpdateSelectedArcTrack={handleUpdateSelectedArcTrack}
+              onUpdateSelectedConstraint={handleUpdateSelectedConstraint}
+              onUpdateSelectedEntityLabel={handleUpdateSelectedEntityLabel}
+              onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
+              onUpdateSelectedEntityPhysics={handleUpdateSelectedEntityPhysics}
+              onUpdateSelectedEntityRadius={handleUpdateSelectedEntityRadius}
+              onUpdateSelectedEntityRotation={handleUpdateSelectedEntityRotation}
+              onUpdateSelectedEntitySize={handleUpdateSelectedEntitySize}
+              pendingConstraintPlacement={constraintPlacement}
+              scenePhysics={scenePhysicsState}
+              selectedConstraint={selectedConstraint}
+              selectedEntity={selectedEntity}
+            />
+            <SceneTreePanel
+              constraints={constraints}
+              entities={entities}
+              onSelectConstraint={handleSelectConstraint}
+              onSelectEntity={handleSelectEntity}
+              selectedConstraintId={editorState.selectedConstraintId}
+              selectedEntityId={editorState.selectedEntityId}
+            />
+          </div>
+        }
+      >
+        <div style={{ display: "grid", gridTemplateRows: "auto minmax(0, 1fr) auto", gap: "14px" }}>
+          <PlaybackTransportDeck
+            currentTimeSeconds={currentPlaybackTimeSeconds}
+            isPreparing={isPreparing}
+            mode="precomputed"
+            onModeChange={handlePlaybackModeChange}
+            onPause={handleTransportPause}
+            onPrecomputeDurationChange={handlePrecomputeDurationChange}
+            onReset={handleTransportReset}
+            onSeek={seekPrecomputedPlayback}
+            onStart={handleCalculateFirstTransportStart}
+            onStep={handleTransportStep}
+            onTimeScaleChange={handleTransportTimeScaleChange}
+            precomputeDurationSeconds={precomputeDurationSeconds}
+            preparationProgress={preparationProgress}
+            realtimeCapSeconds={realtimeCapSeconds}
+            runtime={transportDeckRuntime}
+            seekEnabled={seekEnabled}
+            timelineMaxSeconds={precomputeDurationSeconds}
+          />
+
+          <WorkspaceCanvas
+            authoringLocked={authoringLocked}
+            authoringPlacementPreview={workspaceAuthoringPlacementPreview}
+            constraintPlacement={constraintPlacement}
             constraints={constraints}
-            entities={entities}
+            display={displaySettings}
+            displayEntities={displayEntities}
+            entities={workspaceEntities}
+            libraryDragBlocked={libraryDragBlocked}
+            onCancelPlacement={handleCancelConstraintPlacement}
+            onCreateEntity={handleCreateEntity}
+            onGridVisibleChange={handleGridVisibleChange}
+            onLibraryDragHoverChange={handleLibraryDragHoverChange}
+            onMoveEntity={handleMoveEntity}
+            onPlaceConstraintBoardEndpoint={handleConstraintBoardEndpointPick}
+            onPlaceConstraintEntity={handleConstraintEntityPick}
+            onPlaceConstraintPoint={handleConstraintPointPick}
             onSelectConstraint={handleSelectConstraint}
             onSelectEntity={handleSelectEntity}
-            selectedConstraintId={editorState.selectedConstraintId}
-            selectedEntityId={editorState.selectedEntityId}
+            onToolChange={handleToolChange}
+            selectedRuntimeVelocityVector={
+              selectedRuntimeVelocityVector && selectedEntity
+                ? {
+                    entityId: selectedEntity.id,
+                    velocityX: selectedRuntimeVelocityVector.velocityX,
+                    velocityY: selectedRuntimeVelocityVector.velocityY,
+                  }
+                : null
+            }
+            state={editorState}
+            libraryDragSession={libraryDragSession}
+            viewport={workspaceViewport}
           />
+          <AnnotationLayer state={annotationState} onStateChange={setAnnotationState} />
         </div>
-      }
-    >
-      <div style={{ display: "grid", gridTemplateRows: "auto minmax(0, 1fr) auto", gap: "14px" }}>
-        <PlaybackTransportDeck
-          currentTimeSeconds={currentPlaybackTimeSeconds}
-          isPreparing={isPreparing}
-          mode="precomputed"
-          onModeChange={handlePlaybackModeChange}
-          onPause={handleTransportPause}
-          onPrecomputeDurationChange={handlePrecomputeDurationChange}
-          onReset={handleTransportReset}
-          onSeek={seekPrecomputedPlayback}
-          onStart={handleCalculateFirstTransportStart}
-          onStep={handleTransportStep}
-          onTimeScaleChange={handleTransportTimeScaleChange}
-          precomputeDurationSeconds={precomputeDurationSeconds}
-          preparationProgress={preparationProgress}
-          realtimeCapSeconds={realtimeCapSeconds}
-          runtime={transportDeckRuntime}
-          seekEnabled={seekEnabled}
-          timelineMaxSeconds={precomputeDurationSeconds}
-        />
-
-        <WorkspaceCanvas
-          authoringLocked={authoringLocked}
-          authoringPlacementPreview={workspaceAuthoringPlacementPreview}
-          constraintPlacement={constraintPlacement}
-          constraints={constraints}
-          display={displaySettings}
-          displayEntities={displayEntities}
-          entities={workspaceEntities}
-          libraryDragBlocked={libraryDragBlocked}
-          onCancelPlacement={handleCancelConstraintPlacement}
-          onCreateEntity={handleCreateEntity}
-          onGridVisibleChange={handleGridVisibleChange}
-          onLibraryDragHoverChange={handleLibraryDragHoverChange}
-          onMoveEntity={handleMoveEntity}
-          onPlaceConstraintBoardEndpoint={handleConstraintBoardEndpointPick}
-          onPlaceConstraintEntity={handleConstraintEntityPick}
-          onPlaceConstraintPoint={handleConstraintPointPick}
-          onSelectConstraint={handleSelectConstraint}
-          onSelectEntity={handleSelectEntity}
-          onToolChange={handleToolChange}
-          selectedRuntimeVelocityVector={
-            selectedRuntimeVelocityVector && selectedEntity
-              ? {
-                  entityId: selectedEntity.id,
-                  velocityX: selectedRuntimeVelocityVector.velocityX,
-                  velocityY: selectedRuntimeVelocityVector.velocityY,
-                }
-              : null
-          }
-          state={editorState}
-          libraryDragSession={libraryDragSession}
-          viewport={workspaceViewport}
-        />
-        <AnnotationLayer state={annotationState} onStateChange={setAnnotationState} />
-      </div>
-    </ShellLayout>
+      </ShellLayout>
+    </LanguageProvider>
   );
 }
