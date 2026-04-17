@@ -90,10 +90,12 @@ pub fn advance_guide_attachments(
     reattach_blocked_until_frame_by_body_id: &mut HashMap<String, u64>,
     current_frame_number: u64,
     delta_seconds: f64,
-) {
+) -> HashMap<String, f64> {
+    let mut detached_body_remaining_seconds = HashMap::new();
+
     if guide_network.segments.is_empty() {
         attachments.clear();
-        return;
+        return detached_body_remaining_seconds;
     }
 
     let index_by_id = bodies
@@ -113,14 +115,22 @@ pub fn advance_guide_attachments(
         };
         let body = &mut bodies[body_index];
 
-        if advance_single_attachment(body, guide_network, &mut attachment, delta_seconds) {
-            attachments.insert(body_id, attachment);
-        } else {
-            reattach_blocked_until_frame_by_body_id
-                .insert(body_id.clone(), current_frame_number.saturating_add(1));
-            attachments.remove(&body_id);
+        match advance_single_attachment(body, guide_network, &mut attachment, delta_seconds) {
+            AttachmentAdvanceResult::StillAttached => {
+                attachments.insert(body_id, attachment);
+            }
+            AttachmentAdvanceResult::Detached { remaining_seconds } => {
+                reattach_blocked_until_frame_by_body_id
+                    .insert(body_id.clone(), current_frame_number.saturating_add(1));
+                attachments.remove(&body_id);
+                if remaining_seconds > f64::EPSILON {
+                    detached_body_remaining_seconds.insert(body_id, remaining_seconds);
+                }
+            }
         }
     }
+
+    detached_body_remaining_seconds
 }
 
 fn find_linear_guide_attachment<'a>(
@@ -162,12 +172,14 @@ fn advance_single_attachment(
     guide_network: &CompiledGuideNetwork,
     attachment: &mut RuntimeGuideAttachment,
     delta_seconds: f64,
-) -> bool {
+) -> AttachmentAdvanceResult {
     let mut remaining_seconds = delta_seconds.max(0.0);
 
     for _ in 0..GUIDE_HANDOFF_LOOP_LIMIT {
         let Some(segment) = guide_network.segment(&attachment.segment_id).cloned() else {
-            return false;
+            return AttachmentAdvanceResult::Detached {
+                remaining_seconds: 0.0,
+            };
         };
         let outcome = match segment {
             CompiledGuideSegment::Linear(linear) => {
@@ -179,19 +191,25 @@ fn advance_single_attachment(
         };
 
         match outcome {
-            GuideAdvanceOutcome::StayAttached => return true,
-            GuideAdvanceOutcome::Detached => return false,
+            GuideAdvanceOutcome::StayAttached => return AttachmentAdvanceResult::StillAttached,
+            GuideAdvanceOutcome::Detached { remaining } => {
+                return AttachmentAdvanceResult::Detached {
+                    remaining_seconds: remaining,
+                };
+            }
             GuideAdvanceOutcome::HandedOff { remaining } => {
                 remaining_seconds = remaining;
                 if remaining_seconds <= f64::EPSILON {
                     sync_body_to_current_guide(body, guide_network, attachment);
-                    return true;
+                    return AttachmentAdvanceResult::StillAttached;
                 }
             }
         }
     }
 
-    false
+    AttachmentAdvanceResult::Detached {
+        remaining_seconds: 0.0,
+    }
 }
 
 fn advance_linear_guide(
@@ -263,7 +281,7 @@ fn advance_linear_guide(
     body.velocity = linear.direction.scale(release_speed);
     body.acceleration = external_acceleration;
     integrate_free_body(body, remaining_seconds);
-    GuideAdvanceOutcome::Detached
+    GuideAdvanceOutcome::Detached { remaining: 0.0 }
 }
 
 fn try_terminal_zone_handoff(
@@ -316,6 +334,12 @@ fn advance_arc_guide(
     let angle = angle_for_arc_progress(arc, attachment.progress);
     let radial = radial_for_angle(angle);
     let tangent = tangent_for_increasing_angle(radial);
+    let tangential_acceleration = external_acceleration.dot(tangent);
+    let turning_point_reversal = speed_crosses_zero_within_step(
+        attachment.speed,
+        tangential_acceleration,
+        delta_seconds,
+    );
     let required_support = required_arc_support(
         external_acceleration,
         attachment.speed,
@@ -324,15 +348,15 @@ fn advance_arc_guide(
         arc.side,
     );
 
-    if required_support < -ARC_TRACK_EPSILON {
+    if required_support < -ARC_TRACK_EPSILON && !turning_point_reversal {
         body.position = arc.center.add(radial.scale(effective_radius));
         body.velocity = tangent.scale(attachment.speed);
         body.acceleration = external_acceleration;
-        integrate_free_body(body, delta_seconds);
-        return GuideAdvanceOutcome::Detached;
+        return GuideAdvanceOutcome::Detached {
+            remaining: delta_seconds,
+        };
     }
 
-    let tangential_acceleration = external_acceleration.dot(tangent);
     let next_progress = attachment.progress
         + (attachment.speed * delta_seconds
             + 0.5 * tangential_acceleration * delta_seconds * delta_seconds)
@@ -379,8 +403,9 @@ fn advance_arc_guide(
         }
 
         body.acceleration = external_acceleration;
-        integrate_free_body(body, remaining_seconds);
-        return GuideAdvanceOutcome::Detached;
+        return GuideAdvanceOutcome::Detached {
+            remaining: remaining_seconds,
+        };
     }
 
     let next_speed = attachment.speed + tangential_acceleration * delta_seconds;
@@ -394,7 +419,7 @@ fn advance_arc_guide(
         arc.side,
     );
 
-    if next_required_support < -ARC_TRACK_EPSILON {
+    if next_required_support < -ARC_TRACK_EPSILON && !turning_point_reversal {
         let release_fraction =
             (required_support / (required_support - next_required_support)).clamp(0.0, 1.0);
         let release_seconds = delta_seconds * release_fraction;
@@ -407,8 +432,9 @@ fn advance_arc_guide(
 
         sync_body_to_arc_guide(body, arc, release_progress, release_speed);
         body.acceleration = external_acceleration;
-        integrate_free_body(body, remaining_seconds);
-        return GuideAdvanceOutcome::Detached;
+        return GuideAdvanceOutcome::Detached {
+            remaining: remaining_seconds,
+        };
     }
 
     attachment.progress = next_progress;
@@ -605,6 +631,24 @@ fn solve_boundary_hit_seconds(
         .clamp(0.0, max_seconds)
 }
 
+fn speed_crosses_zero_within_step(speed: f64, tangential_acceleration: f64, delta_seconds: f64) -> bool {
+    if delta_seconds <= f64::EPSILON || tangential_acceleration.abs() <= f64::EPSILON {
+        return false;
+    }
+
+    if speed.abs() <= ARC_TRACK_EPSILON {
+        return true;
+    }
+
+    if speed * tangential_acceleration >= 0.0 {
+        return false;
+    }
+
+    let zero_cross_seconds = -speed / tangential_acceleration;
+
+    zero_cross_seconds >= 0.0 && zero_cross_seconds <= delta_seconds
+}
+
 fn integrate_free_body(body: &mut RuntimeBodyState, delta_seconds: f64) {
     if delta_seconds <= f64::EPSILON {
         return;
@@ -630,5 +674,10 @@ fn normalize_angle_radians(angle_radians: f64) -> f64 {
 enum GuideAdvanceOutcome {
     StayAttached,
     HandedOff { remaining: f64 },
-    Detached,
+    Detached { remaining: f64 },
+}
+
+enum AttachmentAdvanceResult {
+    StillAttached,
+    Detached { remaining_seconds: f64 },
 }

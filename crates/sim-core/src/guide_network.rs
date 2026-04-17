@@ -196,6 +196,15 @@ pub fn compile_guide_network(
                     to_endpoint,
                 },
             );
+            push_connection_once(
+                &mut network,
+                CompiledGuideConnection {
+                    from_segment_id: arc_guide_segment_id(&arc_track.id),
+                    from_endpoint: to_endpoint,
+                    to_segment_id: board_segment_id.clone(),
+                    to_endpoint: GuideSegmentEndpoint::End,
+                },
+            );
         }
     }
 

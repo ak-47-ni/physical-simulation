@@ -1,6 +1,9 @@
 #[path = "angular_dynamics.rs"]
 mod angular_dynamics;
 
+#[path = "contact_budget.rs"]
+mod contact_budget;
+
 #[path = "contact_geometry.rs"]
 mod contact_geometry;
 
@@ -30,6 +33,9 @@ const ARC_ENTRY_ANCHORED_JUNCTION_SURFACE_TOLERANCE: f64 = 0.15;
 const ARC_ENTRY_ANCHORED_JUNCTION_CROSSING_TOLERANCE: f64 = 1e-6;
 const ARC_ENTRY_ANCHORED_JUNCTION_OVERSHOOT_PADDING: f64 = 0.05;
 const ARC_ENTRY_ANCHORED_SUPPORT_ACCELERATION_TOLERANCE: f64 = 1e-6;
+const DETACHED_CONTACT_MIN_EXTENT_EPSILON: f64 = 1e-3;
+const DETACHED_CONTACT_TARGET_TRAVEL_EXTENT_FRACTION: f64 = 0.25;
+const DETACHED_CONTACT_MAX_SUBSTEPS: usize = 64;
 const IMPLICIT_BOUNDARY_NORMALS: [Vector2; 2] = [Vector2::new(1.0, 0.0), Vector2::new(0.0, 1.0)];
 const IMPLICIT_BOUNDARY_FRICTION_COEFFICIENT: f64 = 0.0;
 const IMPLICIT_BOUNDARY_RESTITUTION_COEFFICIENT: f64 = 0.0;
@@ -153,13 +159,14 @@ pub fn step_bodies(
         delta_seconds,
     );
     attachment_delta_seconds_by_body_id.extend(newly_captured_body_ids);
-    advance_arc_track_attachments(
+    let detached_arc_track_body_delta_seconds_by_id = advance_arc_track_attachments(
         bodies,
         arc_tracks,
         &index_by_id,
         attached_arc_track_by_body_id,
         &attachment_delta_seconds_by_body_id,
     );
+    resolve_recently_detached_bodies(bodies, &detached_arc_track_body_delta_seconds_by_id);
 }
 
 pub fn project_track_bindings(
@@ -175,6 +182,121 @@ pub fn project_track_bindings(
         .collect::<HashMap<_, _>>();
 
     enforce_linear_track_bindings(bodies, constraints, &index_by_id);
+}
+
+pub fn resolve_recently_detached_bodies(
+    bodies: &mut [RuntimeBodyState],
+    detached_body_delta_seconds_by_id: &HashMap<String, f64>,
+) {
+    if detached_body_delta_seconds_by_id.is_empty() {
+        return;
+    }
+
+    let static_surfaces = bodies
+        .iter()
+        .filter(|body| body.is_static)
+        .cloned()
+        .collect::<Vec<_>>();
+    let index_by_id = bodies
+        .iter()
+        .enumerate()
+        .map(|(index, body)| (body.entity_id.clone(), index))
+        .collect::<HashMap<_, _>>();
+
+    for (body_id, delta_seconds) in detached_body_delta_seconds_by_id {
+        if *delta_seconds <= f64::EPSILON {
+            continue;
+        }
+
+        let Some(&index) = index_by_id.get(body_id) else {
+            continue;
+        };
+        let body = &mut bodies[index];
+
+        if body.is_static {
+            continue;
+        }
+
+        let mut contact_budget_bodies = static_surfaces.clone();
+        contact_budget_bodies.push(body.clone());
+        let substep_count = contact_budget::recommended_substep_count_for_bodies(
+            &contact_budget_bodies,
+            *delta_seconds,
+        )
+        .max(recently_detached_contact_substep_count(
+            body,
+            &static_surfaces,
+            *delta_seconds,
+        ));
+        let substep_seconds = *delta_seconds / substep_count as f64;
+
+        for _ in 0..substep_count {
+            integrate_free_body(body, substep_seconds);
+            resolve_implicit_boundaries(body, substep_seconds);
+
+            for surface in &static_surfaces {
+                resolve_contact_with_surface(body, surface, substep_seconds);
+            }
+
+            resolve_implicit_boundaries(body, substep_seconds);
+        }
+    }
+}
+
+fn recently_detached_contact_substep_count(
+    body: &RuntimeBodyState,
+    static_surfaces: &[RuntimeBodyState],
+    delta_seconds: f64,
+) -> usize {
+    if delta_seconds <= f64::EPSILON {
+        return 1;
+    }
+
+    let travel = detached_contact_predicted_travel(body, delta_seconds);
+
+    if travel <= f64::EPSILON || !travel.is_finite() {
+        return 1;
+    }
+
+    let mut min_extent = detached_contact_minimum_extent(body);
+
+    for surface in static_surfaces {
+        if surface.shape != RuntimeBodyShape::ArcTrack {
+            continue;
+        }
+
+        let Some(arc_track) = surface.arc_track else {
+            continue;
+        };
+        min_extent = min_extent.min((arc_track.half_thickness * 2.0).max(DETACHED_CONTACT_MIN_EXTENT_EPSILON));
+    }
+
+    let target_travel = min_extent * DETACHED_CONTACT_TARGET_TRAVEL_EXTENT_FRACTION;
+    let required_substeps = (travel / target_travel).ceil() as usize;
+
+    required_substeps.clamp(1, DETACHED_CONTACT_MAX_SUBSTEPS)
+}
+
+fn detached_contact_predicted_travel(body: &RuntimeBodyState, delta_seconds: f64) -> f64 {
+    let speed = body.velocity.length();
+    let acceleration = body.acceleration.length();
+    let travel = speed * delta_seconds + 0.5 * acceleration * delta_seconds * delta_seconds;
+
+    if travel.is_finite() {
+        travel.max(0.0)
+    } else {
+        0.0
+    }
+}
+
+fn detached_contact_minimum_extent(body: &RuntimeBodyState) -> f64 {
+    let extent = body.half_extents.x.min(body.half_extents.y) * 2.0;
+
+    if extent.is_finite() && extent > f64::EPSILON {
+        extent
+    } else {
+        DETACHED_CONTACT_MIN_EXTENT_EPSILON
+    }
 }
 
 pub fn inverse_mass(body: &RuntimeBodyState) -> f64 {
@@ -684,7 +806,8 @@ fn advance_arc_track_attachments(
     index_by_id: &HashMap<String, usize>,
     attached_arc_track_by_body_id: &mut HashMap<String, RuntimeArcTrackAttachment>,
     attachment_delta_seconds_by_body_id: &HashMap<String, f64>,
-) {
+) -> HashMap<String, f64> {
+    let mut detached_body_remaining_seconds = HashMap::new();
     let attached_body_ids = attached_arc_track_by_body_id
         .keys()
         .cloned()
@@ -710,12 +833,20 @@ fn advance_arc_track_attachments(
         };
         let body = &mut bodies[index];
 
-        if advance_arc_track_attachment(body, arc_track, &mut attachment, step_seconds) {
-            attached_arc_track_by_body_id.insert(body_id, attachment);
-        } else {
-            attached_arc_track_by_body_id.remove(&body_id);
+        match advance_arc_track_attachment(body, arc_track, &mut attachment, step_seconds) {
+            ArcTrackAttachmentAdvanceResult::StillAttached => {
+                attached_arc_track_by_body_id.insert(body_id, attachment);
+            }
+            ArcTrackAttachmentAdvanceResult::Detached { remaining_seconds } => {
+                attached_arc_track_by_body_id.remove(&body_id);
+                if remaining_seconds > f64::EPSILON {
+                    detached_body_remaining_seconds.insert(body_id, remaining_seconds);
+                }
+            }
         }
     }
+
+    detached_body_remaining_seconds
 }
 
 fn capture_arc_entries(
@@ -1064,7 +1195,7 @@ fn advance_arc_track_attachment(
     arc_track: &CompiledArcTrack,
     attachment: &mut RuntimeArcTrackAttachment,
     delta_seconds: f64,
-) -> bool {
+) -> ArcTrackAttachmentAdvanceResult {
     let body_radius = body.half_extents.x.max(body.half_extents.y);
     let effective_radius =
         effective_center_radius(arc_track.contact_path_radius(), body_radius, arc_track.side);
@@ -1076,13 +1207,18 @@ fn advance_arc_track_attachment(
             attachment.angle_radians,
             attachment.tangential_speed,
         );
-        return true;
+        return ArcTrackAttachmentAdvanceResult::StillAttached;
     }
 
     let external_acceleration = body.acceleration;
     let radial = crate::arc_track::radial_for_angle(attachment.angle_radians);
     let tangent = crate::arc_track::tangent_for_increasing_angle(radial);
     let tangential_acceleration = external_acceleration.dot(tangent);
+    let turning_point_reversal = speed_crosses_zero_within_step(
+        attachment.tangential_speed,
+        tangential_acceleration,
+        delta_seconds,
+    );
     let required_support = required_arc_track_support(
         external_acceleration,
         attachment.tangential_speed,
@@ -1091,12 +1227,13 @@ fn advance_arc_track_attachment(
         arc_track.side,
     );
 
-    if required_support < -crate::arc_track::ARC_TRACK_EPSILON {
+    if required_support < -crate::arc_track::ARC_TRACK_EPSILON && !turning_point_reversal {
         body.position = arc_track.center.add(radial.scale(effective_radius));
         body.velocity = tangent.scale(attachment.tangential_speed);
         body.acceleration = external_acceleration;
-        integrate_free_body(body, delta_seconds);
-        return false;
+        return ArcTrackAttachmentAdvanceResult::Detached {
+            remaining_seconds: delta_seconds,
+        };
     }
 
     let current_progress =
@@ -1132,12 +1269,7 @@ fn advance_arc_track_attachment(
         body.position = arc_track.center.add(release_radial.scale(effective_radius));
         body.velocity = release_tangent.scale(release_speed);
         body.acceleration = external_acceleration;
-
-        if remaining_seconds > f64::EPSILON {
-            integrate_free_body(body, remaining_seconds);
-        }
-
-        return false;
+        return ArcTrackAttachmentAdvanceResult::Detached { remaining_seconds };
     }
 
     let next_angle = normalize_angle_radians(arc_track.start_angle_radians + next_progress);
@@ -1151,7 +1283,7 @@ fn advance_arc_track_attachment(
         arc_track.side,
     );
 
-    if next_required_support < -crate::arc_track::ARC_TRACK_EPSILON {
+    if next_required_support < -crate::arc_track::ARC_TRACK_EPSILON && !turning_point_reversal {
         let release_fraction =
             (required_support / (required_support - next_required_support)).clamp(0.0, 1.0);
         let release_seconds = delta_seconds * release_fraction;
@@ -1169,19 +1301,37 @@ fn advance_arc_track_attachment(
         body.position = arc_track.center.add(release_radial.scale(effective_radius));
         body.velocity = release_tangent.scale(release_speed);
         body.acceleration = external_acceleration;
-
-        if remaining_seconds > f64::EPSILON {
-            integrate_free_body(body, remaining_seconds);
-        }
-
-        return false;
+        return ArcTrackAttachmentAdvanceResult::Detached { remaining_seconds };
     }
 
     attachment.angle_radians = next_angle;
     attachment.tangential_speed = next_speed;
     sync_body_to_arc_state(body, arc_track, next_angle, next_speed);
 
-    true
+    ArcTrackAttachmentAdvanceResult::StillAttached
+}
+
+fn speed_crosses_zero_within_step(speed: f64, tangential_acceleration: f64, delta_seconds: f64) -> bool {
+    if delta_seconds <= f64::EPSILON || tangential_acceleration.abs() <= f64::EPSILON {
+        return false;
+    }
+
+    if speed.abs() <= crate::arc_track::ARC_TRACK_EPSILON {
+        return true;
+    }
+
+    if speed * tangential_acceleration >= 0.0 {
+        return false;
+    }
+
+    let zero_cross_seconds = -speed / tangential_acceleration;
+
+    zero_cross_seconds >= 0.0 && zero_cross_seconds <= delta_seconds
+}
+
+enum ArcTrackAttachmentAdvanceResult {
+    StillAttached,
+    Detached { remaining_seconds: f64 },
 }
 
 fn solve_arc_boundary_hit_seconds(
