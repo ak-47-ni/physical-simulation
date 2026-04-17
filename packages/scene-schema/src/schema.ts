@@ -58,9 +58,13 @@ export type ArcTrackSceneEntity = BaseSceneEntity & {
   anchorEndpoint: "start" | "end";
   center: Vector2;
   entryEndpoint: "start" | "end";
+  // Authoring-side radius remains the arc centerline radius. Runtime uses this together with
+  // physical thickness and ball radius to derive the effective center path.
   radius: number;
   sweepAngleDegrees: number;
   rotationDegrees: number;
+  // Physical guide thickness, not visual stroke width.
+  thickness: number;
 };
 
 export type SizedSceneEntity = BaseSceneEntity &

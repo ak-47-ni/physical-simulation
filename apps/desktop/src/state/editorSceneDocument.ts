@@ -274,6 +274,7 @@ function mapEditorEntityToSceneEntity(entity: EditorSceneEntity): SceneEntity {
       radius: entity.radius,
       sweepAngleDegrees: entity.sweepAngleDegrees,
       rotationDegrees: entity.rotationDegrees,
+      thickness: entity.thickness,
     };
   }
 

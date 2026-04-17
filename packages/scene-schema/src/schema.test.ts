@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   ArcTrackSceneEntity,
   ArcTrackConstraint,
+  RuntimeCompileArcTrackEntity,
   RuntimeCompileConstraint,
   SceneConstraint,
 } from "./index";
@@ -51,12 +52,19 @@ type ExpectedArcTrackSceneEntity = {
   radius: number;
   sweepAngleDegrees: number;
   rotationDegrees: number;
+  thickness: number;
 };
 type _AssertArcTrackSceneEntityExtendsExpected = Assert<
   ArcTrackSceneEntity extends ExpectedArcTrackSceneEntity ? true : false
 >;
 type _AssertExpectedExtendsArcTrackSceneEntity = Assert<
   ExpectedArcTrackSceneEntity extends ArcTrackSceneEntity ? true : false
+>;
+type _AssertRuntimeCompileArcTrackEntityExtendsExpected = Assert<
+  RuntimeCompileArcTrackEntity extends ExpectedArcTrackSceneEntity ? true : false
+>;
+type _AssertExpectedExtendsRuntimeCompileArcTrackEntity = Assert<
+  ExpectedArcTrackSceneEntity extends RuntimeCompileArcTrackEntity ? true : false
 >;
 
 describe("scene schema", () => {
@@ -281,6 +289,7 @@ describe("scene schema", () => {
       radius: 1,
       sweepAngleDegrees: 90,
       rotationDegrees: 30,
+      thickness: 0.18,
     };
 
     scene.entities.push(arcTrack);
@@ -299,7 +308,7 @@ describe("scene schema", () => {
     originalEntity.center.x = 999;
 
     expect(clonedEntity.center).toEqual({ x: 6, y: 4 });
-    expect(clonedEntity).not.toHaveProperty("thickness");
+    expect(clonedEntity).toHaveProperty("thickness", 0.18);
   });
 
   it("creates runtime compile requests from cloned scene state and dirty scopes", () => {
@@ -355,6 +364,7 @@ describe("scene schema", () => {
       radius: 1.4,
       sweepAngleDegrees: 135,
       rotationDegrees: -20,
+      thickness: 0.24,
     };
 
     scene.entities.push(arcTrack);
@@ -368,7 +378,7 @@ describe("scene schema", () => {
 
     expect(compiledEntity).toEqual(arcTrack);
     expect(compiledEntity.center).not.toBe(arcTrack.center);
-    expect(compiledEntity).not.toHaveProperty("thickness");
+    expect(compiledEntity).toHaveProperty("thickness", 0.24);
   });
 
   it("deep-clones typed constraint and force-source payload vectors", () => {

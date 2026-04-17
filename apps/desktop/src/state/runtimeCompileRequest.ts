@@ -65,6 +65,7 @@ export type RuntimeArcTrackSceneEntity = RuntimeBaseSceneEntity & {
   radius: number;
   sweepAngleDegrees: number;
   rotationDegrees: number;
+  thickness: number;
 };
 
 export type RuntimeSizedSceneEntity = RuntimeBaseSceneEntity & {
@@ -227,6 +228,7 @@ function cloneRuntimeSceneEntity(
         readOptionalNumber(entity, "centralAngleDegrees") ??
         0,
       rotationDegrees: entity.rotationDegrees,
+      thickness: entity.thickness,
     };
   }
 
@@ -407,6 +409,7 @@ function normalizeRuntimeSceneEntityToSi(
         y: normalizeLengthToSi(entity.center.y, settings.lengthUnit),
       },
       radius: normalizeLengthToSi(entity.radius, settings.lengthUnit),
+      thickness: normalizeLengthToSi(entity.thickness, settings.lengthUnit),
     };
   }
 
@@ -534,6 +537,7 @@ function mapEditorEntityToRuntimeSceneEntity(entity: EditorSceneEntity): Runtime
       radius: entity.radius,
       rotationDegrees: entity.rotationDegrees,
       sweepAngleDegrees: entity.sweepAngleDegrees,
+      thickness: entity.thickness,
     };
   }
 

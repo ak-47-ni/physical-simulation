@@ -38,6 +38,7 @@ export {
   createRuntimeFramePayload,
 } from "./runtime-contract";
 export type {
+  RuntimeCompileArcTrackEntity,
   RuntimeCompileArcTrackConstraint,
   RuntimeCompileConstraint,
   RuntimeCompileForceSource,
