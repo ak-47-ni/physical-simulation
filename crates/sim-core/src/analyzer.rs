@@ -86,6 +86,19 @@ impl TrajectoryAnalyzerState {
             return;
         };
 
+        self.record_body_state(frame_number, time_seconds, body);
+    }
+
+    pub fn record_body_state(
+        &mut self,
+        frame_number: u64,
+        time_seconds: f64,
+        body: &RuntimeBodyState,
+    ) {
+        if body.entity_id != self.entity_id {
+            return;
+        }
+
         self.samples.push(TrajectorySample {
             frame_number,
             time_seconds,

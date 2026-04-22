@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use sim_core::analyzer::AnalyzerDefinition;
 use sim_core::arc_track::{
     ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
     CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS, angle_radians_for_position,
@@ -165,7 +166,10 @@ fn runtime_for_board_arc_scene(
                 id: "gravity".to_string(),
                 acceleration: vector2(0.0, -9.81),
             }],
-            analyzers: vec![],
+            analyzers: vec![AnalyzerDefinition::Trajectory {
+                id: "traj-1".to_string(),
+                entity_id: "ball".to_string(),
+            }],
         },
         &HashMap::from([(
             "arc-track".to_string(),
@@ -243,5 +247,129 @@ fn guide_runtime_arc_segment_detaches_to_free_when_support_is_insufficient() {
         "detached body should not tunnel inward through the arc shell within the same substep, got radial_distance={:.3} effective_radius={:.3}",
         radial_distance,
         expected_radius,
+    );
+}
+
+#[test]
+fn guide_runtime_arc_terminal_release_preserves_vertical_tangent_velocity() {
+    let board_center = vector2(0.0, 4.0);
+    let board_width = 4.0;
+    let board_height = 0.5;
+    let (_, tangent, surface_normal) = board_endpoint_frame(
+        board_center,
+        board_width,
+        board_height,
+        ArcTrackAnchorEndpoint::End,
+    );
+    let (endpoint_position, endpoint_tangent, _) = board_endpoint_frame(
+        board_center,
+        board_width,
+        board_height,
+        ArcTrackAnchorEndpoint::End,
+    );
+    let arc_track = anchored_arc_track_entity(
+        "arc-track",
+        endpoint_position,
+        endpoint_tangent,
+        1.25,
+        90.0,
+        ArcTrackEntryEndpoint::Start,
+    );
+    let arc_center = arc_track.position;
+    let initial_position = endpoint_position
+        .sub(tangent.scale(0.75))
+        .add(surface_normal.scale(0.4));
+    let initial_velocity = tangent.scale(5.0);
+    let compiled = compile_scene_with_arc_track_metadata(
+        &CompileSceneRequest {
+            entities: vec![
+                ball("ball", initial_position, 0.4, initial_velocity),
+                board("board", board_center, board_width, board_height),
+                arc_track,
+            ],
+            constraints: vec![],
+            force_sources: vec![ForceSourceDefinition::Gravity {
+                id: "gravity".to_string(),
+                acceleration: vector2(0.0, -9.81),
+            }],
+            analyzers: vec![AnalyzerDefinition::Trajectory {
+                id: "traj-1".to_string(),
+                entity_id: "ball".to_string(),
+            }],
+        },
+        &HashMap::from([(
+            "arc-track".to_string(),
+            ArcTrackEntityCompileMetadata {
+                anchor: Some(CompiledArcTrackAnchor {
+                    entity_id: "board".to_string(),
+                    entity_kind: ArcTrackAnchorEntityKind::Board,
+                    endpoint: ArcTrackAnchorEndpoint::End,
+                }),
+                entry_endpoint: Some(ArcTrackEntryEndpoint::Start),
+            },
+        )]),
+    )
+    .expect("scene should compile");
+    let mut runtime = RuntimeScene::new(compiled, 0.025);
+    let expected_radius = inside_effective_radius(1.25, 0.4);
+    let mut saw_arc_guide = false;
+    let mut first_free_after_arc: Option<(Vector2, Vector2)> = None;
+
+    for _ in 0..80 {
+        let frame = runtime.step();
+        let ball_frame = frame
+            .entities
+            .iter()
+            .find(|entity| entity.entity_id == "ball")
+            .expect("ball should exist");
+
+        match runtime.guide_state("ball") {
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if segment_id == "guide:arc-track:arc" =>
+            {
+                saw_arc_guide = true;
+            }
+            RuntimeGuideState::Free if saw_arc_guide => {
+                first_free_after_arc = Some((ball_frame.position, ball_frame.velocity));
+                break;
+            }
+            RuntimeGuideState::Free | RuntimeGuideState::OnGuide { .. } => {}
+        }
+    }
+
+    let (first_free_position, first_free_velocity) = first_free_after_arc
+        .expect("ball should detach into a free frame after reaching the arc terminal");
+    let radial_distance = first_free_position.sub(arc_center).length();
+
+    assert!(
+        radial_distance > expected_radius,
+        "released ball should be outside the arc after terminal free flight, got radial_distance={:.3} expected_radius={:.3}",
+        radial_distance,
+        expected_radius,
+    );
+    assert!(
+        first_free_velocity.x.abs() < 1e-6,
+        "terminal release from a 90 degree sweep should preserve vertical tangent velocity, got velocity=({:.6}, {:.6})",
+        first_free_velocity.x,
+        first_free_velocity.y,
+    );
+    assert!(
+        first_free_velocity.y < 0.0,
+        "terminal release should point upward in screen coordinates, got velocity=({:.6}, {:.6})",
+        first_free_velocity.x,
+        first_free_velocity.y,
+    );
+
+    let trajectory_samples = runtime
+        .analyzer_samples("traj-1")
+        .expect("trajectory samples should be available");
+
+    assert!(
+        trajectory_samples.iter().any(|sample| {
+            (sample.position.sub(arc_center).length() - expected_radius).abs() < 1e-6
+                && sample.velocity.x.abs() < 1e-6
+                && sample.velocity.y < 0.0
+        }),
+        "trajectory should include the exact arc terminal release sample before the frame-end free-flight sample"
     );
 }

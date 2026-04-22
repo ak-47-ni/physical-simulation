@@ -13,14 +13,14 @@ use crate::arc_track::{
 use crate::entity::{CompiledShape, Vector2};
 use crate::guide_network::CompiledGuideNetwork;
 use crate::guide_runtime::{
-    RuntimeGuideAttachment, RuntimeGuideState, advance_guide_attachments,
+    RuntimeGuideAttachment, RuntimeGuideDetachEvent, RuntimeGuideState, advance_guide_attachments,
     attach_free_bodies_to_guides, attached_body_ids,
 };
 use crate::scene::CompiledScene;
 use crate::solver::{
-    RuntimeArcTrackAttachment, RuntimeArcTrackGeometry, RuntimeBodyShape, RuntimeBodyState,
-    inverse_inertia_for_body, project_track_bindings, resolve_recently_detached_bodies,
-    step_bodies,
+    RuntimeArcTrackAttachment, RuntimeArcTrackDetachEvent, RuntimeArcTrackGeometry,
+    RuntimeBodyShape, RuntimeBodyState, inverse_inertia_for_body, project_track_bindings,
+    resolve_recently_detached_bodies, step_bodies,
 };
 use serde::{Deserialize, Serialize};
 
@@ -161,7 +161,9 @@ impl RuntimeScene {
             contact_substeps::recommended_substep_count(&self.bodies, self.fixed_delta_seconds);
         let substep_delta_seconds = self.fixed_delta_seconds / substep_count as f64;
 
-        for _ in 0..substep_count {
+        for substep_index in 0..substep_count {
+            let substep_start_time_seconds =
+                self.elapsed_time_seconds + substep_delta_seconds * substep_index as f64;
             attach_free_bodies_to_guides(
                 &mut self.bodies,
                 &self.guide_network,
@@ -170,7 +172,7 @@ impl RuntimeScene {
                 self.frame_number,
             );
             let guide_attached_body_ids = attached_body_ids(&self.attached_guide_by_body_id);
-            step_bodies(
+            let arc_track_detach_events = step_bodies(
                 &mut self.bodies,
                 &self.constraints,
                 &self.arc_tracks,
@@ -179,7 +181,13 @@ impl RuntimeScene {
                 self.gravity,
                 substep_delta_seconds,
             );
-            let detached_guide_body_delta_seconds_by_id = advance_guide_attachments(
+            record_arc_track_detach_events(
+                &mut self.analyzers,
+                self.frame_number.saturating_add(1),
+                substep_start_time_seconds,
+                &arc_track_detach_events,
+            );
+            let guide_advance_report = advance_guide_attachments(
                 &mut self.bodies,
                 &self.guide_network,
                 &mut self.attached_guide_by_body_id,
@@ -187,9 +195,15 @@ impl RuntimeScene {
                 self.frame_number,
                 substep_delta_seconds,
             );
+            record_guide_detach_events(
+                &mut self.analyzers,
+                self.frame_number.saturating_add(1),
+                substep_start_time_seconds,
+                &guide_advance_report.detach_events,
+            );
             resolve_recently_detached_bodies(
                 &mut self.bodies,
-                &detached_guide_body_delta_seconds_by_id,
+                &guide_advance_report.detached_body_remaining_seconds_by_id,
             );
         }
         self.frame_number += 1;
@@ -319,6 +333,36 @@ fn record_analyzers(
 ) {
     for analyzer in analyzers {
         analyzer.record(frame_number, time_seconds, bodies);
+    }
+}
+
+fn record_guide_detach_events(
+    analyzers: &mut [TrajectoryAnalyzerState],
+    frame_number: u64,
+    substep_start_time_seconds: f64,
+    detach_events: &[RuntimeGuideDetachEvent],
+) {
+    for event in detach_events {
+        let time_seconds = substep_start_time_seconds + event.elapsed_seconds;
+
+        for analyzer in analyzers.iter_mut() {
+            analyzer.record_body_state(frame_number, time_seconds, &event.body);
+        }
+    }
+}
+
+fn record_arc_track_detach_events(
+    analyzers: &mut [TrajectoryAnalyzerState],
+    frame_number: u64,
+    substep_start_time_seconds: f64,
+    detach_events: &[RuntimeArcTrackDetachEvent],
+) {
+    for event in detach_events {
+        let time_seconds = substep_start_time_seconds + event.elapsed_seconds;
+
+        for analyzer in analyzers.iter_mut() {
+            analyzer.record_body_state(frame_number, time_seconds, &event.body);
+        }
     }
 }
 

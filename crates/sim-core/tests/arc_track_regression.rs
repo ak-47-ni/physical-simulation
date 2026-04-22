@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use sim_core::analyzer::AnalyzerDefinition;
 use sim_core::arc_track::{
     ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
     CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS, angle_radians_for_position,
@@ -221,6 +222,29 @@ fn runtime_for_scene_with_arc_entity(
     RuntimeScene::new(compiled, fixed_delta_seconds)
 }
 
+fn runtime_for_scene_with_arc_entity_and_trajectory(
+    entity: EntityDefinition,
+    arc_track: EntityDefinition,
+    gravity: Vector2,
+    fixed_delta_seconds: f64,
+) -> RuntimeScene {
+    let compiled = compile_scene(&CompileSceneRequest {
+        entities: vec![entity, arc_track],
+        constraints: vec![],
+        force_sources: vec![ForceSourceDefinition::Gravity {
+            id: "gravity".to_string(),
+            acceleration: gravity,
+        }],
+        analyzers: vec![AnalyzerDefinition::Trajectory {
+            id: "traj-1".to_string(),
+            entity_id: "ball".to_string(),
+        }],
+    })
+    .expect("scene should compile");
+
+    RuntimeScene::new(compiled, fixed_delta_seconds)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn runtime_for_scene_with_anchored_arc_entity(
     entity: EntityDefinition,
@@ -419,6 +443,38 @@ fn arc_track_regression_arc_track_entity_guides_ball_then_releases_tangentially(
         released.position.sub(center).length(),
     );
     assert!(released.velocity.x > 0.0, "ball_vx={}", released.velocity.x);
+}
+
+#[test]
+fn arc_track_regression_entity_terminal_release_adds_exact_trajectory_sample() {
+    let center = vector2(4.0, 4.0);
+    let radius = 2.0;
+    let expected_radius = inside_effective_radius(radius);
+    let entry = free_arc_entry_geometry(center, radius, 270.0, 360.0, ArcTrackEntryEndpoint::Start);
+    let mut runtime = runtime_for_scene_with_arc_entity_and_trajectory(
+        ball(
+            "ball",
+            entry.position.add(entry.tangent.scale(-0.1)),
+            entry.tangent.scale(5.0),
+        ),
+        arc_track_entity("arc-track", center, radius, 90.0, 270.0),
+        vector2(0.0, -9.81),
+        1.0 / 60.0,
+    );
+
+    run_steps(&mut runtime, 60);
+    let trajectory_samples = runtime
+        .analyzer_samples("traj-1")
+        .expect("trajectory samples should be available");
+
+    assert!(
+        trajectory_samples.iter().any(|sample| {
+            (sample.position.sub(center).length() - expected_radius).abs() < 1e-6
+                && sample.velocity.x.abs() < 1e-6
+                && sample.velocity.y < 0.0
+        }),
+        "standalone arc-track trajectory should include the exact vertical terminal-release sample"
+    );
 }
 
 #[test]

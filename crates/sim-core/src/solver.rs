@@ -88,11 +88,24 @@ pub struct RuntimeArcTrackAttachment {
     pub tangential_speed: f64,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct RuntimeArcTrackDetachEvent {
+    pub body_id: String,
+    pub elapsed_seconds: f64,
+    pub body: RuntimeBodyState,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct RuntimeArcEntryCapture {
     hit_seconds: f64,
     angle_radians: f64,
     tangential_speed: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+struct ArcTrackAdvanceReport {
+    detached_body_remaining_seconds_by_id: HashMap<String, f64>,
+    detach_events: Vec<RuntimeArcTrackDetachEvent>,
 }
 
 pub fn step_bodies(
@@ -103,7 +116,7 @@ pub fn step_bodies(
     guide_attached_body_ids: &HashSet<String>,
     gravity: Vector2,
     delta_seconds: f64,
-) {
+) -> Vec<RuntimeArcTrackDetachEvent> {
     let previous_positions = bodies.iter().map(|body| body.position).collect::<Vec<_>>();
     let attached_body_ids = attached_arc_track_by_body_id
         .keys()
@@ -159,14 +172,19 @@ pub fn step_bodies(
         delta_seconds,
     );
     attachment_delta_seconds_by_body_id.extend(newly_captured_body_ids);
-    let detached_arc_track_body_delta_seconds_by_id = advance_arc_track_attachments(
+    let arc_track_advance_report = advance_arc_track_attachments(
         bodies,
         arc_tracks,
         &index_by_id,
         attached_arc_track_by_body_id,
         &attachment_delta_seconds_by_body_id,
     );
-    resolve_recently_detached_bodies(bodies, &detached_arc_track_body_delta_seconds_by_id);
+    resolve_recently_detached_bodies(
+        bodies,
+        &arc_track_advance_report.detached_body_remaining_seconds_by_id,
+    );
+
+    arc_track_advance_report.detach_events
 }
 
 pub fn project_track_bindings(
@@ -268,7 +286,8 @@ fn recently_detached_contact_substep_count(
         let Some(arc_track) = surface.arc_track else {
             continue;
         };
-        min_extent = min_extent.min((arc_track.half_thickness * 2.0).max(DETACHED_CONTACT_MIN_EXTENT_EPSILON));
+        min_extent = min_extent
+            .min((arc_track.half_thickness * 2.0).max(DETACHED_CONTACT_MIN_EXTENT_EPSILON));
     }
 
     let target_travel = min_extent * DETACHED_CONTACT_TARGET_TRAVEL_EXTENT_FRACTION;
@@ -806,8 +825,8 @@ fn advance_arc_track_attachments(
     index_by_id: &HashMap<String, usize>,
     attached_arc_track_by_body_id: &mut HashMap<String, RuntimeArcTrackAttachment>,
     attachment_delta_seconds_by_body_id: &HashMap<String, f64>,
-) -> HashMap<String, f64> {
-    let mut detached_body_remaining_seconds = HashMap::new();
+) -> ArcTrackAdvanceReport {
+    let mut report = ArcTrackAdvanceReport::default();
     let attached_body_ids = attached_arc_track_by_body_id
         .keys()
         .cloned()
@@ -837,16 +856,26 @@ fn advance_arc_track_attachments(
             ArcTrackAttachmentAdvanceResult::StillAttached => {
                 attached_arc_track_by_body_id.insert(body_id, attachment);
             }
-            ArcTrackAttachmentAdvanceResult::Detached { remaining_seconds } => {
+            ArcTrackAttachmentAdvanceResult::Detached {
+                remaining_seconds,
+                release_seconds,
+            } => {
                 attached_arc_track_by_body_id.remove(&body_id);
                 if remaining_seconds > f64::EPSILON {
-                    detached_body_remaining_seconds.insert(body_id, remaining_seconds);
+                    report
+                        .detached_body_remaining_seconds_by_id
+                        .insert(body_id.clone(), remaining_seconds);
                 }
+                report.detach_events.push(RuntimeArcTrackDetachEvent {
+                    body_id,
+                    elapsed_seconds: release_seconds.clamp(0.0, step_seconds),
+                    body: body.clone(),
+                });
             }
         }
     }
 
-    detached_body_remaining_seconds
+    report
 }
 
 fn capture_arc_entries(
@@ -1233,6 +1262,7 @@ fn advance_arc_track_attachment(
         body.acceleration = external_acceleration;
         return ArcTrackAttachmentAdvanceResult::Detached {
             remaining_seconds: delta_seconds,
+            release_seconds: 0.0,
         };
     }
 
@@ -1269,7 +1299,10 @@ fn advance_arc_track_attachment(
         body.position = arc_track.center.add(release_radial.scale(effective_radius));
         body.velocity = release_tangent.scale(release_speed);
         body.acceleration = external_acceleration;
-        return ArcTrackAttachmentAdvanceResult::Detached { remaining_seconds };
+        return ArcTrackAttachmentAdvanceResult::Detached {
+            remaining_seconds,
+            release_seconds: hit_seconds,
+        };
     }
 
     let next_angle = normalize_angle_radians(arc_track.start_angle_radians + next_progress);
@@ -1301,7 +1334,10 @@ fn advance_arc_track_attachment(
         body.position = arc_track.center.add(release_radial.scale(effective_radius));
         body.velocity = release_tangent.scale(release_speed);
         body.acceleration = external_acceleration;
-        return ArcTrackAttachmentAdvanceResult::Detached { remaining_seconds };
+        return ArcTrackAttachmentAdvanceResult::Detached {
+            remaining_seconds,
+            release_seconds,
+        };
     }
 
     attachment.angle_radians = next_angle;
@@ -1311,7 +1347,11 @@ fn advance_arc_track_attachment(
     ArcTrackAttachmentAdvanceResult::StillAttached
 }
 
-fn speed_crosses_zero_within_step(speed: f64, tangential_acceleration: f64, delta_seconds: f64) -> bool {
+fn speed_crosses_zero_within_step(
+    speed: f64,
+    tangential_acceleration: f64,
+    delta_seconds: f64,
+) -> bool {
     if delta_seconds <= f64::EPSILON || tangential_acceleration.abs() <= f64::EPSILON {
         return false;
     }
@@ -1331,7 +1371,10 @@ fn speed_crosses_zero_within_step(speed: f64, tangential_acceleration: f64, delt
 
 enum ArcTrackAttachmentAdvanceResult {
     StillAttached,
-    Detached { remaining_seconds: f64 },
+    Detached {
+        remaining_seconds: f64,
+        release_seconds: f64,
+    },
 }
 
 fn solve_arc_boundary_hit_seconds(
