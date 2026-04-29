@@ -130,6 +130,14 @@ function findPrecomputedFrameIndex(frames: PrecomputedFrame[], timeSeconds: numb
   return nearestIndex;
 }
 
+function maxCachedFrameAdvancePerPaint(timeScale: number): number {
+  if (!Number.isFinite(timeScale) || timeScale <= 1) {
+    return 1;
+  }
+
+  return Math.ceil(timeScale);
+}
+
 export function useDualPlaybackController(
   input: UseDualPlaybackControllerInput,
 ): UseDualPlaybackControllerResult {
@@ -228,7 +236,12 @@ export function useDualPlaybackController(
           currentTimeSeconds + elapsedSeconds * runtimeSnapshot.bridge.timeScale,
           maxTimeSeconds,
         );
-        const nextFrameIndex = findPrecomputedFrameIndex(current.frames, nextTimeSeconds);
+        const targetFrameIndex = findPrecomputedFrameIndex(current.frames, nextTimeSeconds);
+        const nextFrameIndex = Math.min(
+          targetFrameIndex,
+          current.currentFrameIndex +
+            maxCachedFrameAdvancePerPaint(runtimeSnapshot.bridge.timeScale),
+        );
 
         if (nextFrameIndex >= current.frames.length - 1) {
           shouldScheduleNextFrame = false;
@@ -352,10 +365,16 @@ export function useDualPlaybackController(
     });
 
     try {
-      await runtimePort.compile(createCurrentCompileRequest());
-      await runtimePort.start();
+      const compileSnapshot = await runtimePort.compile(createCurrentCompileRequest());
+      const startSnapshot = await runtimePort.start();
 
-      const nextFrames: PrecomputedFrame[] = [{ frame: null, timeSeconds: 0 }];
+      const nextFrames: PrecomputedFrame[] = [
+        {
+          frame:
+            startSnapshot.bridge.currentFrame ?? compileSnapshot.bridge.currentFrame ?? null,
+          timeSeconds: 0,
+        },
+      ];
       let completedSteps = 0;
 
       while (completedSteps < totalSteps) {

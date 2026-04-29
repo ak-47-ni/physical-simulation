@@ -84,7 +84,7 @@ function roundToNearestFrameTime(timeSeconds: number): number {
 }
 
 function createControllerRuntimePort(): RuntimeBridgePort {
-  return createMockRuntimeBridgePort({
+  const port = createMockRuntimeBridgePort({
     createFrame: ({ nextFrameNumber }) => ({
       frameNumber: nextFrameNumber,
       entities: [
@@ -99,6 +99,33 @@ function createControllerRuntimePort(): RuntimeBridgePort {
       ],
     }),
   });
+
+  return {
+    ...port,
+    compile: async (request) => {
+      const snapshot = await port.compile(request);
+
+      return {
+        ...snapshot,
+        bridge: {
+          ...snapshot.bridge,
+          currentFrame: {
+            frameNumber: 0,
+            entities: [
+              {
+                id: "ball-1",
+                transform: {
+                  x: 0,
+                  y: 0,
+                  rotation: 0,
+                },
+              },
+            ],
+          },
+        },
+      };
+    },
+  };
 }
 
 type HarnessOverrides = {
@@ -289,6 +316,61 @@ describe("useDualPlaybackController", () => {
     expect(result.current.currentPlaybackTimeSeconds).toBeCloseTo(4, 5);
     expect(result.current.visibleRuntimeFrame?.frameNumber).toBe(240);
     expect(animationFrame.pendingCount()).toBe(0);
+  });
+
+  it("starts precomputed playback from backend runtime frame zero instead of authored fallback", async () => {
+    const runtimePort = createControllerRuntimePort();
+    const { result } = renderHook(() => useDualPlaybackControllerHarness(runtimePort));
+
+    await startPrecomputedPlayback(result, 1);
+
+    expect(result.current.playbackResultState).toBe("ready");
+    expect(result.current.currentPlaybackTimeSeconds).toBe(0);
+    expect(result.current.visibleRuntimeFrame).toMatchObject({
+      frameNumber: 0,
+      entities: [
+        {
+          id: "ball-1",
+          transform: {
+            x: 0,
+            y: 0,
+          },
+        },
+      ],
+    });
+  });
+
+  it("does not skip cached physics frames when a browser paint is delayed", async () => {
+    const animationFrame = createControlledAnimationFrame();
+    const runtimePort = createControllerRuntimePort();
+    const { result } = renderHook(() => useDualPlaybackControllerHarness(runtimePort));
+
+    await startPrecomputedPlayback(result, 1, animationFrame);
+
+    await waitFor(() => {
+      expect(result.current.transportRuntime.status).toBe("running");
+      expect(result.current.visibleRuntimeFrame?.frameNumber).toBe(0);
+      expect(animationFrame.pendingCount()).toBe(1);
+    });
+    const initialPosition = result.current.visibleRuntimeFrame?.entities[0]?.transform;
+
+    act(() => {
+      animationFrame.runNext(0);
+    });
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+
+    act(() => {
+      animationFrame.runNext(34);
+    });
+
+    expect(result.current.visibleRuntimeFrame?.frameNumber).toBe(1);
+    expect(
+      (result.current.visibleRuntimeFrame?.entities[0]?.transform.x ?? 0) -
+        (initialPosition?.x ?? 0),
+    ).toBe(1);
   });
 
   it("pauses cached playback seeks onto the nearest cached frame for drag and typed targets", async () => {
