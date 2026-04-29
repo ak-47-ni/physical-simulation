@@ -215,6 +215,35 @@ fn guide_runtime_board_top_hands_off_to_connected_arc_segment() {
 }
 
 #[test]
+fn guide_runtime_board_to_arc_handoff_starts_at_junction_before_advancing_arc() {
+    let board_center = vector2(0.0, 0.0);
+    let (_, tangent, surface_normal) =
+        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+    let mut runtime = runtime_for_board_arc_scene(
+        vector2(1.95, -0.25).add(surface_normal.scale(0.4)),
+        tangent.scale(10.0),
+        0.1,
+    );
+
+    runtime.step();
+
+    match runtime.guide_state("ball") {
+        RuntimeGuideState::OnGuide {
+            segment_id,
+            progress,
+            ..
+        } => {
+            assert_eq!(segment_id, "guide:arc-track:arc");
+            assert!(
+                (progress - 90.0_f64.to_radians()).abs() < 1e-6,
+                "first arc frame should land at the board-arc junction before advancing along the arc, progress={progress:.6}"
+            );
+        }
+        RuntimeGuideState::Free => panic!("ball should hand off to the connected arc guide"),
+    }
+}
+
+#[test]
 fn guide_runtime_wrong_direction_does_not_handoff_to_arc_segment() {
     let board_center = vector2(0.0, 0.0);
     let (_, tangent, surface_normal) =
@@ -355,4 +384,46 @@ fn guide_runtime_arc_turning_point_reverses_back_to_board_without_detaching() {
         returned_to_board,
         "ball should reverse along the rail and hand back to the board guide after slowing to zero"
     );
+}
+
+#[test]
+fn guide_runtime_arc_to_board_handoff_starts_at_junction_before_advancing_board() {
+    let board_center = vector2(0.0, 0.0);
+    let (_, tangent, surface_normal) =
+        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+    let mut runtime = runtime_for_board_arc_scene(
+        vector2(1.25, -0.25).add(surface_normal.scale(0.4)),
+        tangent.scale(0.8),
+        0.025,
+    );
+    let mut saw_arc_guide = false;
+
+    for _ in 0..120 {
+        runtime.step();
+
+        match runtime.guide_state("ball") {
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if segment_id == "guide:arc-track:arc" =>
+            {
+                saw_arc_guide = true;
+            }
+            RuntimeGuideState::OnGuide {
+                ref segment_id,
+                progress,
+                ..
+            } if saw_arc_guide && segment_id == "guide:board:top" => {
+                assert!(
+                    (progress - 4.0).abs() < 1e-6,
+                    "first board frame should land at the arc-board junction before advancing along the board, progress={progress:.6}"
+                );
+                return;
+            }
+            RuntimeGuideState::Free if saw_arc_guide => {
+                panic!("turning-point reversal should return to the board guide");
+            }
+            RuntimeGuideState::Free | RuntimeGuideState::OnGuide { .. } => {}
+        }
+    }
+
+    panic!("ball should return from the arc guide to the board guide");
 }

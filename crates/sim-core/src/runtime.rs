@@ -4,7 +4,7 @@ mod contact_budget;
 #[path = "contact_substeps.rs"]
 mod contact_substeps;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySample};
 use crate::arc_track::{
@@ -160,6 +160,7 @@ impl RuntimeScene {
         let substep_count =
             contact_substeps::recommended_substep_count(&self.bodies, self.fixed_delta_seconds);
         let substep_delta_seconds = self.fixed_delta_seconds / substep_count as f64;
+        let mut guide_handoff_paused_body_ids = HashSet::new();
 
         for substep_index in 0..substep_count {
             let substep_start_time_seconds =
@@ -191,6 +192,7 @@ impl RuntimeScene {
                 &mut self.bodies,
                 &self.guide_network,
                 &mut self.attached_guide_by_body_id,
+                &guide_handoff_paused_body_ids,
                 &mut self.guide_reattach_blocked_until_frame_by_body_id,
                 self.frame_number,
                 substep_delta_seconds,
@@ -205,6 +207,7 @@ impl RuntimeScene {
                 &mut self.bodies,
                 &guide_advance_report.detached_body_remaining_seconds_by_id,
             );
+            guide_handoff_paused_body_ids.extend(guide_advance_report.handed_off_body_ids);
         }
         self.frame_number += 1;
         self.elapsed_time_seconds += self.fixed_delta_seconds;

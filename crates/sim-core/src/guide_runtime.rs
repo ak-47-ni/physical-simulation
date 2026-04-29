@@ -19,7 +19,6 @@ const LINEAR_GUIDE_ATTACH_OUTWARD_NORMAL_SPEED_EPSILON: f64 = 1e-6;
 const GUIDE_TERMINAL_HANDOFF_DEADBAND_MIN_LENGTH: f64 = 1e-3;
 const GUIDE_TERMINAL_HANDOFF_DEADBAND_BODY_RADIUS_FACTOR: f64 = 0.01;
 const GUIDE_HANDOFF_SPEED_EPSILON: f64 = 1e-6;
-const GUIDE_HANDOFF_LOOP_LIMIT: usize = 8;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeGuideAttachment {
@@ -49,6 +48,7 @@ pub struct RuntimeGuideDetachEvent {
 pub struct RuntimeGuideAdvanceReport {
     pub detached_body_remaining_seconds_by_id: HashMap<String, f64>,
     pub detach_events: Vec<RuntimeGuideDetachEvent>,
+    pub handed_off_body_ids: HashSet<String>,
 }
 
 impl RuntimeGuideState {
@@ -101,6 +101,7 @@ pub fn advance_guide_attachments(
     bodies: &mut [RuntimeBodyState],
     guide_network: &CompiledGuideNetwork,
     attachments: &mut HashMap<String, RuntimeGuideAttachment>,
+    motion_paused_body_ids: &HashSet<String>,
     reattach_blocked_until_frame_by_body_id: &mut HashMap<String, u64>,
     current_frame_number: u64,
     delta_seconds: f64,
@@ -127,10 +128,17 @@ pub fn advance_guide_attachments(
         let Some(mut attachment) = attachments.get(&body_id).cloned() else {
             continue;
         };
+        if motion_paused_body_ids.contains(&body_id) {
+            continue;
+        }
         let body = &mut bodies[body_index];
 
         match advance_single_attachment(body, guide_network, &mut attachment, delta_seconds) {
             AttachmentAdvanceResult::StillAttached => {
+                attachments.insert(body_id, attachment);
+            }
+            AttachmentAdvanceResult::HandedOff => {
+                report.handed_off_body_ids.insert(body_id.clone());
                 attachments.insert(body_id, attachment);
             }
             AttachmentAdvanceResult::Detached {
@@ -201,53 +209,37 @@ fn advance_single_attachment(
     attachment: &mut RuntimeGuideAttachment,
     delta_seconds: f64,
 ) -> AttachmentAdvanceResult {
-    let original_seconds = delta_seconds.max(0.0);
-    let mut remaining_seconds = original_seconds;
-
-    for _ in 0..GUIDE_HANDOFF_LOOP_LIMIT {
-        let Some(segment) = guide_network.segment(&attachment.segment_id).cloned() else {
-            return AttachmentAdvanceResult::Detached {
-                remaining_seconds: 0.0,
-                release_event: None,
-            };
+    let step_seconds = delta_seconds.max(0.0);
+    let Some(segment) = guide_network.segment(&attachment.segment_id).cloned() else {
+        return AttachmentAdvanceResult::Detached {
+            remaining_seconds: 0.0,
+            release_event: None,
         };
-        let elapsed_before_segment = original_seconds - remaining_seconds;
-        let outcome = match segment {
-            CompiledGuideSegment::Linear(linear) => {
-                advance_linear_guide(body, guide_network, attachment, &linear, remaining_seconds)
-            }
-            CompiledGuideSegment::Arc(arc) => {
-                advance_arc_guide(body, guide_network, attachment, &arc, remaining_seconds)
-            }
-        };
-
-        match outcome {
-            GuideAdvanceOutcome::StayAttached => return AttachmentAdvanceResult::StillAttached,
-            GuideAdvanceOutcome::Detached {
-                remaining,
-                release_event,
-            } => {
-                return AttachmentAdvanceResult::Detached {
-                    remaining_seconds: remaining,
-                    release_event: release_event.map(|event| GuideReleaseEvent {
-                        elapsed_seconds: elapsed_before_segment + event.elapsed_seconds,
-                        body: event.body,
-                    }),
-                };
-            }
-            GuideAdvanceOutcome::HandedOff { remaining } => {
-                remaining_seconds = remaining;
-                if remaining_seconds <= f64::EPSILON {
-                    sync_body_to_current_guide(body, guide_network, attachment);
-                    return AttachmentAdvanceResult::StillAttached;
-                }
-            }
+    };
+    let outcome = match segment {
+        CompiledGuideSegment::Linear(linear) => {
+            advance_linear_guide(body, guide_network, attachment, &linear, step_seconds)
         }
-    }
+        CompiledGuideSegment::Arc(arc) => {
+            advance_arc_guide(body, guide_network, attachment, &arc, step_seconds)
+        }
+    };
 
-    AttachmentAdvanceResult::Detached {
-        remaining_seconds: 0.0,
-        release_event: None,
+    match outcome {
+        GuideAdvanceOutcome::StayAttached => AttachmentAdvanceResult::StillAttached,
+        GuideAdvanceOutcome::Detached {
+            remaining,
+            release_event,
+        } => AttachmentAdvanceResult::Detached {
+            remaining_seconds: remaining,
+            release_event,
+        },
+        GuideAdvanceOutcome::HandedOff => {
+            // Guide-to-guide handoff is a visible frame boundary: land on the junction now,
+            // then advance along the new guide on the next runtime frame.
+            sync_body_to_current_guide(body, guide_network, attachment);
+            AttachmentAdvanceResult::HandedOff
+        }
     }
 }
 
@@ -271,7 +263,7 @@ fn advance_linear_guide(
         {
             *attachment = next_attachment;
             sync_body_to_current_guide(body, guide_network, attachment);
-            return GuideAdvanceOutcome::HandedOff { remaining: 0.0 };
+            return GuideAdvanceOutcome::HandedOff;
         }
         attachment.progress = next_progress;
         attachment.speed = next_speed;
@@ -312,9 +304,7 @@ fn advance_linear_guide(
     ) {
         *attachment = next_attachment;
         sync_body_to_current_guide(body, guide_network, attachment);
-        return GuideAdvanceOutcome::HandedOff {
-            remaining: remaining_seconds,
-        };
+        return GuideAdvanceOutcome::HandedOff;
     }
 
     body.velocity = linear.direction.scale(release_speed);
@@ -444,9 +434,7 @@ fn advance_arc_guide(
         ) {
             *attachment = next_attachment;
             sync_body_to_current_guide(body, guide_network, attachment);
-            return GuideAdvanceOutcome::HandedOff {
-                remaining: remaining_seconds,
-            };
+            return GuideAdvanceOutcome::HandedOff;
         }
 
         body.acceleration = external_acceleration;
@@ -732,9 +720,7 @@ fn normalize_angle_radians(angle_radians: f64) -> f64 {
 
 enum GuideAdvanceOutcome {
     StayAttached,
-    HandedOff {
-        remaining: f64,
-    },
+    HandedOff,
     Detached {
         remaining: f64,
         release_event: Option<GuideReleaseEvent>,
@@ -743,6 +729,7 @@ enum GuideAdvanceOutcome {
 
 enum AttachmentAdvanceResult {
     StillAttached,
+    HandedOff,
     Detached {
         remaining_seconds: f64,
         release_event: Option<GuideReleaseEvent>,
