@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 
+use serde_json::json;
 use sim_core::arc_track::{
     angle_radians_for_position, contact_path_radius, ArcTrackAnchorEndpoint,
     ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata, CompiledArcTrackAnchor,
     DEFAULT_ARC_TRACK_THICKNESS,
 };
+use sim_core::bridge::RuntimeCompileRequest;
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
@@ -192,6 +194,19 @@ fn payload_frame<'a>(
         .expect("entity should exist in frame")
 }
 
+fn runtime_from_desktop_payload(
+    payload: serde_json::Value,
+    fixed_delta_seconds: f64,
+) -> RuntimeScene {
+    let request: RuntimeCompileRequest =
+        serde_json::from_value(payload).expect("desktop runtime payload should deserialize");
+    let compiled = request
+        .into_compiled_scene()
+        .expect("desktop runtime payload should compile");
+
+    RuntimeScene::new(compiled, fixed_delta_seconds)
+}
+
 #[test]
 fn guide_runtime_board_top_hands_off_to_connected_arc_segment() {
     let board_center = vector2(0.0, 0.0);
@@ -263,6 +278,272 @@ fn guide_runtime_board_to_arc_handoff_starts_at_junction_before_advancing_arc() 
         }
         RuntimeGuideState::Free => panic!("ball should hand off to the connected arc guide"),
     }
+}
+
+#[test]
+fn guide_runtime_desktop_payload_arc_radius_handoff_starts_at_junction() {
+    let mut runtime = runtime_from_desktop_payload(
+        json!({
+            "scene": {
+                "schemaVersion": 1,
+                "entities": [
+                    {
+                        "id": "ball",
+                        "kind": "ball",
+                        "x": 3.55,
+                        "y": -0.8,
+                        "radius": 0.4,
+                        "velocityX": 10.0,
+                        "velocityY": 0.0,
+                        "mass": 1.0,
+                        "friction": 0.0,
+                        "restitution": 0.0,
+                        "locked": false
+                    },
+                    {
+                        "id": "board",
+                        "kind": "board",
+                        "x": 0.0,
+                        "y": 0.0,
+                        "width": 4.0,
+                        "height": 0.5,
+                        "locked": true,
+                        "friction": 0.0
+                    },
+                    {
+                        "id": "arc-track",
+                        "kind": "arc-track",
+                        "anchorEntityId": "board",
+                        "anchorEntityKind": "board",
+                        "anchorEndpoint": "end",
+                        "center": { "x": 4.0, "y": 1.25 },
+                        "entryEndpoint": "end",
+                        "radius": 1.25,
+                        "sweepAngleDegrees": 90.0,
+                        "rotationDegrees": 0.0,
+                        "thickness": 0.18
+                    }
+                ],
+                "constraints": [],
+                "forceSources": [
+                    {
+                        "id": "gravity",
+                        "kind": "gravity",
+                        "acceleration": { "x": 0.0, "y": -9.81 }
+                    }
+                ],
+                "analyzers": [],
+                "annotations": []
+            },
+            "dirtyScopes": [],
+            "rebuildRequired": false
+        }),
+        0.1,
+    );
+
+    let frame = runtime.step();
+    let ball_frame = payload_frame(&frame, "ball");
+    let expected_junction_center = vector2(4.0, -0.4);
+
+    assert!(
+        ball_frame.position.sub(expected_junction_center).length() < 1e-6,
+        "desktop payload handoff should render at the board-arc junction, got position=({:.6}, {:.6}) expected=({:.6}, {:.6})",
+        ball_frame.position.x,
+        ball_frame.position.y,
+        expected_junction_center.x,
+        expected_junction_center.y,
+    );
+}
+
+#[test]
+fn guide_runtime_desktop_payload_board_to_arc_handoff_has_no_large_frame_delta() {
+    let mut runtime = runtime_from_desktop_payload(
+        json!({
+            "scene": {
+                "schemaVersion": 1,
+                "entities": [
+                    {
+                        "id": "ball",
+                        "kind": "ball",
+                        "x": 3.1,
+                        "y": -0.8,
+                        "radius": 0.4,
+                        "velocityX": 1.2,
+                        "velocityY": 0.0,
+                        "mass": 1.0,
+                        "friction": 0.0,
+                        "restitution": 0.0,
+                        "locked": false
+                    },
+                    {
+                        "id": "board",
+                        "kind": "board",
+                        "x": 0.0,
+                        "y": 0.0,
+                        "width": 4.0,
+                        "height": 0.5,
+                        "locked": true,
+                        "friction": 0.0
+                    },
+                    {
+                        "id": "arc-track",
+                        "kind": "arc-track",
+                        "anchorEntityId": "board",
+                        "anchorEntityKind": "board",
+                        "anchorEndpoint": "end",
+                        "center": { "x": 4.0, "y": 1.25 },
+                        "entryEndpoint": "end",
+                        "radius": 1.25,
+                        "sweepAngleDegrees": 90.0,
+                        "rotationDegrees": 0.0,
+                        "thickness": 0.18
+                    }
+                ],
+                "constraints": [],
+                "forceSources": [
+                    {
+                        "id": "gravity",
+                        "kind": "gravity",
+                        "acceleration": { "x": 0.0, "y": -9.81 }
+                    }
+                ],
+                "analyzers": [],
+                "annotations": []
+            },
+            "dirtyScopes": [],
+            "rebuildRequired": false
+        }),
+        1.0 / 60.0,
+    );
+    let mut previous_frame = runtime.current_frame();
+
+    for _ in 0..120 {
+        let frame = runtime.step();
+        let previous_ball = payload_frame(&previous_frame, "ball");
+        let ball = payload_frame(&frame, "ball");
+
+        if matches!(
+            runtime.guide_state("ball"),
+            RuntimeGuideState::OnGuide { ref segment_id, .. } if segment_id == "guide:arc-track:arc"
+        ) {
+            let frame_delta = ball.position.sub(previous_ball.position).length();
+
+            assert!(
+                frame_delta < 0.08,
+                "desktop payload should not skip across the board-arc junction in one visible frame, delta={frame_delta:.6} previous=({:.6}, {:.6}) current=({:.6}, {:.6})",
+                previous_ball.position.x,
+                previous_ball.position.y,
+                ball.position.x,
+                ball.position.y,
+            );
+            return;
+        }
+
+        previous_frame = frame;
+    }
+
+    panic!("desktop payload ball should enter the arc guide");
+}
+
+#[test]
+fn guide_runtime_desktop_payload_arc_to_board_handoff_has_no_large_frame_delta() {
+    let mut runtime = runtime_from_desktop_payload(
+        json!({
+            "scene": {
+                "schemaVersion": 1,
+                "entities": [
+                    {
+                        "id": "ball",
+                        "kind": "ball",
+                        "x": 2.85,
+                        "y": -0.8,
+                        "radius": 0.4,
+                        "velocityX": 0.8,
+                        "velocityY": 0.0,
+                        "mass": 1.0,
+                        "friction": 0.0,
+                        "restitution": 0.0,
+                        "locked": false
+                    },
+                    {
+                        "id": "board",
+                        "kind": "board",
+                        "x": 0.0,
+                        "y": 0.0,
+                        "width": 4.0,
+                        "height": 0.5,
+                        "locked": true,
+                        "friction": 0.0
+                    },
+                    {
+                        "id": "arc-track",
+                        "kind": "arc-track",
+                        "anchorEntityId": "board",
+                        "anchorEntityKind": "board",
+                        "anchorEndpoint": "end",
+                        "center": { "x": 4.0, "y": 1.25 },
+                        "entryEndpoint": "end",
+                        "radius": 1.25,
+                        "sweepAngleDegrees": 90.0,
+                        "rotationDegrees": 0.0,
+                        "thickness": 0.18
+                    }
+                ],
+                "constraints": [],
+                "forceSources": [
+                    {
+                        "id": "gravity",
+                        "kind": "gravity",
+                        "acceleration": { "x": 0.0, "y": -9.81 }
+                    }
+                ],
+                "analyzers": [],
+                "annotations": []
+            },
+            "dirtyScopes": [],
+            "rebuildRequired": false
+        }),
+        1.0 / 60.0,
+    );
+    let mut previous_frame = runtime.current_frame();
+    let mut saw_arc = false;
+
+    for _ in 0..240 {
+        let frame = runtime.step();
+        let previous_ball = payload_frame(&previous_frame, "ball");
+        let ball = payload_frame(&frame, "ball");
+
+        match runtime.guide_state("ball") {
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if segment_id == "guide:arc-track:arc" =>
+            {
+                saw_arc = true;
+            }
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if saw_arc && segment_id == "guide:board:top" =>
+            {
+                let frame_delta = ball.position.sub(previous_ball.position).length();
+
+                assert!(
+                    frame_delta < 0.08,
+                    "desktop payload should not jump from the arc back to the board junction in one visible frame, delta={frame_delta:.6} previous=({:.6}, {:.6}) current=({:.6}, {:.6})",
+                    previous_ball.position.x,
+                    previous_ball.position.y,
+                    ball.position.x,
+                    ball.position.y,
+                );
+                return;
+            }
+            RuntimeGuideState::Free if saw_arc => {
+                panic!("desktop payload should return from arc to board without detaching");
+            }
+            RuntimeGuideState::Free | RuntimeGuideState::OnGuide { .. } => {}
+        }
+
+        previous_frame = frame;
+    }
+
+    panic!("desktop payload ball should return from the arc guide to the board guide");
 }
 
 #[test]

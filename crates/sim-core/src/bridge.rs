@@ -1021,10 +1021,13 @@ impl SceneEntityPayload {
                     central_angle_degrees,
                 )?;
                 let thickness = thickness.unwrap_or(DEFAULT_ARC_TRACK_THICKNESS);
+                // Desktop authoring stores the visible guide/contact radius; sim-core stores
+                // the rail centerline radius and derives the inside contact path from it.
+                let centerline_radius = radius + thickness * 0.5;
 
                 (
                     ShapeDefinition::ArcTrack {
-                        radius,
+                        radius: centerline_radius,
                         central_angle_degrees,
                         thickness,
                     },
