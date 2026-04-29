@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use sim_core::arc_track::{
     ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
     CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS, angle_radians_for_position,
-    contact_path_radius, effective_center_radius,
+    contact_path_radius, effective_center_radius, endpoint_geometry,
 };
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
@@ -271,12 +271,37 @@ fn inside_effective_radius(radius: f64) -> f64 {
     )
 }
 
+fn free_arc_entry_center_path_position(
+    center: Vector2,
+    radius: f64,
+    start_angle_degrees: f64,
+    end_angle_degrees: f64,
+    entry_endpoint: ArcTrackEntryEndpoint,
+) -> Vector2 {
+    let endpoint = endpoint_geometry(
+        center,
+        contact_path_radius(radius, DEFAULT_ARC_TRACK_THICKNESS, ArcTrackSide::Inside),
+        start_angle_degrees.to_radians(),
+        end_angle_degrees.to_radians(),
+        ArcTrackSide::Inside,
+        entry_endpoint,
+    );
+
+    endpoint.position.add(endpoint.support_direction.scale(0.5))
+}
+
 #[test]
 fn arc_entry_capture_regression_aligned_ball_enters_at_configured_endpoint() {
     let center = vector2(4.0, 4.0);
     let expected_radius = inside_effective_radius(2.0);
+    let entry_center =
+        free_arc_entry_center_path_position(center, 2.0, 30.0, 90.0, ArcTrackEntryEndpoint::End);
     let mut runtime = runtime_for_scene(
-        ball("ball", vector2(3.6, 2.0), vector2(2.0, 0.0)),
+        ball(
+            "ball",
+            entry_center.sub(vector2(0.4, 0.0)),
+            vector2(2.0, 0.0),
+        ),
         entry_arc(),
         Vector2::ZERO,
         0.05,
@@ -329,11 +354,59 @@ fn arc_entry_capture_regression_distant_ball_does_not_enter() {
 }
 
 #[test]
+fn arc_entry_capture_regression_near_contact_endpoint_but_off_center_path_does_not_snap() {
+    let center = vector2(4.0, 4.0);
+    let endpoint = endpoint_geometry(
+        center,
+        contact_path_radius(2.0, DEFAULT_ARC_TRACK_THICKNESS, ArcTrackSide::Inside),
+        30.0_f64.to_radians(),
+        90.0_f64.to_radians(),
+        ArcTrackSide::Inside,
+        ArcTrackEntryEndpoint::End,
+    );
+    let initial_position = endpoint
+        .position
+        .sub(endpoint.tangent.scale(0.04))
+        .add(endpoint.support_direction.scale(0.05));
+    let initial_velocity = endpoint.tangent.scale(2.0);
+    let mut runtime = runtime_for_scene(
+        ball("ball", initial_position, initial_velocity),
+        entry_arc(),
+        Vector2::ZERO,
+        0.05,
+    );
+
+    runtime.step();
+    let frame = runtime_entity(&runtime, "ball");
+    let expected_free_position = initial_position.add(initial_velocity.scale(0.05));
+    let expected_radius = inside_effective_radius(2.0);
+
+    assert!(
+        frame.position.sub(expected_free_position).length() < 1e-6,
+        "near-endpoint free flight should not be projected onto the arc, got position=({:.3}, {:.3}) expected=({:.3}, {:.3})",
+        frame.position.x,
+        frame.position.y,
+        expected_free_position.x,
+        expected_free_position.y,
+    );
+    assert!(
+        (frame.position.sub(center).length() - expected_radius).abs() > 5e-2,
+        "ball center was not on the arc center path and should not snap to it"
+    );
+}
+
+#[test]
 fn arc_entry_capture_regression_frontend_board_anchored_payload_enters_from_junction() {
     let center = vector2(8.0, 5.5);
     let expected_radius = inside_effective_radius(1.0);
+    let entry_center =
+        free_arc_entry_center_path_position(center, 1.0, 90.0, 270.0, ArcTrackEntryEndpoint::Start);
     let mut runtime = runtime_for_scene(
-        ball("ball", vector2(8.4, 4.5), vector2(-2.0, 0.0)),
+        ball(
+            "ball",
+            entry_center.add(vector2(0.4, 0.0)),
+            vector2(-2.0, 0.0),
+        ),
         ConstraintDefinition::ArcTrack {
             id: "arc-track".to_string(),
             center,
@@ -365,8 +438,14 @@ fn arc_entry_capture_regression_frontend_board_anchored_payload_enters_from_junc
 fn arc_entry_capture_regression_arc_track_entity_captures_tangent_matched_endpoint() {
     let center = vector2(8.0, 5.5);
     let expected_radius = inside_effective_radius(1.0);
+    let entry_center =
+        free_arc_entry_center_path_position(center, 1.0, 90.0, 270.0, ArcTrackEntryEndpoint::Start);
     let mut runtime = runtime_for_scene_with_arc_entity(
-        ball("ball", vector2(8.65, 4.5), vector2(-0.2, 0.0)),
+        ball(
+            "ball",
+            entry_center.add(vector2(0.008, 0.0)),
+            vector2(-0.2, 0.0),
+        ),
         arc_track_entity("arc-track", center, 1.0, 180.0, 90.0),
         Vector2::ZERO,
         0.05,

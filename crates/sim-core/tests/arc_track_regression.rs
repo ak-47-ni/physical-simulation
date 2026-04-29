@@ -162,6 +162,12 @@ fn free_arc_entry_geometry(
     )
 }
 
+fn free_arc_entry_center_path_position(
+    entry: sim_core::arc_track::ArcTrackEndpointGeometry,
+) -> Vector2 {
+    entry.position.add(entry.support_direction.scale(0.5))
+}
+
 fn local_tangent_crossing_ball(
     id: &str,
     anchor_frame: AnchorEndpointFrame,
@@ -322,8 +328,14 @@ fn payload_frame<'a>(
 fn arc_track_regression_bowl_segment_keeps_ball_attached() {
     let center = vector2(4.0, 4.0);
     let expected_radius = inside_effective_radius(2.0);
+    let entry = free_arc_entry_geometry(center, 2.0, 30.0, 90.0, ArcTrackEntryEndpoint::End);
+    let entry_center = free_arc_entry_center_path_position(entry);
     let mut runtime = runtime_for_scene(
-        ball("ball", vector2(3.6, 2.0), vector2(2.0, 0.0)),
+        ball(
+            "ball",
+            entry_center.sub(entry.tangent.scale(0.4)),
+            entry.tangent.scale(2.0),
+        ),
         ConstraintDefinition::ArcTrack {
             id: "arc-track".to_string(),
             center,
@@ -349,8 +361,14 @@ fn arc_track_regression_bowl_segment_keeps_ball_attached() {
 fn arc_track_regression_detaches_when_support_would_need_to_pull() {
     let center = vector2(4.0, 4.0);
     let expected_radius = inside_effective_radius(2.0);
+    let entry = free_arc_entry_geometry(center, 2.0, 210.0, 270.0, ArcTrackEntryEndpoint::End);
+    let entry_center = free_arc_entry_center_path_position(entry);
     let mut runtime = runtime_for_scene(
-        ball("ball", vector2(4.8, 6.0), vector2(-2.0, 0.0)),
+        ball(
+            "ball",
+            entry_center.sub(entry.tangent.scale(0.08)),
+            entry.tangent.scale(2.0),
+        ),
         ConstraintDefinition::ArcTrack {
             id: "arc-track".to_string(),
             center,
@@ -391,8 +409,14 @@ fn arc_track_regression_detaches_when_support_would_need_to_pull() {
 fn arc_track_regression_detaches_at_arc_end_and_continues_free_flight() {
     let center = vector2(4.0, 4.0);
     let expected_radius = inside_effective_radius(2.0);
+    let entry = free_arc_entry_geometry(center, 2.0, 60.0, 90.0, ArcTrackEntryEndpoint::End);
+    let entry_center = free_arc_entry_center_path_position(entry);
     let mut runtime = runtime_for_scene(
-        ball("ball", vector2(3.7, 2.0), vector2(2.8, 0.0)),
+        ball(
+            "ball",
+            entry_center.sub(entry.tangent.scale(0.3)),
+            entry.tangent.scale(2.8),
+        ),
         ConstraintDefinition::ArcTrack {
             id: "arc-track".to_string(),
             center,
@@ -417,8 +441,14 @@ fn arc_track_regression_detaches_at_arc_end_and_continues_free_flight() {
 fn arc_track_regression_arc_track_entity_guides_ball_then_releases_tangentially() {
     let center = vector2(4.0, 4.0);
     let expected_radius = inside_effective_radius(2.0);
+    let entry = free_arc_entry_geometry(center, 2.0, 60.0, 90.0, ArcTrackEntryEndpoint::End);
+    let entry_center = free_arc_entry_center_path_position(entry);
     let mut runtime = runtime_for_scene_with_arc_entity(
-        ball("ball", vector2(3.7, 2.0), vector2(2.8, 0.0)),
+        ball(
+            "ball",
+            entry_center.sub(entry.tangent.scale(0.08)),
+            entry.tangent.scale(2.8),
+        ),
         arc_track_entity("arc-track", center, 2.0, 30.0, 60.0),
         Vector2::ZERO,
         0.05,
@@ -451,10 +481,11 @@ fn arc_track_regression_entity_terminal_release_adds_exact_trajectory_sample() {
     let radius = 2.0;
     let expected_radius = inside_effective_radius(radius);
     let entry = free_arc_entry_geometry(center, radius, 270.0, 360.0, ArcTrackEntryEndpoint::Start);
+    let entry_center = free_arc_entry_center_path_position(entry);
     let mut runtime = runtime_for_scene_with_arc_entity_and_trajectory(
         ball(
             "ball",
-            entry.position.add(entry.tangent.scale(-0.1)),
+            entry_center.add(entry.tangent.scale(-0.1)),
             entry.tangent.scale(5.0),
         ),
         arc_track_entity("arc-track", center, radius, 90.0, 270.0),
@@ -538,7 +569,8 @@ fn arc_track_regression_turning_point_reverses_while_staying_on_arc() {
         end_angle_degrees,
         ArcTrackEntryEndpoint::End,
     );
-    let authored_position = entry.position.add(entry.tangent.scale(-0.1));
+    let authored_position =
+        free_arc_entry_center_path_position(entry).add(entry.tangent.scale(-0.1));
     let mut runtime = runtime_for_scene(
         ball("ball", authored_position, entry.tangent.scale(0.8)),
         ConstraintDefinition::ArcTrack {

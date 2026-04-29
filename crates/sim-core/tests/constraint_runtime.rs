@@ -188,6 +188,12 @@ fn free_arc_entry_geometry(
     )
 }
 
+fn free_arc_entry_center_path_position(
+    entry: sim_core::arc_track::ArcTrackEndpointGeometry,
+) -> Vector2 {
+    entry.position.add(entry.support_direction.scale(0.5))
+}
+
 fn inside_effective_radius(radius: f64) -> f64 {
     effective_center_radius(
         contact_path_radius(radius, DEFAULT_ARC_TRACK_THICKNESS, ArcTrackSide::Inside),
@@ -480,7 +486,8 @@ fn constraint_runtime_continuous_entry_advances_along_arc_with_remaining_substep
         end_angle_degrees,
         ArcTrackEntryEndpoint::Start,
     );
-    let authored_position = entry.position.add(entry.tangent.scale(-0.1));
+    let entry_center = free_arc_entry_center_path_position(entry);
+    let authored_position = entry_center.add(entry.tangent.scale(-0.1));
     let mut runtime = runtime_for_scene(
         vec![ball("slider", authored_position, entry.tangent.scale(19.0))],
         vec![ConstraintDefinition::ArcTrack {
@@ -499,7 +506,7 @@ fn constraint_runtime_continuous_entry_advances_along_arc_with_remaining_substep
     let first_frame = runtime.step();
     let slider = payload_frame(&first_frame, "slider");
     let radial_distance = slider.position.sub(center).length();
-    let advanced_distance = slider.position.sub(entry.position).length();
+    let advanced_distance = slider.position.sub(entry_center).length();
 
     assert!(
         (radial_distance - expected_radius).abs() < 5e-2,
@@ -514,8 +521,8 @@ fn constraint_runtime_continuous_entry_advances_along_arc_with_remaining_substep
         advanced_distance,
         slider.position.x,
         slider.position.y,
-        entry.position.x,
-        entry.position.y,
+        entry_center.x,
+        entry_center.y,
     );
 }
 
@@ -577,7 +584,8 @@ fn constraint_runtime_arc_track_turning_point_reverses_while_staying_on_arc() {
         end_angle_degrees,
         ArcTrackEntryEndpoint::End,
     );
-    let authored_position = entry.position.add(entry.tangent.scale(-0.1));
+    let authored_position =
+        free_arc_entry_center_path_position(entry).add(entry.tangent.scale(-0.1));
     let mut runtime = runtime_for_scene(
         vec![ball("slider", authored_position, entry.tangent.scale(0.8))],
         vec![ConstraintDefinition::ArcTrack {

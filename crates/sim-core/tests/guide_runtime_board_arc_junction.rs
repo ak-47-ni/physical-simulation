@@ -236,6 +236,23 @@ fn guide_runtime_wrong_direction_does_not_handoff_to_arc_segment() {
 }
 
 #[test]
+fn guide_runtime_free_ball_moving_away_from_board_does_not_snap_to_board_guide() {
+    let board_center = vector2(0.0, 0.0);
+    let (_, tangent, surface_normal) =
+        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+    let initial_position = vector2(1.0, -0.25).add(surface_normal.scale(0.4));
+    let initial_velocity = tangent.scale(0.6).add(surface_normal.scale(0.8));
+    let mut runtime = runtime_for_board_arc_scene(initial_position, initial_velocity, 0.025);
+
+    runtime.step();
+
+    assert!(
+        matches!(runtime.guide_state("ball"), RuntimeGuideState::Free),
+        "ball moving away from the board should remain free instead of being projected onto the board guide"
+    );
+}
+
+#[test]
 fn guide_runtime_board_arc_handoff_result_is_substep_invariant() {
     let board_center = vector2(0.0, 0.0);
     let (_, tangent, surface_normal) =

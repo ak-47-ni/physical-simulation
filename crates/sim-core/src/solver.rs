@@ -1038,6 +1038,10 @@ fn capture_free_arc_entry(
     delta_seconds: f64,
 ) -> Option<RuntimeArcEntryCapture> {
     let speed = body.velocity.length();
+    let body_radius = body.half_extents.x.max(body.half_extents.y);
+    let entry_center_position = endpoint_geometry
+        .position
+        .add(endpoint_geometry.support_direction.scale(body_radius));
 
     if speed <= f64::EPSILON {
         return None;
@@ -1052,8 +1056,8 @@ fn capture_free_arc_entry(
         return None;
     }
 
-    let previous_offset = previous_position.sub(endpoint_geometry.position);
-    let offset_from_entry = body.position.sub(endpoint_geometry.position);
+    let previous_offset = previous_position.sub(entry_center_position);
+    let offset_from_entry = body.position.sub(entry_center_position);
     let previous_longitudinal = previous_offset.dot(endpoint_geometry.tangent);
     let current_longitudinal = offset_from_entry.dot(endpoint_geometry.tangent);
     let sweep_longitudinal = current_longitudinal - previous_longitudinal;
@@ -1069,7 +1073,7 @@ fn capture_free_arc_entry(
 
         if hit_offset.length()
             <= ARC_ENTRY_CAPTURE_DISTANCE_THRESHOLD + crate::arc_track::ARC_TRACK_EPSILON
-            && hit_side >= -ARC_ENTRY_CAPTURE_SIDE_TOLERANCE
+            && hit_side.abs() <= ARC_ENTRY_CAPTURE_SIDE_TOLERANCE
         {
             let hit_seconds = hit_fraction * delta_seconds;
             let hit_velocity = body.velocity.sub(
@@ -1110,8 +1114,10 @@ fn captures_free_arc_entry_window(
 ) -> bool {
     offset_from_entry.length() <= ARC_ENTRY_CAPTURE_DISTANCE_THRESHOLD
         && offset_from_entry.dot(endpoint_geometry.tangent) <= ARC_ENTRY_CAPTURE_APPROACH_TOLERANCE
-        && offset_from_entry.dot(endpoint_geometry.support_direction)
-            >= -ARC_ENTRY_CAPTURE_SIDE_TOLERANCE
+        && offset_from_entry
+            .dot(endpoint_geometry.support_direction)
+            .abs()
+            <= ARC_ENTRY_CAPTURE_SIDE_TOLERANCE
 }
 
 fn captures_anchored_arc_entry(
