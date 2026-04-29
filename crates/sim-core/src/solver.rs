@@ -10,8 +10,8 @@ mod contact_geometry;
 use std::collections::{HashMap, HashSet};
 
 use crate::arc_track::{
-    ArcTrackAnchorEndpoint, ArcTrackCapturePolicy, ArcTrackEndpointGeometry, CompiledArcTrack,
-    effective_center_radius,
+    effective_center_radius, ArcTrackAnchorEndpoint, ArcTrackCapturePolicy,
+    ArcTrackEndpointGeometry, CompiledArcTrack,
 };
 use crate::constraint::{ArcTrackSide, CompiledConstraint};
 use crate::entity::Vector2;
@@ -108,15 +108,22 @@ struct ArcTrackAdvanceReport {
     detach_events: Vec<RuntimeArcTrackDetachEvent>,
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct RuntimeBodyStepReport {
+    pub arc_track_detach_events: Vec<RuntimeArcTrackDetachEvent>,
+    pub arc_track_captured_body_ids: HashSet<String>,
+}
+
 pub fn step_bodies(
     bodies: &mut [RuntimeBodyState],
     constraints: &[CompiledConstraint],
     arc_tracks: &[CompiledArcTrack],
     attached_arc_track_by_body_id: &mut HashMap<String, RuntimeArcTrackAttachment>,
     guide_attached_body_ids: &HashSet<String>,
+    arc_track_motion_paused_body_ids: &HashSet<String>,
     gravity: Vector2,
     delta_seconds: f64,
-) -> Vec<RuntimeArcTrackDetachEvent> {
+) -> RuntimeBodyStepReport {
     let previous_positions = bodies.iter().map(|body| body.position).collect::<Vec<_>>();
     let attached_body_ids = attached_arc_track_by_body_id
         .keys()
@@ -171,6 +178,7 @@ pub fn step_bodies(
         &attached_body_ids,
         delta_seconds,
     );
+    let arc_track_captured_body_ids = newly_captured_body_ids.keys().cloned().collect();
     attachment_delta_seconds_by_body_id.extend(newly_captured_body_ids);
     let arc_track_advance_report = advance_arc_track_attachments(
         bodies,
@@ -178,13 +186,17 @@ pub fn step_bodies(
         &index_by_id,
         attached_arc_track_by_body_id,
         &attachment_delta_seconds_by_body_id,
+        arc_track_motion_paused_body_ids,
     );
     resolve_recently_detached_bodies(
         bodies,
         &arc_track_advance_report.detached_body_remaining_seconds_by_id,
     );
 
-    arc_track_advance_report.detach_events
+    RuntimeBodyStepReport {
+        arc_track_detach_events: arc_track_advance_report.detach_events,
+        arc_track_captured_body_ids,
+    }
 }
 
 pub fn project_track_bindings(
@@ -825,6 +837,7 @@ fn advance_arc_track_attachments(
     index_by_id: &HashMap<String, usize>,
     attached_arc_track_by_body_id: &mut HashMap<String, RuntimeArcTrackAttachment>,
     attachment_delta_seconds_by_body_id: &HashMap<String, f64>,
+    motion_paused_body_ids: &HashSet<String>,
 ) -> ArcTrackAdvanceReport {
     let mut report = ArcTrackAdvanceReport::default();
     let attached_body_ids = attached_arc_track_by_body_id
@@ -843,6 +856,9 @@ fn advance_arc_track_attachments(
         let Some(mut attachment) = attached_arc_track_by_body_id.get(&body_id).cloned() else {
             continue;
         };
+        if motion_paused_body_ids.contains(&body_id) {
+            continue;
+        }
         let Some(arc_track) = arc_tracks
             .iter()
             .find(|arc_track| arc_track.id == attachment.arc_track_id)
@@ -995,8 +1011,7 @@ fn capture_arc_entries(
                     },
                 );
                 occupied_arc_track_ids.insert(arc_track.id.clone());
-                newly_captured_body_ids
-                    .insert(body_id, (delta_seconds - capture.hit_seconds).max(0.0));
+                newly_captured_body_ids.insert(body_id, 0.0);
                 break 'body_search;
             }
         }

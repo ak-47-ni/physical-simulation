@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::arc_track::{
-    ARC_TRACK_EPSILON, effective_center_radius, radial_for_angle, support_direction,
-    tangent_for_increasing_angle,
+    effective_center_radius, radial_for_angle, support_direction, tangent_for_increasing_angle,
+    ARC_TRACK_EPSILON,
 };
 use crate::constraint::ArcTrackSide;
 use crate::entity::Vector2;
@@ -72,6 +72,7 @@ pub fn attach_free_bodies_to_guides(
     bodies: &mut [RuntimeBodyState],
     guide_network: &CompiledGuideNetwork,
     attachments: &mut HashMap<String, RuntimeGuideAttachment>,
+    guide_attach_blocked_body_ids: &HashSet<String>,
     reattach_blocked_until_frame_by_body_id: &HashMap<String, u64>,
     current_frame_number: u64,
 ) {
@@ -83,6 +84,7 @@ pub fn attach_free_bodies_to_guides(
         if body.is_static
             || body.shape != RuntimeBodyShape::Ball
             || attachments.contains_key(&body.entity_id)
+            || guide_attach_blocked_body_ids.contains(&body.entity_id)
             || reattach_blocked_until_frame_by_body_id
                 .get(&body.entity_id)
                 .is_some_and(|blocked_until_frame| *blocked_until_frame >= current_frame_number)
@@ -366,7 +368,7 @@ fn advance_arc_guide(
 ) -> GuideAdvanceOutcome {
     let external_acceleration = body.acceleration;
     let body_radius = body.half_extents.x.max(body.half_extents.y);
-    let effective_radius = effective_center_radius(arc.radius, body_radius, arc.side);
+    let effective_radius = effective_center_radius(arc.radius, body_radius, arc.motion_side);
     let angle = angle_for_arc_progress(arc, attachment.progress);
     let radial = radial_for_angle(angle);
     let tangent = tangent_for_increasing_angle(radial);
@@ -609,7 +611,7 @@ fn sync_body_to_arc_guide(
     let radial = radial_for_angle(angle);
     let tangent = tangent_for_increasing_angle(radial);
     let body_radius = body.half_extents.x.max(body.half_extents.y);
-    let effective_radius = effective_center_radius(arc.radius, body_radius, arc.side);
+    let effective_radius = effective_center_radius(arc.radius, body_radius, arc.motion_side);
     let tangential_acceleration = body.acceleration.dot(tangent);
 
     body.position = arc.center.add(radial.scale(effective_radius));

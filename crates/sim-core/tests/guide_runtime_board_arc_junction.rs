@@ -1,16 +1,16 @@
 use std::collections::HashMap;
 
 use sim_core::arc_track::{
-    ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
-    CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS, angle_radians_for_position,
-    contact_path_radius,
+    angle_radians_for_position, contact_path_radius, ArcTrackAnchorEndpoint,
+    ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata, CompiledArcTrackAnchor,
+    DEFAULT_ARC_TRACK_THICKNESS,
 };
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::guide_runtime::RuntimeGuideState;
-use sim_core::runtime::RuntimeScene;
-use sim_core::scene::{CompileSceneRequest, compile_scene_with_arc_track_metadata};
+use sim_core::runtime::{RuntimeFramePayload, RuntimeScene};
+use sim_core::scene::{compile_scene_with_arc_track_metadata, CompileSceneRequest};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
@@ -181,6 +181,17 @@ fn run_steps(runtime: &mut RuntimeScene, steps: usize) {
     }
 }
 
+fn payload_frame<'a>(
+    frame: &'a RuntimeFramePayload,
+    entity_id: &str,
+) -> &'a sim_core::runtime::RuntimeEntityFrame {
+    frame
+        .entities
+        .iter()
+        .find(|entity| entity.entity_id == entity_id)
+        .expect("entity should exist in frame")
+}
+
 #[test]
 fn guide_runtime_board_top_hands_off_to_connected_arc_segment() {
     let board_center = vector2(0.0, 0.0);
@@ -225,7 +236,18 @@ fn guide_runtime_board_to_arc_handoff_starts_at_junction_before_advancing_arc() 
         0.1,
     );
 
-    runtime.step();
+    let frame = runtime.step();
+    let expected_junction = vector2(2.0, -0.25).add(surface_normal.scale(0.4));
+    let ball_frame = payload_frame(&frame, "ball");
+
+    assert!(
+        ball_frame.position.sub(expected_junction).length() < 1e-6,
+        "first visible arc frame should render at the board-arc junction, got position=({:.6}, {:.6}) expected=({:.6}, {:.6})",
+        ball_frame.position.x,
+        ball_frame.position.y,
+        expected_junction.x,
+        expected_junction.y,
+    );
 
     match runtime.guide_state("ball") {
         RuntimeGuideState::OnGuide {
@@ -342,7 +364,7 @@ fn guide_runtime_arc_turning_point_reverses_back_to_board_without_detaching() {
     let mut saw_free_after_arc = false;
     let mut returned_to_board = false;
 
-    for _ in 0..80 {
+    for _ in 0..120 {
         runtime.step();
 
         match runtime.guide_state("ball") {
@@ -396,10 +418,11 @@ fn guide_runtime_arc_to_board_handoff_starts_at_junction_before_advancing_board(
         tangent.scale(0.8),
         0.025,
     );
+    let expected_junction = vector2(2.0, -0.25).add(surface_normal.scale(0.4));
     let mut saw_arc_guide = false;
 
     for _ in 0..120 {
-        runtime.step();
+        let frame = runtime.step();
 
         match runtime.guide_state("ball") {
             RuntimeGuideState::OnGuide { ref segment_id, .. }
@@ -412,6 +435,16 @@ fn guide_runtime_arc_to_board_handoff_starts_at_junction_before_advancing_board(
                 progress,
                 ..
             } if saw_arc_guide && segment_id == "guide:board:top" => {
+                let ball_frame = payload_frame(&frame, "ball");
+
+                assert!(
+                    ball_frame.position.sub(expected_junction).length() < 1e-6,
+                    "first visible board frame should render at the arc-board junction, got position=({:.6}, {:.6}) expected=({:.6}, {:.6})",
+                    ball_frame.position.x,
+                    ball_frame.position.y,
+                    expected_junction.x,
+                    expected_junction.y,
+                );
                 assert!(
                     (progress - 4.0).abs() < 1e-6,
                     "first board frame should land at the arc-board junction before advancing along the board, progress={progress:.6}"

@@ -53,6 +53,7 @@ pub struct ArcGuideSegment {
     pub end_angle_radians: f64,
     pub span_radians: f64,
     pub side: ArcTrackSide,
+    pub motion_side: ArcTrackSide,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -180,6 +181,13 @@ pub fn compile_guide_network(
                 to_endpoint,
                 &board_end_node_id,
             );
+            align_arc_motion_side_to_anchor(
+                &mut network,
+                arc_guide_segment_id(&arc_track.id).as_str(),
+                arc_track,
+                entry_endpoint,
+                anchor_geometry.surface_normal,
+            );
 
             let _geometry_matches_authoritative_anchor =
                 anchor_geometry.position.sub(arc_entry.position).length()
@@ -274,7 +282,42 @@ fn add_arc_guide_segment(network: &mut CompiledGuideNetwork, arc_track: &Compile
             end_angle_radians: arc_track.end_angle_radians,
             span_radians: arc_track.span_radians,
             side: arc_track.side,
+            motion_side: arc_track.side,
         }));
+}
+
+fn align_arc_motion_side_to_anchor(
+    network: &mut CompiledGuideNetwork,
+    segment_id: &str,
+    arc_track: &CompiledArcTrack,
+    entry_endpoint: ArcTrackEntryEndpoint,
+    anchor_surface_normal: Vector2,
+) {
+    let Some(segment) = network
+        .segments
+        .iter_mut()
+        .find(|segment| segment.id() == segment_id)
+    else {
+        return;
+    };
+    let CompiledGuideSegment::Arc(arc) = segment else {
+        return;
+    };
+    let endpoint = endpoint_geometry(
+        arc_track.center,
+        arc_track.contact_path_radius(),
+        arc_track.start_angle_radians,
+        arc_track.end_angle_radians,
+        arc_track.side,
+        entry_endpoint,
+    );
+    let radial = endpoint.position.sub(arc_track.center).normalized();
+
+    arc.motion_side = if anchor_surface_normal.dot(radial) >= 0.0 {
+        ArcTrackSide::Outside
+    } else {
+        ArcTrackSide::Inside
+    };
 }
 
 fn add_linear_anchor_guide_segment(

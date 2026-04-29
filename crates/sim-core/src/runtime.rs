@@ -8,19 +8,19 @@ use std::collections::{HashMap, HashSet};
 
 use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySample};
 use crate::arc_track::{
-    CompiledArcTrack, compiled_arc_track_from_constraint, validated_arc_start_and_span,
+    compiled_arc_track_from_constraint, validated_arc_start_and_span, CompiledArcTrack,
 };
 use crate::entity::{CompiledShape, Vector2};
 use crate::guide_network::CompiledGuideNetwork;
 use crate::guide_runtime::{
-    RuntimeGuideAttachment, RuntimeGuideDetachEvent, RuntimeGuideState, advance_guide_attachments,
-    attach_free_bodies_to_guides, attached_body_ids,
+    advance_guide_attachments, attach_free_bodies_to_guides, attached_body_ids,
+    RuntimeGuideAttachment, RuntimeGuideDetachEvent, RuntimeGuideState,
 };
 use crate::scene::CompiledScene;
 use crate::solver::{
-    RuntimeArcTrackAttachment, RuntimeArcTrackDetachEvent, RuntimeArcTrackGeometry,
-    RuntimeBodyShape, RuntimeBodyState, inverse_inertia_for_body, project_track_bindings,
-    resolve_recently_detached_bodies, step_bodies,
+    inverse_inertia_for_body, project_track_bindings, resolve_recently_detached_bodies,
+    step_bodies, RuntimeArcTrackAttachment, RuntimeArcTrackDetachEvent, RuntimeArcTrackGeometry,
+    RuntimeBodyShape, RuntimeBodyState,
 };
 use serde::{Deserialize, Serialize};
 
@@ -160,25 +160,34 @@ impl RuntimeScene {
         let substep_count =
             contact_substeps::recommended_substep_count(&self.bodies, self.fixed_delta_seconds);
         let substep_delta_seconds = self.fixed_delta_seconds / substep_count as f64;
+        let mut arc_track_handoff_paused_body_ids = HashSet::new();
         let mut guide_handoff_paused_body_ids = HashSet::new();
 
         for substep_index in 0..substep_count {
             let substep_start_time_seconds =
                 self.elapsed_time_seconds + substep_delta_seconds * substep_index as f64;
+            let guide_attach_blocked_body_ids = self
+                .attached_arc_track_by_body_id
+                .keys()
+                .cloned()
+                .chain(arc_track_handoff_paused_body_ids.iter().cloned())
+                .collect::<HashSet<_>>();
             attach_free_bodies_to_guides(
                 &mut self.bodies,
                 &self.guide_network,
                 &mut self.attached_guide_by_body_id,
+                &guide_attach_blocked_body_ids,
                 &self.guide_reattach_blocked_until_frame_by_body_id,
                 self.frame_number,
             );
             let guide_attached_body_ids = attached_body_ids(&self.attached_guide_by_body_id);
-            let arc_track_detach_events = step_bodies(
+            let body_step_report = step_bodies(
                 &mut self.bodies,
                 &self.constraints,
                 &self.arc_tracks,
                 &mut self.attached_arc_track_by_body_id,
                 &guide_attached_body_ids,
+                &arc_track_handoff_paused_body_ids,
                 self.gravity,
                 substep_delta_seconds,
             );
@@ -186,8 +195,9 @@ impl RuntimeScene {
                 &mut self.analyzers,
                 self.frame_number.saturating_add(1),
                 substep_start_time_seconds,
-                &arc_track_detach_events,
+                &body_step_report.arc_track_detach_events,
             );
+            arc_track_handoff_paused_body_ids.extend(body_step_report.arc_track_captured_body_ids);
             let guide_advance_report = advance_guide_attachments(
                 &mut self.bodies,
                 &self.guide_network,
@@ -375,7 +385,7 @@ mod tests {
     use crate::constraint::ConstraintDefinition;
     use crate::entity::{EntityDefinition, ShapeDefinition};
     use crate::force::ForceSourceDefinition;
-    use crate::scene::{CompileSceneRequest, compile_scene};
+    use crate::scene::{compile_scene, CompileSceneRequest};
 
     fn vector2(x: f64, y: f64) -> Vector2 {
         Vector2::new(x, y)

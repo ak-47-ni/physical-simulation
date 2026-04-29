@@ -1,15 +1,14 @@
 use std::collections::HashMap;
 
 use sim_core::arc_track::{
-    ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
-    CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS, contact_path_radius,
-    effective_center_radius,
+    contact_path_radius, effective_center_radius, ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind,
+    ArcTrackEntityCompileMetadata, CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS,
 };
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::runtime::{RuntimeFramePayload, RuntimeScene};
-use sim_core::scene::{CompileSceneRequest, compile_scene, compile_scene_with_arc_track_metadata};
+use sim_core::scene::{compile_scene, compile_scene_with_arc_track_metadata, CompileSceneRequest};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
@@ -161,10 +160,7 @@ fn payload_frame<'a>(
         .expect("entity should exist in frame")
 }
 
-fn arc_tangential_speed(
-    center: Vector2,
-    entity: &sim_core::runtime::RuntimeEntityFrame,
-) -> f64 {
+fn arc_tangential_speed(center: Vector2, entity: &sim_core::runtime::RuntimeEntityFrame) -> f64 {
     let radial = entity.position.sub(center).normalized();
     let tangent = radial.perp().scale(-1.0);
 
@@ -473,7 +469,7 @@ fn constraint_runtime_block_anchored_arc_track_detaches_when_support_would_need_
 }
 
 #[test]
-fn constraint_runtime_continuous_entry_advances_along_arc_with_remaining_substep() {
+fn constraint_runtime_continuous_entry_starts_at_endpoint_before_advancing_arc() {
     let center = vector2(10.0, 10.0);
     let radius = 4.0;
     let expected_radius = inside_effective_radius(radius);
@@ -506,7 +502,7 @@ fn constraint_runtime_continuous_entry_advances_along_arc_with_remaining_substep
     let first_frame = runtime.step();
     let slider = payload_frame(&first_frame, "slider");
     let radial_distance = slider.position.sub(center).length();
-    let advanced_distance = slider.position.sub(entry_center).length();
+    let endpoint_distance = slider.position.sub(entry_center).length();
 
     assert!(
         (radial_distance - expected_radius).abs() < 5e-2,
@@ -516,13 +512,22 @@ fn constraint_runtime_continuous_entry_advances_along_arc_with_remaining_substep
         radial_distance,
     );
     assert!(
-        advanced_distance > 0.3,
-        "expected continuous entry to keep integrating along the arc after hit time instead of snapping to the endpoint, got advanced_distance={:.3} position=({:.3}, {:.3}) entry=({:.3}, {:.3})",
-        advanced_distance,
+        endpoint_distance < 1e-6,
+        "first captured arc frame should land at the entry endpoint before advancing along the arc, got endpoint_distance={:.6} position=({:.3}, {:.3}) entry=({:.3}, {:.3})",
+        endpoint_distance,
         slider.position.x,
         slider.position.y,
         entry_center.x,
         entry_center.y,
+    );
+
+    let second_frame = runtime.step();
+    let second_slider = payload_frame(&second_frame, "slider");
+    let second_endpoint_distance = second_slider.position.sub(entry_center).length();
+
+    assert!(
+        second_endpoint_distance > 0.1,
+        "captured body should resume arc motion on the next visible frame instead of staying pinned at the endpoint"
     );
 }
 
