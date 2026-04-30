@@ -4,6 +4,7 @@ import { useI18n } from "../i18n";
 import type { SceneDisplaySettings } from "../io/sceneFile";
 import { localizeSystemCopy } from "../localizeSystemCopy";
 import { getBoardGuideSurface } from "../state/boardArcPlacement";
+import type { AuthoringPlacementGuide } from "../state/authoringContactSnap";
 import {
   getBoardAnchoredArcTrackEntryPoint,
   getBoardAnchoredArcTrackEntryTangent,
@@ -107,6 +108,7 @@ export type WorkspaceCanvasAuthoringPlacementPreview =
   | {
       contactWithEntityId?: string;
       entity: EditorSceneEntity;
+      placementGuides?: AuthoringPlacementGuide[];
       status: WorkspaceCanvasAuthoringPlacementStatus;
     }
   | null;
@@ -134,6 +136,7 @@ type WorkspaceCanvasLibraryDragHover = {
 type ProjectedPlacementPreview = {
   contactWithEntityId?: string;
   entity: WorkspaceSceneEntity | ArcTrackBodyEntity;
+  placementGuides?: AuthoringPlacementGuide[];
   status: WorkspaceCanvasAuthoringPlacementStatus;
 };
 
@@ -300,6 +303,56 @@ function createVectorStyle(
     transformOrigin: "0 50%",
     pointerEvents: "none",
   };
+}
+
+function createVectorArrowHeadStyle(color: string): CSSProperties {
+  return {
+    position: "absolute",
+    right: "-9px",
+    top: "50%",
+    width: 0,
+    height: 0,
+    borderTop: "6px solid transparent",
+    borderBottom: "6px solid transparent",
+    borderLeft: `10px solid ${color}`,
+    filter: "drop-shadow(0 1px 2px rgba(17, 37, 64, 0.18))",
+    pointerEvents: "none",
+    transform: "translateY(-50%)",
+  };
+}
+
+function createVelocityLabelStyle(
+  center: { x: number; y: number },
+  dx: number,
+  dy: number,
+  color: string,
+): CSSProperties {
+  const length = Math.hypot(dx, dy);
+  const unitX = length === 0 ? 1 : dx / length;
+  const unitY = length === 0 ? 0 : dy / length;
+
+  return {
+    position: "absolute",
+    left: `${center.x + dx + unitX * 24}px`,
+    top: `${center.y + dy + unitY * 24}px`,
+    border: `1px solid ${color}33`,
+    borderRadius: "999px",
+    background: "rgba(255, 255, 255, 0.94)",
+    boxShadow: "0 8px 18px rgba(17, 37, 64, 0.14)",
+    color,
+    fontSize: "11px",
+    fontVariantNumeric: "tabular-nums",
+    fontWeight: 700,
+    padding: "3px 7px",
+    pointerEvents: "none",
+    transform: "translate(-50%, -50%)",
+    whiteSpace: "nowrap",
+    zIndex: 3,
+  };
+}
+
+function formatVelocitySpeedLabel(velocityX: number, velocityY: number): string {
+  return `${Math.hypot(velocityX, velocityY).toFixed(2)} m/s`;
 }
 
 function createConstraintOverlayStyle(
@@ -563,6 +616,71 @@ function createArcTrackGuideStyle(start: { x: number; y: number }, end: { x: num
     pointerEvents: "none",
     zIndex: 4,
   };
+}
+
+function createPlacementGuideLineStyle(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  color: string,
+  dashed: boolean,
+): CSSProperties {
+  const line = createConstraintLineGeometry(start, end);
+
+  return {
+    position: "absolute",
+    left: `${start.x}px`,
+    top: `${start.y}px`,
+    width: `${line.length}px`,
+    height: 0,
+    borderTop: dashed ? `2px dashed ${color}` : `2px solid ${color}`,
+    transform: `rotate(${line.angleDegrees}deg)`,
+    transformOrigin: "0 50%",
+    pointerEvents: "none",
+    zIndex: 4,
+  };
+}
+
+function createPlacementDistanceLabelStyle(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+): CSSProperties {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const distance = Math.max(Math.hypot(dx, dy), 1);
+  const midX = (start.x + end.x) / 2;
+  const midY = (start.y + end.y) / 2;
+  const normal = {
+    x: -dy / distance,
+    y: dx / distance,
+  };
+
+  return {
+    position: "absolute",
+    left: `${midX + normal.x * 14}px`,
+    top: `${midY + normal.y * 14}px`,
+    borderRadius: "999px",
+    background: "rgba(210, 126, 0, 0.92)",
+    boxShadow: "0 10px 24px rgba(13, 30, 52, 0.18)",
+    color: "#ffffff",
+    fontSize: "11px",
+    fontVariantNumeric: "tabular-nums",
+    fontWeight: 700,
+    lineHeight: 1,
+    padding: "5px 8px",
+    pointerEvents: "none",
+    transform: "translate(-50%, -50%)",
+    whiteSpace: "nowrap",
+    zIndex: 5,
+  };
+}
+
+function formatPlacementDistanceLabel(value: number, lengthUnit: UnitViewport["lengthUnit"]): string {
+  const formatted = value
+    .toFixed(2)
+    .replace(/\.00$/, "")
+    .replace(/(\.\d)0$/, "$1");
+
+  return `${formatted}${lengthUnit}`;
 }
 
 type SelectedArcTrackJunctionDebugSurface = {
@@ -982,7 +1100,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       ? getEntityById(selectedRuntimeVelocityVector.entityId)
       : null;
   const selectedRuntimeVelocity =
-    selectedRuntimeVelocityEntity?.kind === "ball" && selectedRuntimeVelocityVector
+    selectedRuntimeVelocityEntity && selectedRuntimeVelocityVector
       ? getVelocityVectorFromComponents(
           selectedRuntimeVelocityVector.velocityX,
           selectedRuntimeVelocityVector.velocityY,
@@ -1262,6 +1380,55 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     );
   }
 
+  function renderPlacementGuides() {
+    if (!projectedPlacementPreview?.placementGuides || projectedPlacementPreview.status !== "snap") {
+      return null;
+    }
+
+    let alignmentIndex = 0;
+    let distanceIndex = 0;
+
+    return projectedPlacementPreview.placementGuides.map((guide, guideIndex) => (
+      <div key={`${guide.targetEntityId}-${guideIndex}`} aria-hidden="true">
+        {guide.alignmentLines.map((line) => {
+          const currentIndex = alignmentIndex;
+          alignmentIndex += 1;
+          const start = projectAuthoringPointToScreen(line.start, viewport);
+          const end = projectAuthoringPointToScreen(line.end, viewport);
+
+          return (
+            <div
+              key={`alignment-${currentIndex}`}
+              data-testid={`workspace-stage-placement-alignment-line-${currentIndex}`}
+              style={createPlacementGuideLineStyle(start, end, "rgba(0, 151, 167, 0.95)", true)}
+            />
+          );
+        })}
+        {guide.distanceSegments.map((segment) => {
+          const currentIndex = distanceIndex;
+          distanceIndex += 1;
+          const start = projectAuthoringPointToScreen(segment.start, viewport);
+          const end = projectAuthoringPointToScreen(segment.end, viewport);
+
+          return (
+            <div key={`distance-${currentIndex}`}>
+              <div
+                data-testid={`workspace-stage-placement-distance-segment-${currentIndex}`}
+                style={createPlacementGuideLineStyle(start, end, "#f59f00", false)}
+              />
+              <span
+                data-testid={`workspace-stage-placement-distance-label-${currentIndex}`}
+                style={createPlacementDistanceLabelStyle(start, end)}
+              >
+                {formatPlacementDistanceLabel(segment.distance, viewport.lengthUnit)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    ));
+  }
+
   return (
     <section
       data-grid-visible={String(display.gridVisible)}
@@ -1442,17 +1609,45 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             })
           : null}
 
-        {selectedRuntimeVelocity && selectedRuntimeVelocityEntity ? (
-          <div
-            data-testid={`scene-selected-runtime-velocity-${selectedRuntimeVelocityEntity.id}`}
-            style={createVectorStyle(
-              getEntityCenter(selectedRuntimeVelocityEntity),
-              selectedRuntimeVelocity.dx,
-              selectedRuntimeVelocity.dy,
-              "#2457a6",
-            )}
-          />
-        ) : null}
+        {selectedRuntimeVelocity && selectedRuntimeVelocityEntity && selectedRuntimeVelocityVector
+          ? (() => {
+              const center = getEntityCenter(selectedRuntimeVelocityEntity);
+              const color = "#2457a6";
+
+              return (
+                <>
+                  <div
+                    data-testid={`scene-selected-runtime-velocity-${selectedRuntimeVelocityEntity.id}`}
+                    style={createVectorStyle(
+                      center,
+                      selectedRuntimeVelocity.dx,
+                      selectedRuntimeVelocity.dy,
+                      color,
+                    )}
+                  >
+                    <span
+                      data-testid={`scene-selected-runtime-velocity-arrowhead-${selectedRuntimeVelocityEntity.id}`}
+                      style={createVectorArrowHeadStyle(color)}
+                    />
+                  </div>
+                  <span
+                    data-testid={`scene-selected-runtime-velocity-label-${selectedRuntimeVelocityEntity.id}`}
+                    style={createVelocityLabelStyle(
+                      center,
+                      selectedRuntimeVelocity.dx,
+                      selectedRuntimeVelocity.dy,
+                      color,
+                    )}
+                  >
+                    {formatVelocitySpeedLabel(
+                      selectedRuntimeVelocityVector.velocityX,
+                      selectedRuntimeVelocityVector.velocityY,
+                    )}
+                  </span>
+                </>
+              );
+            })()
+          : null}
 
         {display.showForceVectors
           ? renderedEntities.map((entity) => {
@@ -1473,6 +1668,8 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           : null}
 
         {constraints.map(renderConstraint)}
+
+        {renderPlacementGuides()}
 
         {arcPlacementBoard
           ? renderArcTrackPlacementAffordances({

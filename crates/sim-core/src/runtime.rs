@@ -8,19 +8,19 @@ use std::collections::{HashMap, HashSet};
 
 use crate::analyzer::{CompiledAnalyzer, TrajectoryAnalyzerState, TrajectorySample};
 use crate::arc_track::{
-    compiled_arc_track_from_constraint, validated_arc_start_and_span, CompiledArcTrack,
+    CompiledArcTrack, compiled_arc_track_from_constraint, validated_arc_start_and_span,
 };
 use crate::entity::{CompiledShape, Vector2};
 use crate::guide_network::CompiledGuideNetwork;
 use crate::guide_runtime::{
-    advance_guide_attachments, attach_free_bodies_to_guides, attached_body_ids,
-    RuntimeGuideAttachment, RuntimeGuideDetachEvent, RuntimeGuideState,
+    RuntimeGuideAttachment, RuntimeGuideDetachEvent, RuntimeGuideState, advance_guide_attachments,
+    attach_free_bodies_to_guides, attached_body_ids, sync_guide_attachments_from_bodies,
 };
 use crate::scene::CompiledScene;
 use crate::solver::{
-    inverse_inertia_for_body, project_track_bindings, resolve_recently_detached_bodies,
-    step_bodies, RuntimeArcTrackAttachment, RuntimeArcTrackDetachEvent, RuntimeArcTrackGeometry,
-    RuntimeBodyShape, RuntimeBodyState,
+    RuntimeArcTrackAttachment, RuntimeArcTrackDetachEvent, RuntimeArcTrackGeometry,
+    RuntimeBodyShape, RuntimeBodyState, inverse_inertia_for_body, project_track_bindings,
+    resolve_attached_dynamic_contacts, resolve_recently_detached_bodies, step_bodies,
 };
 use serde::{Deserialize, Serialize};
 
@@ -217,6 +217,18 @@ impl RuntimeScene {
                 &mut self.bodies,
                 &guide_advance_report.detached_body_remaining_seconds_by_id,
             );
+            let guide_attached_body_ids = attached_body_ids(&self.attached_guide_by_body_id);
+            let impacted_guide_attached_body_ids = resolve_attached_dynamic_contacts(
+                &mut self.bodies,
+                &guide_attached_body_ids,
+                substep_delta_seconds,
+            );
+            sync_guide_attachments_from_bodies(
+                &mut self.bodies,
+                &self.guide_network,
+                &mut self.attached_guide_by_body_id,
+                &impacted_guide_attached_body_ids,
+            );
             guide_handoff_paused_body_ids.extend(guide_advance_report.handed_off_body_ids);
         }
         self.frame_number += 1;
@@ -385,7 +397,7 @@ mod tests {
     use crate::constraint::ConstraintDefinition;
     use crate::entity::{EntityDefinition, ShapeDefinition};
     use crate::force::ForceSourceDefinition;
-    use crate::scene::{compile_scene, CompileSceneRequest};
+    use crate::scene::{CompileSceneRequest, compile_scene};
 
     fn vector2(x: f64, y: f64) -> Vector2 {
         Vector2::new(x, y)

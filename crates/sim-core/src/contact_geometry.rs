@@ -1,5 +1,5 @@
-use crate::entity::Vector2;
 use crate::arc_track;
+use crate::entity::Vector2;
 
 use super::{RuntimeBodyShape, RuntimeBodyState};
 
@@ -19,7 +19,9 @@ pub fn contact_manifold(
     match (body_a.shape, body_b.shape) {
         (RuntimeBodyShape::Ball, RuntimeBodyShape::Ball) => ball_ball_contact(body_a, body_b),
         (RuntimeBodyShape::Ball, RuntimeBodyShape::Box) => ball_box_contact(body_a, body_b),
-        (RuntimeBodyShape::Ball, RuntimeBodyShape::ArcTrack) => ball_arc_track_contact(body_a, body_b),
+        (RuntimeBodyShape::Ball, RuntimeBodyShape::ArcTrack) => {
+            ball_arc_track_contact(body_a, body_b)
+        }
         (RuntimeBodyShape::Box, RuntimeBodyShape::Ball) => {
             ball_box_contact(body_b, body_a).map(|contact| ContactManifold {
                 normal: contact.normal.scale(-1.0),
@@ -334,8 +336,16 @@ mod tests {
 
         let contact = contact_manifold(&ball, &surface).expect("ball should contact top boundary");
 
-        assert!((contact.point.x - 0.0).abs() < 1e-9, "point_x={}", contact.point.x);
-        assert!((contact.point.y - 0.5).abs() < 1e-9, "point_y={}", contact.point.y);
+        assert!(
+            (contact.point.x - 0.0).abs() < 1e-9,
+            "point_x={}",
+            contact.point.x
+        );
+        assert!(
+            (contact.point.y - 0.5).abs() < 1e-9,
+            "point_y={}",
+            contact.point.y
+        );
         assert_eq!(contact.normal, Vector2::new(0.0, 1.0));
     }
 
@@ -365,8 +375,16 @@ mod tests {
         let contact =
             contact_manifold(&ball, &arc_track).expect("ball should contact arc-track boundary");
 
-        assert!((contact.point.x - 2.2).abs() < 1e-9, "point_x={}", contact.point.x);
-        assert!((contact.point.y - 0.0).abs() < 1e-9, "point_y={}", contact.point.y);
+        assert!(
+            (contact.point.x - 2.2).abs() < 1e-9,
+            "point_x={}",
+            contact.point.x
+        );
+        assert!(
+            (contact.point.y - 0.0).abs() < 1e-9,
+            "point_y={}",
+            contact.point.y
+        );
         assert_eq!(contact.normal, Vector2::new(1.0, 0.0));
     }
 }

@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 type MeasurementInputProps = {
   disabled?: boolean;
   label: string;
+  min?: number;
   onChange: (value: number) => void;
   suffix: string;
   value: number;
@@ -61,6 +62,7 @@ export function MeasurementInput(props: MeasurementInputProps) {
         <input
           aria-label={props.label}
           disabled={props.disabled}
+          min={props.min}
           style={inputStyle}
           type="number"
           value={props.value}
@@ -75,7 +77,7 @@ export function MeasurementInput(props: MeasurementInputProps) {
               return;
             }
 
-            props.onChange(nextValue);
+            props.onChange(props.min === undefined ? nextValue : Math.max(props.min, nextValue));
           }}
         />
         <span style={suffixStyle}>{props.suffix}</span>

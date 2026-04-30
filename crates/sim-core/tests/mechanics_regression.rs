@@ -88,6 +88,14 @@ fn runtime_for_scene_with_gravity(
     entities: Vec<EntityDefinition>,
     gravity: Vector2,
 ) -> RuntimeScene {
+    runtime_for_scene_with_gravity_and_timestep(entities, gravity, 0.05)
+}
+
+fn runtime_for_scene_with_gravity_and_timestep(
+    entities: Vec<EntityDefinition>,
+    gravity: Vector2,
+    fixed_delta_seconds: f64,
+) -> RuntimeScene {
     let compiled = compile_scene(&CompileSceneRequest {
         entities,
         constraints: vec![],
@@ -99,7 +107,7 @@ fn runtime_for_scene_with_gravity(
     })
     .expect("scene should compile");
 
-    RuntimeScene::new(compiled, 0.05)
+    RuntimeScene::new(compiled, fixed_delta_seconds)
 }
 
 fn run_steps(runtime: &mut RuntimeScene, steps: usize) {
@@ -263,7 +271,12 @@ fn mechanics_regression_bridge_ball_and_board_defaults_still_resolve_contact() {
         }
     }
 
-    assert!(peaks.len() >= 2, "release_peak={} peaks={:?}", release_peak, peaks);
+    assert!(
+        peaks.len() >= 2,
+        "release_peak={} peaks={:?}",
+        release_peak,
+        peaks
+    );
 
     for (index, peak) in peaks.iter().enumerate() {
         assert!(
@@ -412,6 +425,72 @@ fn mechanics_regression_zero_friction_board_still_resolves_contact() {
 
     assert!(ball.position.y >= 1.0 - 1e-6, "ball_y={}", ball.position.y);
     assert!(ball.velocity.y.abs() < 0.5, "ball_vy={}", ball.velocity.y);
+}
+
+#[test]
+fn mechanics_regression_board_surface_friction_controls_block_stop_distance() {
+    let initial_speed = 3.0;
+    let board_friction = 0.42;
+    let gravity = 9.8;
+    let block_height = 0.48;
+    let start_x = 2.0;
+    let timestep = 1.0 / 60.0;
+    let expected_stop_time = initial_speed / (board_friction * gravity);
+    let expected_stop_distance = initial_speed * initial_speed / (2.0 * board_friction * gravity);
+    let mut runtime = runtime_for_scene_with_gravity_and_timestep(
+        vec![
+            block(
+                "ground",
+                vector2(start_x, 0.0),
+                (20.0, 1.0),
+                vector2(0.0, 0.0),
+                true,
+                board_friction,
+                0.0,
+            ),
+            block(
+                "block-1",
+                vector2(start_x, 0.5 + block_height * 0.5 + 1e-6),
+                (0.84, block_height),
+                vector2(initial_speed, 0.0),
+                false,
+                0.0,
+                0.0,
+            ),
+        ],
+        vector2(0.0, -gravity),
+        timestep,
+    );
+
+    let start_x = runtime_entity(&runtime, "block-1").position.x;
+    let mut stopped_at = None;
+
+    for _ in 0..180 {
+        runtime.step();
+        let block_frame = runtime_entity(&runtime, "block-1");
+        if block_frame.velocity.x.abs() <= 1e-9 {
+            stopped_at = Some((
+                runtime.elapsed_time_seconds(),
+                block_frame.position.x - start_x,
+            ));
+            break;
+        }
+    }
+
+    let (stop_time, stop_distance) = stopped_at.expect("block should stop on the board");
+
+    assert!(
+        (stop_time - expected_stop_time).abs() <= timestep,
+        "stop_time={} expected_stop_time={}",
+        stop_time,
+        expected_stop_time
+    );
+    assert!(
+        (stop_distance - expected_stop_distance).abs() <= 0.04,
+        "stop_distance={} expected_stop_distance={}",
+        stop_distance,
+        expected_stop_distance
+    );
 }
 
 #[test]

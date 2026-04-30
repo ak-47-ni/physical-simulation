@@ -5,11 +5,9 @@ edition = "2024"
 build = "build.rs"
 
 [dependencies]
+serde_json = "1"
 sim-core = { path = "../../../crates/sim-core" }
 tauri = { version = "2", features = ["test"] }
 
 [build-dependencies]
 tauri-build = { version = "2" }
-
-[dev-dependencies]
-serde_json = "1"

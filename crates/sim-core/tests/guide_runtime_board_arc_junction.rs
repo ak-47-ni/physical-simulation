@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use serde_json::json;
 use sim_core::arc_track::{
-    angle_radians_for_position, contact_path_radius, ArcTrackAnchorEndpoint,
-    ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata, CompiledArcTrackAnchor,
-    DEFAULT_ARC_TRACK_THICKNESS,
+    ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
+    CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS, angle_radians_for_position,
+    contact_path_radius,
 };
 use sim_core::bridge::RuntimeCompileRequest;
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide};
@@ -12,7 +12,7 @@ use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::guide_runtime::RuntimeGuideState;
 use sim_core::runtime::{RuntimeFramePayload, RuntimeScene};
-use sim_core::scene::{compile_scene_with_arc_track_metadata, CompileSceneRequest};
+use sim_core::scene::{CompileSceneRequest, compile_scene_with_arc_track_metadata};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)
@@ -320,7 +320,7 @@ fn guide_runtime_desktop_payload_arc_radius_handoff_starts_at_junction() {
                         "entryEndpoint": "end",
                         "radius": 1.25,
                         "sweepAngleDegrees": 90.0,
-                        "rotationDegrees": 0.0,
+                        "rotationDegrees": 45.0,
                         "thickness": 0.18
                     }
                 ],
@@ -395,7 +395,7 @@ fn guide_runtime_desktop_payload_board_to_arc_handoff_has_no_large_frame_delta()
                         "entryEndpoint": "end",
                         "radius": 1.25,
                         "sweepAngleDegrees": 90.0,
-                        "rotationDegrees": 0.0,
+                        "rotationDegrees": 45.0,
                         "thickness": 0.18
                     }
                 ],
@@ -446,6 +446,349 @@ fn guide_runtime_desktop_payload_board_to_arc_handoff_has_no_large_frame_delta()
 }
 
 #[test]
+fn guide_runtime_board_attached_ball_collides_with_free_ball_on_same_board() {
+    let mut runtime = runtime_from_desktop_payload(
+        json!({
+            "scene": {
+                "schemaVersion": 1,
+                "entities": [
+                    {
+                        "id": "ball-1",
+                        "kind": "ball",
+                        "x": 1.73,
+                        "y": 2.24,
+                        "radius": 0.24,
+                        "mass": 1.2,
+                        "friction": 0.0,
+                        "restitution": 1.0,
+                        "locked": false,
+                        "velocityX": 2.0,
+                        "velocityY": 0.0
+                    },
+                    {
+                        "id": "board-1",
+                        "kind": "board",
+                        "x": 1.61,
+                        "y": 2.72,
+                        "width": 3.2,
+                        "height": 0.18,
+                        "mass": 5.0,
+                        "friction": 0.1,
+                        "restitution": 1.0,
+                        "locked": true,
+                        "rotationRadians": 0.0,
+                        "velocityX": 0.0,
+                        "velocityY": 0.0
+                    },
+                    {
+                        "id": "arc-track-1",
+                        "kind": "arc-track",
+                        "anchorEntityId": "board-1",
+                        "anchorEntityKind": "board",
+                        "anchorEndpoint": "end",
+                        "center": { "x": 4.81, "y": 1.72 },
+                        "entryEndpoint": "start",
+                        "radius": 1.0,
+                        "rotationDegrees": -45.0,
+                        "sweepAngleDegrees": 90.0,
+                        "thickness": 0.18
+                    },
+                    {
+                        "id": "ball-2",
+                        "kind": "ball",
+                        "x": 2.57,
+                        "y": 2.24,
+                        "radius": 0.24,
+                        "mass": 1.2,
+                        "friction": 0.0,
+                        "restitution": 1.0,
+                        "locked": false,
+                        "velocityX": 0.0,
+                        "velocityY": 0.0
+                    }
+                ],
+                "constraints": [],
+                "forceSources": [
+                    {
+                        "id": "gravity-primary",
+                        "kind": "gravity",
+                        "acceleration": { "x": 0.0, "y": 9.8 }
+                    }
+                ],
+                "analyzers": [],
+                "annotations": []
+            },
+            "dirtyScopes": [],
+            "rebuildRequired": false
+        }),
+        1.0 / 60.0,
+    );
+
+    let combined_radius = 0.48;
+    let mut min_distance = f64::INFINITY;
+    let mut max_ball_2_velocity_x = 0.0;
+    let mut saw_ball_1_on_board_guide = false;
+
+    for _ in 0..40 {
+        let frame = runtime.step();
+        let ball_1 = payload_frame(&frame, "ball-1");
+        let ball_2 = payload_frame(&frame, "ball-2");
+        min_distance = min_distance.min(ball_1.position.sub(ball_2.position).length());
+        max_ball_2_velocity_x = f64::max(max_ball_2_velocity_x, ball_2.velocity.x);
+        saw_ball_1_on_board_guide |= matches!(
+            runtime.guide_state("ball-1"),
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if segment_id == "guide:board-1:top"
+        );
+    }
+
+    assert!(
+        saw_ball_1_on_board_guide,
+        "the moving ball should be constrained to the board guide before impact"
+    );
+    assert!(
+        min_distance >= combined_radius - 1e-6,
+        "guided and free balls should not interpenetrate, min_distance={min_distance:.6}"
+    );
+    assert!(
+        max_ball_2_velocity_x > 0.5,
+        "the stationary ball should receive a horizontal collision impulse, max_ball_2_velocity_x={max_ball_2_velocity_x:.6}"
+    );
+}
+
+#[test]
+fn guide_runtime_attached_ball_collision_updates_guide_speed_instead_of_linking() {
+    let mut runtime = runtime_from_desktop_payload(
+        json!({
+            "scene": {
+                "schemaVersion": 1,
+                "entities": [
+                    {
+                        "id": "ball-1",
+                        "kind": "ball",
+                        "x": 1.4,
+                        "y": 2.26,
+                        "radius": 0.24,
+                        "mass": 1.2,
+                        "friction": 0.0,
+                        "restitution": 1.0,
+                        "locked": false,
+                        "velocityX": 3.0,
+                        "velocityY": 0.0
+                    },
+                    {
+                        "id": "board-1",
+                        "kind": "board",
+                        "x": 1.05,
+                        "y": 2.74,
+                        "width": 3.2,
+                        "height": 0.18,
+                        "mass": 5.0,
+                        "friction": 0.42,
+                        "restitution": 1.0,
+                        "locked": true,
+                        "rotationRadians": 0.0,
+                        "velocityX": 0.0,
+                        "velocityY": 0.0
+                    },
+                    {
+                        "id": "ball-2",
+                        "kind": "ball",
+                        "x": 2.12,
+                        "y": 2.26,
+                        "radius": 0.24,
+                        "mass": 1.2,
+                        "friction": 0.0,
+                        "restitution": 1.0,
+                        "locked": false,
+                        "velocityX": 0.0,
+                        "velocityY": 0.0
+                    },
+                    {
+                        "id": "arc-track-1",
+                        "kind": "arc-track",
+                        "anchorEntityId": "board-1",
+                        "anchorEntityKind": "board",
+                        "anchorEndpoint": "end",
+                        "center": { "x": 4.25, "y": 1.74 },
+                        "entryEndpoint": "start",
+                        "radius": 1.0,
+                        "rotationDegrees": -45.0,
+                        "sweepAngleDegrees": 90.0,
+                        "thickness": 0.18
+                    }
+                ],
+                "constraints": [],
+                "forceSources": [
+                    {
+                        "id": "gravity-primary",
+                        "kind": "gravity",
+                        "acceleration": { "x": 0.0, "y": 9.8 }
+                    }
+                ],
+                "analyzers": [],
+                "annotations": []
+            },
+            "dirtyScopes": [],
+            "rebuildRequired": false
+        }),
+        1.0 / 60.0,
+    );
+
+    let combined_radius = 0.48;
+
+    for _ in 0..12 {
+        let frame = runtime.step();
+        let ball_1 = payload_frame(&frame, "ball-1");
+        let ball_2 = payload_frame(&frame, "ball-2");
+        let center_distance = ball_1.position.sub(ball_2.position).length();
+
+        if ball_2.velocity.x > 1.0 {
+            let ball_1_guide_speed = match runtime.guide_state("ball-1") {
+                RuntimeGuideState::OnGuide { speed, .. } => speed,
+                RuntimeGuideState::Free => ball_1.velocity.x,
+            };
+
+            assert!(
+                center_distance >= combined_radius - 1e-6,
+                "colliding balls should remain separated, center_distance={center_distance:.6}"
+            );
+            assert!(
+                ball_1.velocity.x.abs() < 0.5,
+                "the guided striker should lose forward velocity instead of linking, ball_1_vx={:.6}",
+                ball_1.velocity.x
+            );
+            assert!(
+                ball_1_guide_speed.abs() < 0.5,
+                "the guide attachment speed should be updated by collision impulse, speed={ball_1_guide_speed:.6}"
+            );
+            assert!(
+                ball_2.velocity.x > 2.0,
+                "the struck ball should carry the forward collision velocity, ball_2_vx={:.6}",
+                ball_2.velocity.x
+            );
+            return;
+        }
+    }
+
+    panic!("the trace fixture should collide within the first few frames");
+}
+
+#[test]
+fn guide_runtime_attached_balls_collide_when_returning_on_same_guide() {
+    let mut runtime = runtime_from_desktop_payload(
+        json!({
+            "scene": {
+                "schemaVersion": 1,
+                "entities": [
+                    {
+                        "id": "ball-1",
+                        "kind": "ball",
+                        "x": 1.02,
+                        "y": 1.49,
+                        "radius": 0.24,
+                        "mass": 1.2,
+                        "friction": 0.0,
+                        "restitution": 1.0,
+                        "locked": false,
+                        "velocityX": 3.8,
+                        "velocityY": 0.0
+                    },
+                    {
+                        "id": "board-1",
+                        "kind": "board",
+                        "x": 0.96,
+                        "y": 1.97,
+                        "width": 3.2,
+                        "height": 0.18,
+                        "mass": 5.0,
+                        "friction": 0.42,
+                        "restitution": 1.0,
+                        "locked": true,
+                        "rotationRadians": 0.0,
+                        "velocityX": 0.0,
+                        "velocityY": 0.0
+                    },
+                    {
+                        "id": "ball-2",
+                        "kind": "ball",
+                        "x": 1.68,
+                        "y": 1.49,
+                        "radius": 0.24,
+                        "mass": 1.2,
+                        "friction": 0.0,
+                        "restitution": 1.0,
+                        "locked": false,
+                        "velocityX": 0.0,
+                        "velocityY": 0.0
+                    },
+                    {
+                        "id": "arc-track-1",
+                        "kind": "arc-track",
+                        "anchorEntityId": "board-1",
+                        "anchorEntityKind": "board",
+                        "anchorEndpoint": "end",
+                        "center": { "x": 4.16, "y": 0.97 },
+                        "entryEndpoint": "start",
+                        "radius": 1.0,
+                        "rotationDegrees": -45.0,
+                        "sweepAngleDegrees": 90.0,
+                        "thickness": 0.18
+                    }
+                ],
+                "constraints": [],
+                "forceSources": [
+                    {
+                        "id": "gravity-primary",
+                        "kind": "gravity",
+                        "acceleration": { "x": 0.0, "y": 9.8 }
+                    }
+                ],
+                "analyzers": [],
+                "annotations": []
+            },
+            "dirtyScopes": [],
+            "rebuildRequired": false
+        }),
+        1.0 / 60.0,
+    );
+
+    let combined_radius = 0.48;
+    let mut min_return_distance = f64::INFINITY;
+    let mut saw_returning_phase = false;
+    let mut saw_return_collision = false;
+
+    for _ in 0..170 {
+        let frame = runtime.step();
+        let ball_1 = payload_frame(&frame, "ball-1");
+        let ball_2 = payload_frame(&frame, "ball-2");
+
+        if frame.frame_number > 60 && ball_2.velocity.x < -1.0 {
+            saw_returning_phase = true;
+        }
+
+        if saw_returning_phase {
+            min_return_distance =
+                min_return_distance.min(ball_1.position.sub(ball_2.position).length());
+            saw_return_collision |= ball_1.velocity.x < -1.0 && ball_2.velocity.x.abs() < 1.0;
+        }
+    }
+
+    assert!(
+        saw_returning_phase,
+        "the fixture should bring ball-2 back toward ball-1 on the guide"
+    );
+    assert!(
+        min_return_distance >= combined_radius - 1e-6,
+        "attached balls should collide instead of passing through each other, min_return_distance={min_return_distance:.6}"
+    );
+    assert!(
+        saw_return_collision,
+        "returning ball-2 should transfer its guide velocity to ball-1 instead of passing through"
+    );
+}
+
+#[test]
 fn guide_runtime_desktop_payload_arc_to_board_handoff_has_no_large_frame_delta() {
     let mut runtime = runtime_from_desktop_payload(
         json!({
@@ -485,7 +828,7 @@ fn guide_runtime_desktop_payload_arc_to_board_handoff_has_no_large_frame_delta()
                         "entryEndpoint": "end",
                         "radius": 1.25,
                         "sweepAngleDegrees": 90.0,
-                        "rotationDegrees": 0.0,
+                        "rotationDegrees": 45.0,
                         "thickness": 0.18
                     }
                 ],
@@ -734,6 +1077,51 @@ fn guide_runtime_arc_to_board_handoff_starts_at_junction_before_advancing_board(
             }
             RuntimeGuideState::Free if saw_arc_guide => {
                 panic!("turning-point reversal should return to the board guide");
+            }
+            RuntimeGuideState::Free | RuntimeGuideState::OnGuide { .. } => {}
+        }
+    }
+
+    panic!("ball should return from the arc guide to the board guide");
+}
+
+#[test]
+fn guide_runtime_arc_return_to_same_board_preserves_entry_speed() {
+    let board_center = vector2(0.0, 0.0);
+    let (_, tangent, surface_normal) =
+        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+    let initial_speed: f64 = 2.0;
+    let mut runtime = runtime_for_board_arc_scene(
+        vector2(1.25, -0.25).add(surface_normal.scale(0.4)),
+        tangent.scale(initial_speed),
+        1.0 / 60.0,
+    );
+    let mut saw_arc_guide = false;
+
+    for _ in 0..180 {
+        let frame = runtime.step();
+        let ball = payload_frame(&frame, "ball");
+
+        match runtime.guide_state("ball") {
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if segment_id == "guide:arc-track:arc" =>
+            {
+                saw_arc_guide = true;
+            }
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if saw_arc_guide && segment_id == "guide:board:top" =>
+            {
+                let returned_speed = ball.velocity.length();
+
+                assert!(
+                    (returned_speed - initial_speed).abs() < 0.005,
+                    "ball returning to the same board height should preserve speed; initial={initial_speed:.6} returned={returned_speed:.6} frame={}",
+                    frame.frame_number
+                );
+                return;
+            }
+            RuntimeGuideState::Free if saw_arc_guide => {
+                panic!("ball should return to the board guide instead of detaching");
             }
             RuntimeGuideState::Free | RuntimeGuideState::OnGuide { .. } => {}
         }

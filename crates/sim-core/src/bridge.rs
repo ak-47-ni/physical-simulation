@@ -981,7 +981,7 @@ impl SceneEntityPayload {
             });
         }
 
-        let (shape, position, defaults) = match kind.as_str() {
+        let (shape, position, defaults, compiled_rotation_radians) = match kind.as_str() {
             "user-polygon" => {
                 let points = points.ok_or_else(|| BridgeError::IncompleteEntityRecord {
                     id: id.clone(),
@@ -1005,6 +1005,7 @@ impl SceneEntityPayload {
                         restitution: 0.0,
                         locked: true,
                     },
+                    rotation_radians.unwrap_or(0.0),
                 )
             }
             "arc-track" => {
@@ -1024,6 +1025,14 @@ impl SceneEntityPayload {
                 // Desktop authoring stores the visible guide/contact radius; sim-core stores
                 // the rail centerline radius and derives the inside contact path from it.
                 let centerline_radius = radius + thickness * 0.5;
+                let center_rotation_radians = rotation_degrees
+                    .map(f64::to_radians)
+                    .or(rotation_radians)
+                    .unwrap_or(0.0);
+                // Desktop arc-track entities store the bisector rotation. The sim-core arc
+                // shape stores the start angle plus a positive sweep.
+                let start_rotation_radians =
+                    center_rotation_radians - central_angle_degrees.to_radians() * 0.5;
 
                 (
                     ShapeDefinition::ArcTrack {
@@ -1038,6 +1047,7 @@ impl SceneEntityPayload {
                         restitution: 0.0,
                         locked: true,
                     },
+                    start_rotation_radians,
                 )
             }
             "ball" => {
@@ -1049,6 +1059,7 @@ impl SceneEntityPayload {
                     ShapeDefinition::Ball { radius },
                     Vector2::new(x + radius, y + radius),
                     EntityPhysicsDefaults::dynamic_body(),
+                    rotation_radians.unwrap_or(0.0),
                 )
             }
             "block" => {
@@ -1061,6 +1072,7 @@ impl SceneEntityPayload {
                     ShapeDefinition::Block { width, height },
                     Vector2::new(x + width * 0.5, y + height * 0.5),
                     EntityPhysicsDefaults::dynamic_body(),
+                    rotation_radians.unwrap_or(0.0),
                 )
             }
             "board" => {
@@ -1073,6 +1085,7 @@ impl SceneEntityPayload {
                     ShapeDefinition::Block { width, height },
                     Vector2::new(x + width * 0.5, y + height * 0.5),
                     EntityPhysicsDefaults::board_body(),
+                    rotation_radians.unwrap_or(0.0),
                 )
             }
             "polygon" => {
@@ -1087,26 +1100,27 @@ impl SceneEntityPayload {
                     },
                     Vector2::new(x + width * 0.5, y + height * 0.5),
                     EntityPhysicsDefaults::dynamic_body(),
+                    rotation_radians.unwrap_or(0.0),
                 )
             }
             _ => (
                 ShapeDefinition::Unsupported { kind: kind.clone() },
                 Vector2::ZERO,
                 EntityPhysicsDefaults::dynamic_body(),
+                rotation_radians.unwrap_or(0.0),
             ),
         };
+
+        let is_static = locked.unwrap_or(defaults.locked);
 
         Ok(EntityDefinition {
             id,
             shape,
             position,
-            rotation_radians: match kind.as_str() {
-                "arc-track" => rotation_degrees.unwrap_or(0.0).to_radians(),
-                _ => rotation_radians.unwrap_or(0.0),
-            },
+            rotation_radians: compiled_rotation_radians,
             initial_velocity: Vector2::new(velocity_x.unwrap_or(0.0), velocity_y.unwrap_or(0.0)),
-            mass: mass.unwrap_or(defaults.mass),
-            is_static: locked.unwrap_or(defaults.locked),
+            mass: normalize_entity_mass(mass, defaults.mass),
+            is_static,
             friction_coefficient: friction.unwrap_or(defaults.friction),
             restitution_coefficient: restitution.unwrap_or(defaults.restitution),
         })
@@ -1185,6 +1199,14 @@ impl EntityPhysicsDefaults {
             restitution: 1.0,
             locked: false,
         }
+    }
+}
+
+fn normalize_entity_mass(value: Option<f64>, default_mass: f64) -> f64 {
+    match value {
+        Some(mass) if mass.is_finite() && mass > f64::EPSILON => mass,
+        _ if default_mass.is_finite() && default_mass > f64::EPSILON => default_mass,
+        _ => 0.0,
     }
 }
 
@@ -1281,5 +1303,239 @@ fn parse_arc_track_entry_endpoint(endpoint: &str) -> Option<ArcTrackEntryEndpoin
         "start" => Some(ArcTrackEntryEndpoint::Start),
         "end" => Some(ArcTrackEntryEndpoint::End),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::{BridgeGuideStateSnapshot, RuntimeCompileRequest, SimulationBridge};
+
+    #[test]
+    fn board_anchored_arc_track_entity_handoff_keeps_ball_frames_continuous() {
+        let request = serde_json::from_value::<RuntimeCompileRequest>(json!({
+            "scene": {
+                "schemaVersion": 1,
+                "entities": [
+                    {
+                        "id": "ball-1",
+                        "kind": "ball",
+                        "x": 1.44,
+                        "y": 1.09,
+                        "radius": 0.24,
+                        "mass": 1.2,
+                        "friction": 0.0,
+                        "restitution": 1.0,
+                        "locked": false,
+                        "velocityX": 2.0,
+                        "velocityY": 0.0
+                    },
+                    {
+                        "id": "board-1",
+                        "kind": "board",
+                        "x": 1.47,
+                        "y": 1.57,
+                        "width": 1.2,
+                        "height": 0.18,
+                        "mass": 5.0,
+                        "friction": 13.0,
+                        "restitution": 1.0,
+                        "locked": true,
+                        "rotationRadians": 0.0,
+                        "velocityX": 0.0,
+                        "velocityY": 0.0
+                    },
+                    {
+                        "id": "arc-track-1",
+                        "kind": "arc-track",
+                        "anchorEntityId": "board-1",
+                        "anchorEntityKind": "board",
+                        "anchorEndpoint": "end",
+                        "center": { "x": 2.67, "y": 0.57 },
+                        "entryEndpoint": "start",
+                        "radius": 1.0,
+                        "rotationDegrees": -45.0,
+                        "sweepAngleDegrees": 90.0,
+                        "thickness": 0.18
+                    }
+                ],
+                "constraints": [],
+                "forceSources": [
+                    {
+                        "id": "gravity-primary",
+                        "kind": "gravity",
+                        "acceleration": { "x": 0.0, "y": 10.0 }
+                    }
+                ],
+                "analyzers": [],
+                "annotations": []
+            },
+            "dirtyScopes": [],
+            "rebuildRequired": false
+        }))
+        .expect("runtime compile request deserializes");
+        let mut bridge = SimulationBridge::new(1.0 / 60.0);
+
+        let mut snapshot = bridge
+            .compile_runtime_request_snapshot(request)
+            .expect("scene compiles");
+        bridge
+            .start_or_resume_snapshot()
+            .expect("runtime starts from compiled scene");
+
+        let mut previous_position = snapshot
+            .current_frame
+            .as_ref()
+            .and_then(|frame| {
+                frame
+                    .entities
+                    .iter()
+                    .find(|entity| entity.entity_id == "ball-1")
+            })
+            .map(|entity| entity.position)
+            .expect("initial ball frame exists");
+        let mut max_frame_distance = 0.0;
+        let mut saw_arc_handoff = false;
+
+        for _ in 0..80 {
+            snapshot = bridge.tick_snapshot().expect("runtime tick succeeds");
+            let ball = snapshot
+                .current_frame
+                .as_ref()
+                .and_then(|frame| {
+                    frame
+                        .entities
+                        .iter()
+                        .find(|entity| entity.entity_id == "ball-1")
+                })
+                .expect("ball frame exists");
+            let frame_distance = ball.position.sub(previous_position).length();
+            max_frame_distance = f64::max(max_frame_distance, frame_distance);
+            previous_position = ball.position;
+            saw_arc_handoff |= snapshot.guide_states.iter().any(|guide_state| {
+                matches!(
+                    guide_state,
+                    BridgeGuideStateSnapshot::Attached {
+                        entity_id,
+                        guide_segment_id,
+                        ..
+                    } if entity_id == "ball-1" && guide_segment_id == "guide:arc-track-1:arc"
+                )
+            });
+        }
+
+        assert!(saw_arc_handoff, "ball should enter the arc guide");
+        assert!(
+            max_frame_distance < 0.08,
+            "ball frame distance should remain continuous, got {max_frame_distance}"
+        );
+    }
+
+    #[test]
+    fn linear_guide_exit_does_not_reattach_while_moving_outward_from_endpoint() {
+        let request = serde_json::from_value::<RuntimeCompileRequest>(json!({
+            "scene": {
+                "schemaVersion": 1,
+                "entities": [
+                    {
+                        "id": "ball-1",
+                        "kind": "ball",
+                        "x": 1.16,
+                        "y": 1.28,
+                        "radius": 0.24,
+                        "mass": 1.0,
+                        "friction": 0.0,
+                        "restitution": 0.0,
+                        "locked": false,
+                        "velocityX": -2.0,
+                        "velocityY": 0.0
+                    },
+                    {
+                        "id": "board-1",
+                        "kind": "board",
+                        "x": 1.38,
+                        "y": 1.76,
+                        "width": 1.2,
+                        "height": 0.18,
+                        "mass": 5.0,
+                        "friction": 0.1,
+                        "restitution": 0.0,
+                        "locked": true,
+                        "rotationRadians": 0.0,
+                        "velocityX": 0.0,
+                        "velocityY": 0.0
+                    },
+                    {
+                        "id": "arc-track-1",
+                        "kind": "arc-track",
+                        "anchorEntityId": "board-1",
+                        "anchorEntityKind": "board",
+                        "anchorEndpoint": "end",
+                        "center": { "x": 2.58, "y": 0.76 },
+                        "entryEndpoint": "start",
+                        "radius": 1.0,
+                        "rotationDegrees": -45.0,
+                        "sweepAngleDegrees": 90.0,
+                        "thickness": 0.18
+                    }
+                ],
+                "constraints": [],
+                "forceSources": [
+                    {
+                        "id": "gravity-primary",
+                        "kind": "gravity",
+                        "acceleration": { "x": 0.0, "y": 9.8 }
+                    }
+                ],
+                "analyzers": [],
+                "annotations": []
+            },
+            "dirtyScopes": [],
+            "rebuildRequired": false
+        }))
+        .expect("runtime compile request deserializes");
+        let mut bridge = SimulationBridge::new(1.0 / 60.0);
+
+        let mut snapshot = bridge
+            .compile_runtime_request_snapshot(request)
+            .expect("scene compiles");
+        bridge
+            .start_or_resume_snapshot()
+            .expect("runtime starts from compiled scene");
+
+        let mut previous_x = snapshot
+            .current_frame
+            .as_ref()
+            .and_then(|frame| {
+                frame
+                    .entities
+                    .iter()
+                    .find(|entity| entity.entity_id == "ball-1")
+            })
+            .map(|entity| entity.position.x)
+            .expect("initial ball frame exists");
+        let mut max_backward_jump: f64 = 0.0;
+
+        for _ in 0..10 {
+            snapshot = bridge.tick_snapshot().expect("runtime tick succeeds");
+            let ball = snapshot
+                .current_frame
+                .as_ref()
+                .and_then(|frame| {
+                    frame
+                        .entities
+                        .iter()
+                        .find(|entity| entity.entity_id == "ball-1")
+                })
+                .expect("ball frame exists");
+            max_backward_jump = max_backward_jump.max(ball.position.x - previous_x);
+            previous_x = ball.position.x;
+        }
+
+        assert!(
+            max_backward_jump <= 1e-9,
+            "ball should continue moving outward after leaving the board guide, got x jump {max_backward_jump}"
+        );
     }
 }

@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 
 use sim_core::arc_track::{
-    contact_path_radius, effective_center_radius, ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind,
-    ArcTrackEntityCompileMetadata, CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS,
+    ArcTrackAnchorEndpoint, ArcTrackAnchorEntityKind, ArcTrackEntityCompileMetadata,
+    CompiledArcTrackAnchor, DEFAULT_ARC_TRACK_THICKNESS, contact_path_radius,
+    effective_center_radius,
 };
 use sim_core::constraint::{ArcTrackEntryEndpoint, ArcTrackSide, ConstraintDefinition};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::runtime::{RuntimeFramePayload, RuntimeScene};
-use sim_core::scene::{compile_scene, compile_scene_with_arc_track_metadata, CompileSceneRequest};
+use sim_core::scene::{CompileSceneRequest, compile_scene, compile_scene_with_arc_track_metadata};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)

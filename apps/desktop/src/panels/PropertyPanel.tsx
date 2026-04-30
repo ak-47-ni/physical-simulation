@@ -81,6 +81,8 @@ type PropertyPanelProps = {
   selectedEntity: EditorSceneEntity | null;
 };
 
+const MIN_ENTITY_MASS = 0.001;
+
 const sectionLabelStyle: CSSProperties = {
   margin: 0,
   fontSize: "12px",
@@ -164,6 +166,7 @@ function PositionInput(props: {
   ariaLabel?: string;
   disabled?: boolean;
   label: string;
+  min?: number;
   suffix?: string;
   value: number;
   onChange: (value: number) => void;
@@ -173,6 +176,7 @@ function PositionInput(props: {
       <MeasurementInput
         disabled={props.disabled}
         label={props.label}
+        min={props.min}
         suffix={props.suffix}
         value={props.value}
         onChange={props.onChange}
@@ -186,6 +190,7 @@ function PositionInput(props: {
       <input
         aria-label={props.ariaLabel ?? props.label}
         disabled={props.disabled}
+        min={props.min}
         style={inputStyle}
         type="number"
         value={props.value}
@@ -200,7 +205,7 @@ function PositionInput(props: {
             return;
           }
 
-          props.onChange(nextValue);
+          props.onChange(props.min === undefined ? nextValue : Math.max(props.min, nextValue));
         }}
       />
     </label>
@@ -819,6 +824,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
                   <PositionInput
                     disabled={authoringLocked}
                     label={t("property.field.mass")}
+                    min={MIN_ENTITY_MASS}
                     suffix={massUnitLabel ?? undefined}
                     value={selectedEntity.mass}
                     onChange={(mass) => onUpdateSelectedEntityPhysics({ mass })}

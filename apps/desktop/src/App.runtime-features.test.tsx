@@ -425,6 +425,41 @@ describe("App runtime features", () => {
     ).toBeGreaterThan(0);
   });
 
+  it("passes selected runtime velocity immediately after cached calculation completes", async () => {
+    render(<App />);
+    const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+
+    fireEvent.click(ball);
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
+
+    await calculateResult();
+
+    await waitFor(() => {
+      expect(
+        (
+          workspaceCanvasSpy.latestProps as {
+            selectedRuntimeVelocityVector?: {
+              entityId: string;
+              velocityX: number;
+              velocityY: number;
+            } | null;
+          } | null
+        )?.selectedRuntimeVelocityVector,
+      ).toMatchObject({
+        entityId: "ball-1",
+        velocityX: 0.6,
+      });
+    });
+
+    expect(screen.getByTestId("scene-selected-runtime-velocity-arrowhead-ball-1")).toBeDefined();
+    expect(screen.getByTestId("scene-selected-runtime-velocity-label-ball-1").textContent).toMatch(
+      /^0\.\d{2} m\/s$/,
+    );
+    expect(screen.getByTestId("scene-selected-runtime-velocity-label-ball-1").textContent).not.toBe(
+      "0.00 m/s",
+    );
+  });
+
   it("converts authored values and clears visible runtime state after changing units while paused", async () => {
     render(<App />);
     const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;

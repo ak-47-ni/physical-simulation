@@ -400,6 +400,26 @@ describe("runtimeCompileRequest", () => {
     expect(request.scene).not.toHaveProperty("pixelsPerMeter");
   });
 
+  it("clamps non-positive mass before sending runtime compile payloads", () => {
+    const entities = createInitialSceneEntities().map((entity, index) =>
+      index === 0
+        ? {
+            ...entity,
+            mass: -13.8,
+          }
+        : entity,
+    );
+
+    const request = createRuntimeCompileRequestFromEditorState({ entities });
+    const compiledBall = request.scene.entities.find((entity) => entity.id === "ball-1");
+
+    expect(compiledBall).toMatchObject({
+      id: "ball-1",
+      kind: "ball",
+      mass: 0.001,
+    });
+  });
+
   it("preserves arc-track payload fields when building a runtime compile request", () => {
     const request = createRuntimeCompileRequestFromEditorState({
       constraints: [

@@ -192,6 +192,16 @@ pub fn step_bodies(
         bodies,
         &arc_track_advance_report.detached_body_remaining_seconds_by_id,
     );
+    let arc_track_attached_body_ids = attached_arc_track_by_body_id.keys().cloned().collect();
+    let impacted_arc_track_attached_body_ids =
+        resolve_attached_dynamic_contacts(bodies, &arc_track_attached_body_ids, delta_seconds);
+    sync_arc_track_attachments_from_bodies(
+        bodies,
+        arc_tracks,
+        &index_by_id,
+        attached_arc_track_by_body_id,
+        &impacted_arc_track_attached_body_ids,
+    );
 
     RuntimeBodyStepReport {
         arc_track_detach_events: arc_track_advance_report.detach_events,
@@ -270,6 +280,108 @@ pub fn resolve_recently_detached_bodies(
 
             resolve_implicit_boundaries(body, substep_seconds);
         }
+    }
+}
+
+pub fn resolve_attached_dynamic_contacts(
+    bodies: &mut [RuntimeBodyState],
+    attached_body_ids: &HashSet<String>,
+    delta_seconds: f64,
+) -> HashSet<String> {
+    let mut impacted_attached_body_ids = HashSet::new();
+
+    if attached_body_ids.is_empty() {
+        return impacted_attached_body_ids;
+    }
+
+    for _ in 0..DYNAMIC_CONTACT_PASSES {
+        for index_a in 0..bodies.len() {
+            for index_b in (index_a + 1)..bodies.len() {
+                let a_is_attached = attached_body_ids.contains(&bodies[index_a].entity_id);
+                let b_is_attached = attached_body_ids.contains(&bodies[index_b].entity_id);
+
+                if !a_is_attached && !b_is_attached {
+                    continue;
+                }
+
+                let attached_body_a_id = a_is_attached.then(|| bodies[index_a].entity_id.clone());
+                let attached_body_b_id = b_is_attached.then(|| bodies[index_b].entity_id.clone());
+                let (body_a, body_b) = get_body_pair_mut(bodies, index_a, index_b);
+
+                if body_a.is_static || body_b.is_static {
+                    continue;
+                }
+
+                let impacted = if a_is_attached && b_is_attached {
+                    resolve_contact_pair(body_a, body_b, delta_seconds)
+                } else if a_is_attached {
+                    resolve_contact_with_attached_body(body_b, body_a, delta_seconds)
+                } else {
+                    resolve_contact_with_attached_body(body_a, body_b, delta_seconds)
+                };
+
+                if impacted {
+                    if let Some(attached_body_id) = attached_body_a_id {
+                        impacted_attached_body_ids.insert(attached_body_id);
+                    }
+                    if let Some(attached_body_id) = attached_body_b_id {
+                        impacted_attached_body_ids.insert(attached_body_id);
+                    }
+                }
+            }
+        }
+    }
+
+    impacted_attached_body_ids
+}
+
+fn sync_arc_track_attachments_from_bodies(
+    bodies: &mut [RuntimeBodyState],
+    arc_tracks: &[CompiledArcTrack],
+    index_by_id: &HashMap<String, usize>,
+    attached_arc_track_by_body_id: &mut HashMap<String, RuntimeArcTrackAttachment>,
+    body_ids: &HashSet<String>,
+) {
+    if body_ids.is_empty() {
+        return;
+    }
+
+    for body_id in body_ids {
+        let Some(&body_index) = index_by_id.get(body_id) else {
+            continue;
+        };
+        let Some(attachment) = attached_arc_track_by_body_id.get_mut(body_id) else {
+            continue;
+        };
+        let Some(arc_track) = arc_tracks
+            .iter()
+            .find(|arc_track| arc_track.id == attachment.arc_track_id)
+        else {
+            continue;
+        };
+        let body = &mut bodies[body_index];
+        let body_radius = body.half_extents.x.max(body.half_extents.y);
+        let effective_radius = arc_track.effective_center_radius(body_radius);
+        let projection = crate::arc_track::project_point_to_arc(
+            arc_track.center,
+            effective_radius,
+            arc_track.start_angle_radians,
+            arc_track.end_angle_radians,
+            arc_track.span_radians,
+            body.position,
+        );
+        let tangent = crate::arc_track::tangent_for_increasing_angle(
+            crate::arc_track::radial_for_angle(projection.angle_radians),
+        );
+
+        attachment.angle_radians = projection.angle_radians;
+        attachment.tangential_speed = body.velocity.dot(tangent);
+        sync_body_to_arc_state(
+            body,
+            arc_track,
+            attachment.angle_radians,
+            attachment.tangential_speed,
+        );
     }
 }
 
@@ -515,9 +627,9 @@ fn resolve_contact_pair(
     body_a: &mut RuntimeBodyState,
     body_b: &mut RuntimeBodyState,
     delta_seconds: f64,
-) {
+) -> bool {
     let Some(contact) = contact_geometry::contact_manifold(body_a, body_b) else {
-        return;
+        return false;
     };
 
     let inverse_mass_a = inverse_mass(body_a);
@@ -525,7 +637,7 @@ fn resolve_contact_pair(
     let total_inverse_mass = inverse_mass_a + inverse_mass_b;
 
     if total_inverse_mass <= f64::EPSILON {
-        return;
+        return false;
     }
 
     let point = contact.point;
@@ -581,6 +693,68 @@ fn resolve_contact_pair(
         advance_body_after_contact(body_a, rollback_seconds);
         advance_body_after_contact(body_b, rollback_seconds);
     }
+
+    true
+}
+
+fn resolve_contact_with_attached_body(
+    free_body: &mut RuntimeBodyState,
+    attached_body: &mut RuntimeBodyState,
+    _delta_seconds: f64,
+) -> bool {
+    let Some(contact) = contact_geometry::contact_manifold(free_body, attached_body) else {
+        return false;
+    };
+
+    let inverse_mass_free = inverse_mass(free_body);
+
+    if inverse_mass_free <= f64::EPSILON {
+        return false;
+    }
+
+    let point = contact.point;
+    let normal = contact.normal;
+    // The constrained body is not moved by this solver pass, so leaving the
+    // normal slop behind would keep the free body visibly interpenetrating it.
+    let correction = contact.penetration.max(0.0);
+    free_body.position = free_body.position.add(normal.scale(correction));
+
+    let radial_offset_free = point.sub(free_body.position);
+    let radial_offset_attached = point.sub(attached_body.position);
+    let relative_velocity = angular_dynamics::velocity_at_point(free_body, point)
+        .sub(angular_dynamics::velocity_at_point(attached_body, point));
+    let normal_velocity = relative_velocity.dot(normal);
+    let inverse_mass_attached = inverse_mass(attached_body);
+    let inverse_normal_mass = inverse_mass_free
+        + inverse_mass_attached
+        + radial_offset_free.cross(normal).powi(2) * free_body.inverse_inertia
+        + radial_offset_attached.cross(normal).powi(2) * attached_body.inverse_inertia;
+
+    let mut normal_impulse = 0.0;
+
+    if normal_velocity < 0.0 && inverse_normal_mass > f64::EPSILON {
+        let restitution = free_body
+            .restitution_coefficient
+            .max(attached_body.restitution_coefficient);
+        normal_impulse = -((1.0 + restitution) * normal_velocity) / inverse_normal_mass;
+        let impulse = normal.scale(normal_impulse);
+        angular_dynamics::apply_impulse(free_body, impulse, point);
+        angular_dynamics::apply_impulse(attached_body, impulse.scale(-1.0), point);
+    }
+
+    if free_body.restitution_coefficient <= f64::EPSILON
+        && attached_body.restitution_coefficient <= f64::EPSILON
+    {
+        apply_friction_impulse_between_bodies(
+            free_body,
+            attached_body,
+            point,
+            normal,
+            normal_impulse,
+        );
+    }
+
+    normal_impulse.abs() > f64::EPSILON
 }
 
 fn apply_friction_impulse_against_surface(
@@ -606,7 +780,7 @@ fn apply_friction_impulse_against_surface(
         return;
     }
 
-    let friction = (body.friction_coefficient + surface_friction_coefficient) * 0.5;
+    let friction = surface_friction_coefficient;
     let max_friction_impulse = friction * normal_impulse.abs();
     let tangential_impulse = (-tangential_speed / inverse_tangent_mass)
         .clamp(-max_friction_impulse, max_friction_impulse);

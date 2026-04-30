@@ -295,6 +295,127 @@ describe("authoringContactSnap", () => {
     ).toBe(true);
   });
 
+  it("reports board-relative distance guides when a ball snaps onto a board face", () => {
+    const board = createSizedEntity("board", {
+      id: "board-1",
+      label: "Board 1",
+      x: 0,
+      y: 1,
+      width: 4,
+      height: 0.2,
+      rotationDegrees: 0,
+    });
+    const resolution = resolveAuthoringPlacement({
+      candidate: createBallFromCenter({
+        centerX: 1.2,
+        centerY: 0.85,
+        id: "ball-1",
+        label: "Ball 1",
+        radius: 0.2,
+      }),
+      entities: [board],
+      maxSnapDistance: 0.12,
+    });
+
+    expect(resolution.status).toBe("snap");
+
+    if (resolution.status !== "snap") {
+      throw new Error("expected a snapped placement");
+    }
+
+    expect(resolution.placementGuides?.[0]).toMatchObject({
+      targetEntityId: "board-1",
+      distanceSegments: [
+        {
+          distance: 1.2,
+          start: { x: 0, y: 1 },
+          end: { x: 1.2, y: 1 },
+        },
+        {
+          distance: 2.8,
+          start: { x: 1.2, y: 1 },
+          end: { x: 4, y: 1 },
+        },
+      ],
+    });
+  });
+
+  it("combines board contact snap with nearby edge alignment", () => {
+    const board = createSizedEntity("board", {
+      id: "board-1",
+      label: "Board 1",
+      x: 0,
+      y: 1,
+      width: 4,
+      height: 0.2,
+      rotationDegrees: 0,
+    });
+    const resolution = resolveAuthoringPlacement({
+      candidate: createBallFromCenter({
+        centerX: 0.22,
+        centerY: 0.85,
+        id: "ball-1",
+        label: "Ball 1",
+        radius: 0.2,
+      }),
+      entities: [board],
+      maxSnapDistance: 0.12,
+    });
+
+    expect(resolution.status).toBe("snap");
+
+    if (resolution.status !== "snap") {
+      throw new Error("expected a snapped placement");
+    }
+
+    const snappedCenter = readCenter(resolution.entity);
+
+    expect(snappedCenter.x).toBeCloseTo(0.2, 6);
+    expect(snappedCenter.y).toBeCloseTo(0.8, 6);
+    expect(resolution.placementGuides?.[0]?.alignmentLines[0]).toMatchObject({
+      start: { x: 0, y: 0.56 },
+      end: { x: 0, y: 1.2 },
+    });
+  });
+
+  it("snaps nearby edges without forcing surface contact", () => {
+    const board = createSizedEntity("board", {
+      id: "board-1",
+      label: "Board 1",
+      x: 0,
+      y: 1,
+      width: 4,
+      height: 0.2,
+      rotationDegrees: 0,
+    });
+    const resolution = resolveAuthoringPlacement({
+      candidate: createSizedEntity("block", {
+        id: "block-1",
+        label: "Block 1",
+        x: 0.03,
+        y: 1.4,
+        width: 0.8,
+        height: 0.4,
+        rotationDegrees: 0,
+      }),
+      entities: [board],
+      maxSnapDistance: 0.12,
+    });
+
+    expect(resolution.status).toBe("snap");
+
+    if (resolution.status !== "snap") {
+      throw new Error("expected an edge-aligned placement");
+    }
+
+    expect(resolution.entity.x).toBeCloseTo(0, 6);
+    expect(resolution.entity.y).toBeCloseTo(1.4, 6);
+    expect(resolution.placementGuides?.[0]?.alignmentLines[0]).toMatchObject({
+      start: { x: 0, y: 0.96 },
+      end: { x: 0, y: 1.8 },
+    });
+  });
+
   it("returns blocked for deep overlap that cannot be resolved within the snap distance", () => {
     const board = createRectFromCenter({
       centerX: 1.8,

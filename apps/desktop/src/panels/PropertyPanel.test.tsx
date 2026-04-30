@@ -206,6 +206,47 @@ describe("PropertyPanel", () => {
     ]);
   });
 
+  it("clamps selected entity mass edits to a positive value", () => {
+    const physicsUpdates: Array<Record<string, number | boolean>> = [];
+
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings()}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={(physics) => {
+          physicsUpdates.push(physics);
+        }}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        scenePhysics={TEST_SCENE_PHYSICS}
+        selectedEntity={{
+          id: "ball-1",
+          kind: "ball",
+          label: "Ball 1",
+          x: 132,
+          y: 176,
+          radius: 26,
+          mass: 1.2,
+          friction: 0,
+          restitution: 0.82,
+          locked: false,
+          velocityX: 4,
+          velocityY: -2,
+        }}
+      />,
+    );
+
+    const massInput = screen.getByLabelText("Mass") as HTMLInputElement;
+    fireEvent.change(massInput, { target: { value: "-13.8" } });
+
+    expect(massInput.min).toBe("0.001");
+    expect(physicsUpdates).toEqual([{ mass: 0.001 }]);
+  });
+
   it("shows board angle and keeps speed direction synced with cartesian velocity", () => {
     render(<BoardSelectionHarness />);
 

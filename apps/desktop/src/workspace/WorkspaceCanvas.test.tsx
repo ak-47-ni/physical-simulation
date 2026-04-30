@@ -1051,6 +1051,74 @@ describe("WorkspaceCanvas", () => {
     expect(board.getAttribute("data-contact-target")).toBe("true");
   });
 
+  it("renders snapped placement distance labels and alignment guides", () => {
+    render(
+      <WorkspaceCanvasPanHarness
+        authoringPlacementPreview={{
+          entity: {
+            ...authoredBallInMeters,
+            x: 1,
+            y: 0.6,
+            radius: 0.2,
+          },
+          status: "snap",
+          contactWithEntityId: "board-1",
+          placementGuides: [
+            {
+              targetEntityId: "board-1",
+              alignmentLines: [
+                {
+                  start: { x: 1.2, y: 0.35 },
+                  end: { x: 1.2, y: 1.28 },
+                },
+              ],
+              distanceSegments: [
+                {
+                  distance: 1.2,
+                  start: { x: 0, y: 1 },
+                  end: { x: 1.2, y: 1 },
+                },
+                {
+                  distance: 2.8,
+                  start: { x: 1.2, y: 1 },
+                  end: { x: 4, y: 1 },
+                },
+              ],
+            },
+          ],
+        }}
+        entities={[
+          {
+            ...authoredBoardInMeters,
+            x: 0,
+            y: 1,
+            width: 4,
+            height: 0.2,
+            rotationDegrees: 0,
+          },
+        ]}
+        libraryDragSession={{
+          bodyKind: "ball",
+          pointerClientPx: { x: 120, y: 80 },
+        }}
+      />,
+    );
+
+    fireEvent.mouseMove(screen.getByTestId("workspace-stage"), {
+      clientX: 120,
+      clientY: 80,
+    });
+
+    expect(screen.getByTestId("workspace-stage-placement-alignment-line-0")).toBeDefined();
+    expect(screen.getByTestId("workspace-stage-placement-distance-segment-0")).toBeDefined();
+    expect(screen.getByTestId("workspace-stage-placement-distance-label-0").textContent).toBe(
+      "1.2m",
+    );
+    expect(screen.getByTestId("workspace-stage-placement-distance-label-1").textContent).toBe(
+      "2.8m",
+    );
+  });
+
   it("renders blocked placement previews as invalid and visually distinct from snapped previews", () => {
     const previewEntity = createAuthoredBlockEntity({
       x: 2.94,
@@ -1158,10 +1226,42 @@ describe("WorkspaceCanvas", () => {
 
     const selectedVelocityArrow = screen.getByTestId("scene-selected-runtime-velocity-ball-1") as HTMLElement;
 
-    expect(selectedVelocityArrow.style.width).toBe("60px");
+    expect(selectedVelocityArrow.style.width).toBe("120px");
     expect(selectedVelocityArrow.style.transform).toContain("rotate(-53.13010235415598deg)");
+    expect(screen.getByTestId("scene-selected-runtime-velocity-arrowhead-ball-1")).toBeDefined();
+    expect(screen.getByTestId("scene-selected-runtime-velocity-label-ball-1").textContent).toBe(
+      "20.00 m/s",
+    );
     expect(screen.queryByTestId("scene-selected-runtime-velocity-ball-2")).toBeNull();
     expect(screen.queryByTestId("scene-velocity-vector-ball-1")).toBeNull();
+  });
+
+  it("shows a selected runtime velocity arrow for non-ball rigid bodies", () => {
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings({
+          showVelocityVectors: false,
+        })}
+        displayEntities={[createBlockEntityPx({ velocityX: 0, velocityY: 0 })]}
+        entities={[createBlockEntityPx({ velocityX: 0, velocityY: 0 })]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        selectedRuntimeVelocityVector={{
+          entityId: "block-1",
+          velocityX: 0,
+          velocityY: 10,
+        }}
+        state={{
+          ...createInitialEditorState(),
+          selectedEntityId: "block-1",
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    expect(screen.getByTestId("scene-selected-runtime-velocity-block-1")).toBeDefined();
   });
 
   it("keeps selection available and blocks constraint picks while authoring is locked", () => {

@@ -104,6 +104,50 @@ fn runtime_compile_validation_accepts_arc_tracks_without_entity_binding() {
 }
 
 #[test]
+fn runtime_compile_validation_normalizes_non_positive_dynamic_body_mass() {
+    let request: RuntimeCompileRequest = serde_json::from_value(json!({
+        "scene": {
+            "schemaVersion": 1,
+            "entities": [
+                {
+                    "id": "ball-1",
+                    "kind": "ball",
+                    "x": 0.0,
+                    "y": 0.0,
+                    "radius": 0.24,
+                    "mass": -13.8,
+                    "locked": false
+                }
+            ],
+            "constraints": [],
+            "forceSources": [
+                {
+                    "id": "gravity-1",
+                    "kind": "gravity",
+                    "acceleration": { "x": 0.0, "y": 9.8 }
+                }
+            ],
+            "analyzers": [],
+            "annotations": []
+        },
+        "dirtyScopes": [],
+        "rebuildRequired": false
+    }))
+    .expect("runtime compile request should deserialize");
+
+    let compiled = request
+        .into_compiled_scene()
+        .expect("runtime payload should compile after mass normalization");
+
+    let ball = compiled
+        .entities
+        .iter()
+        .find(|entity| entity.id == "ball-1")
+        .expect("ball should compile");
+    assert_eq!(ball.mass, 1.0);
+}
+
+#[test]
 fn runtime_compile_validation_accepts_arc_track_entities_with_sweep_angle_payload() {
     let request: RuntimeCompileRequest = serde_json::from_value(json!({
         "scene": {
@@ -153,10 +197,12 @@ fn runtime_compile_validation_accepts_arc_track_entities_with_sweep_angle_payloa
         .expect("arc-track sweep-angle payload should compile through the bridge");
 
     assert_eq!(frame.frame_number, 0);
-    assert!(frame
-        .entities
-        .iter()
-        .any(|entity| entity.entity_id == "poly-1"));
+    assert!(
+        frame
+            .entities
+            .iter()
+            .any(|entity| entity.entity_id == "poly-1")
+    );
     assert_eq!(frame.entities.len(), 1);
 }
 
@@ -207,10 +253,12 @@ fn runtime_compile_validation_accepts_legacy_arc_track_entities_with_central_ang
         .expect("legacy arc-track entity payload should still compile through the bridge");
 
     assert_eq!(frame.frame_number, 0);
-    assert!(frame
-        .entities
-        .iter()
-        .any(|entity| entity.entity_id == "poly-1"));
+    assert!(
+        frame
+            .entities
+            .iter()
+            .any(|entity| entity.entity_id == "poly-1")
+    );
 }
 
 #[test]

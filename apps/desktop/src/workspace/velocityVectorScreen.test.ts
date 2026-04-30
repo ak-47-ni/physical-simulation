@@ -14,7 +14,7 @@ describe("velocityVectorScreen", () => {
     expect(module).not.toBeNull();
     expect(module?.mapCartesianVelocityToScreenVector({ velocityX: 0, velocityY: 5 })).toEqual({
       dx: 0,
-      dy: -18,
+      dy: -36,
     });
   });
 
@@ -24,7 +24,7 @@ describe("velocityVectorScreen", () => {
     expect(module).not.toBeNull();
     expect(module?.mapCartesianVelocityToScreenVector({ velocityX: 0, velocityY: -5 })).toEqual({
       dx: 0,
-      dy: 18,
+      dy: 36,
     });
   });
 
@@ -33,7 +33,7 @@ describe("velocityVectorScreen", () => {
 
     expect(module).not.toBeNull();
     expect(module?.mapCartesianVelocityToScreenVector({ velocityX: 5, velocityY: 0 })).toEqual({
-      dx: 18,
+      dx: 36,
       dy: 0,
     });
   });

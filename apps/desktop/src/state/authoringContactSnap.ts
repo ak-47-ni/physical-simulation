@@ -5,6 +5,8 @@ import { convertLengthValue, type LengthUnit } from "./sceneUnits";
 const GEOMETRY_EPSILON = 1e-9;
 const SNAP_EPSILON = 1e-6;
 const DEFAULT_SNAP_DISTANCE_METERS = 0.12;
+const ALIGNMENT_LINE_EXTENSION_RATIO = 1 / 3;
+const EDGE_ALIGNMENT_PERPENDICULAR_REACH_MULTIPLIER = 2;
 
 type Vector2 = {
   x: number;
@@ -34,6 +36,25 @@ type PlacementSuggestion = {
   contactWithEntityId: string;
   distance: number;
   entity: EditorSceneEntity;
+  placementGuides?: AuthoringPlacementGuide[];
+  priority: number;
+};
+
+export type AuthoringPlacementGuideLine = {
+  start: Vector2;
+  end: Vector2;
+};
+
+export type AuthoringPlacementDistanceSegment = {
+  distance: number;
+  start: Vector2;
+  end: Vector2;
+};
+
+export type AuthoringPlacementGuide = {
+  alignmentLines: AuthoringPlacementGuideLine[];
+  distanceSegments: AuthoringPlacementDistanceSegment[];
+  targetEntityId: string;
 };
 
 export type AuthoringPlacementResolution =
@@ -43,6 +64,7 @@ export type AuthoringPlacementResolution =
       entity: EditorSceneEntity;
       contactWithEntityId: string;
       contactNormal: Vector2;
+      placementGuides?: AuthoringPlacementGuide[];
     }
   | { status: "blocked"; entity: null };
 
@@ -51,6 +73,7 @@ export type AuthoringPlacementPreview =
       entity: EditorSceneEntity;
       status: "free" | "snap" | "blocked";
       contactWithEntityId?: string;
+      placementGuides?: AuthoringPlacementGuide[];
     }
   | null;
 
@@ -72,7 +95,7 @@ export function resolveAuthoringPlacement(input: {
   });
   const suggestions = entities
     .filter((entity) => entity.id !== ignoreEntityId)
-    .map((entity) => createPlacementSuggestion(candidate, entity))
+    .flatMap((entity) => createPlacementSuggestions(candidate, entity, maxSnapDistance))
     .filter((suggestion): suggestion is PlacementSuggestion => suggestion !== null)
     .filter((suggestion) => suggestion.distance > SNAP_EPSILON)
     .filter((suggestion) => suggestion.distance <= maxSnapDistance + SNAP_EPSILON)
@@ -84,6 +107,10 @@ export function resolveAuthoringPlacement(input: {
       }),
     )
     .sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return a.priority - b.priority;
+      }
+
       if (Math.abs(a.distance - b.distance) > SNAP_EPSILON) {
         return a.distance - b.distance;
       }
@@ -99,6 +126,7 @@ export function resolveAuthoringPlacement(input: {
       entity: bestSuggestion.entity,
       contactWithEntityId: bestSuggestion.contactWithEntityId,
       contactNormal: bestSuggestion.contactNormal,
+      placementGuides: bestSuggestion.placementGuides,
     };
   }
 
@@ -115,35 +143,101 @@ export function resolveAuthoringPlacement(input: {
   };
 }
 
-function createPlacementSuggestion(
+function createPlacementSuggestions(
   candidate: EditorSceneEntity,
   obstacle: EditorSceneEntity,
-): PlacementSuggestion | null {
+  maxSnapDistance: number,
+): PlacementSuggestion[] {
   if (candidate.kind === "arc-track" || obstacle.kind === "arc-track") {
-    return null;
+    return [];
   }
 
   const candidateFootprint = createFootprint(candidate);
   const obstacleFootprint = createFootprint(obstacle);
   const snappedCenter = findSnappedCenter(candidateFootprint, obstacleFootprint);
+  const suggestions: PlacementSuggestion[] = [];
 
-  if (!snappedCenter) {
-    return null;
+  if (snappedCenter) {
+    const contactEntity = createEntityWithCenter(candidate, snappedCenter);
+    const alignment = isRectangleCornerContact(createFootprint(contactEntity), obstacleFootprint)
+      ? {
+          alignmentLines: [],
+          entity: contactEntity,
+          translation: { x: 0, y: 0 },
+        }
+      : applyNearbyEdgeAlignment(contactEntity, obstacle, maxSnapDistance);
+    suggestions.push(
+      createSuggestionFromEntity({
+        alignmentLines: alignment.alignmentLines,
+        candidate,
+        contactNormalFallback: { x: 0, y: 1 },
+        contactWithEntityId: obstacle.id,
+        entity: alignment.entity,
+        obstacle,
+        priority: 0,
+      }),
+    );
   }
 
-  const currentCenter = candidateFootprint.center;
+  const alignment = applyNearbyEdgeAlignment(candidate, obstacle, maxSnapDistance);
+
+  if (alignment.alignmentLines.length > 0) {
+    suggestions.push(
+      createSuggestionFromEntity({
+        alignmentLines: alignment.alignmentLines,
+        candidate,
+        contactNormalFallback: alignment.translation,
+        contactWithEntityId: obstacle.id,
+        entity: alignment.entity,
+        obstacle,
+        priority: 1,
+      }),
+    );
+  }
+
+  return suggestions;
+}
+
+function isRectangleCornerContact(
+  candidate: AuthoringFootprint,
+  obstacle: AuthoringFootprint,
+): boolean {
+  if (obstacle.kind !== "rectangle") {
+    return false;
+  }
+
+  const localCenter = worldToLocal(candidate.center, obstacle.center, obstacle.axisX, obstacle.axisY);
+
+  return (
+    Math.abs(localCenter.x) > obstacle.halfWidth + SNAP_EPSILON &&
+    Math.abs(localCenter.y) > obstacle.halfHeight + SNAP_EPSILON
+  );
+}
+
+function createSuggestionFromEntity(input: {
+  alignmentLines: AuthoringPlacementGuideLine[];
+  candidate: EditorSceneEntity;
+  contactNormalFallback: Vector2;
+  contactWithEntityId: string;
+  entity: EditorSceneEntity;
+  obstacle: EditorSceneEntity;
+  priority: number;
+}): PlacementSuggestion {
+  const currentCenter = createFootprint(input.candidate).center;
+  const snappedCenter = createFootprint(input.entity).center;
   const translation = subtract(snappedCenter, currentCenter);
-  const distance = length(translation);
-
-  if (distance <= SNAP_EPSILON) {
-    return null;
-  }
+  const placementGuides = createPlacementGuides(input.entity, input.obstacle, input.alignmentLines);
 
   return {
-    contactNormal: normalizeOrFallback(translation, { x: 0, y: 1 }),
-    contactWithEntityId: obstacle.id,
-    distance,
-    entity: createEntityWithCenter(candidate, snappedCenter),
+    contactNormal: normalizeOrFallback(
+      length(translation) > SNAP_EPSILON ? translation : input.contactNormalFallback,
+      { x: 0, y: 1 },
+    ),
+    contactWithEntityId: input.contactWithEntityId,
+    distance: length(translation),
+    entity: input.entity,
+    placementGuides,
+    priority: input.priority,
   };
 }
 
@@ -423,6 +517,209 @@ function createEntityWithCenter(entity: EditorSceneEntity, center: Vector2): Edi
   };
 }
 
+function applyNearbyEdgeAlignment(
+  candidate: EditorSceneEntity,
+  obstacle: EditorSceneEntity,
+  maxSnapDistance: number,
+): {
+  alignmentLines: AuthoringPlacementGuideLine[];
+  entity: EditorSceneEntity;
+  translation: Vector2;
+} {
+  if (candidate.kind === "arc-track" || obstacle.kind === "arc-track") {
+    return {
+      alignmentLines: [],
+      entity: candidate,
+      translation: { x: 0, y: 0 },
+    };
+  }
+
+  const obstacleFootprint = createFootprint(obstacle);
+
+  if (obstacleFootprint.kind !== "rectangle") {
+    return {
+      alignmentLines: [],
+      entity: candidate,
+      translation: { x: 0, y: 0 },
+    };
+  }
+
+  const candidateFootprint = createFootprint(candidate);
+  const alignments = [
+    findAxisAlignment(candidateFootprint, obstacleFootprint, obstacleFootprint.axisX, maxSnapDistance),
+    findAxisAlignment(candidateFootprint, obstacleFootprint, obstacleFootprint.axisY, maxSnapDistance),
+  ].filter((alignment): alignment is AxisAlignment => alignment !== null);
+
+  if (alignments.length === 0) {
+    return {
+      alignmentLines: [],
+      entity: candidate,
+      translation: { x: 0, y: 0 },
+    };
+  }
+
+  const translation = alignments.reduce(
+    (current, alignment) => addVectors(current, scale(alignment.axis, alignment.delta)),
+    { x: 0, y: 0 },
+  );
+
+  return {
+    alignmentLines: alignments.map((alignment) => alignment.line),
+    entity: createEntityWithCenter(candidate, addVectors(candidateFootprint.center, translation)),
+    translation,
+  };
+}
+
+type AxisAlignment = {
+  axis: Vector2;
+  delta: number;
+  line: AuthoringPlacementGuideLine;
+};
+
+function findAxisAlignment(
+  candidate: AuthoringFootprint,
+  obstacle: RectangleFootprint,
+  axis: Vector2,
+  maxSnapDistance: number,
+): AxisAlignment | null {
+  const perpendicular = perpendicularTo(axis);
+  const candidateProjection = projectFootprint(candidate, axis);
+  const obstacleProjection = projectFootprint(obstacle, axis);
+  const candidatePerpendicular = projectFootprint(candidate, perpendicular);
+  const obstaclePerpendicular = projectFootprint(obstacle, perpendicular);
+  const perpendicularGap = projectionGap(candidatePerpendicular, obstaclePerpendicular);
+
+  if (
+    perpendicularGap >
+    maxSnapDistance * EDGE_ALIGNMENT_PERPENDICULAR_REACH_MULTIPLIER + SNAP_EPSILON
+  ) {
+    return null;
+  }
+
+  const candidateGuides = [
+    candidateProjection.min,
+    candidateProjection.center,
+    candidateProjection.max,
+  ];
+  const obstacleGuides = [
+    obstacleProjection.min,
+    obstacleProjection.center,
+    obstacleProjection.max,
+  ];
+  let best: { delta: number; target: number } | null = null;
+
+  for (const candidateGuide of candidateGuides) {
+    for (const obstacleGuide of obstacleGuides) {
+      const delta = obstacleGuide - candidateGuide;
+
+      if (Math.abs(delta) > maxSnapDistance + SNAP_EPSILON) {
+        continue;
+      }
+
+      if (!best || Math.abs(delta) < Math.abs(best.delta) - SNAP_EPSILON) {
+        best = {
+          delta,
+          target: obstacleGuide,
+        };
+      }
+    }
+  }
+
+  if (!best || Math.abs(best.delta) <= SNAP_EPSILON) {
+    return null;
+  }
+
+  const lineExtension = maxSnapDistance * ALIGNMENT_LINE_EXTENSION_RATIO;
+  const startPerpendicular =
+    Math.min(candidatePerpendicular.min, obstaclePerpendicular.min) - lineExtension;
+  const endPerpendicular = Math.max(candidatePerpendicular.max, obstaclePerpendicular.max);
+
+  return {
+    axis,
+    delta: best.delta,
+    line: {
+      start: roundVector(
+        addVectors(scale(axis, best.target), scale(perpendicular, startPerpendicular)),
+      ),
+      end: roundVector(
+        addVectors(scale(axis, best.target), scale(perpendicular, endPerpendicular)),
+      ),
+    },
+  };
+}
+
+function createPlacementGuides(
+  candidate: EditorSceneEntity,
+  obstacle: EditorSceneEntity,
+  alignmentLines: AuthoringPlacementGuideLine[],
+): AuthoringPlacementGuide[] | undefined {
+  if (candidate.kind === "arc-track" || obstacle.kind === "arc-track") {
+    return undefined;
+  }
+
+  const obstacleFootprint = createFootprint(obstacle);
+
+  if (obstacleFootprint.kind !== "rectangle") {
+    return undefined;
+  }
+
+  const candidateFootprint = createFootprint(candidate);
+  const distanceSegments = createBoardRelativeDistanceSegments(candidateFootprint, obstacleFootprint);
+  const guide: AuthoringPlacementGuide = {
+    alignmentLines,
+    distanceSegments,
+    targetEntityId: obstacle.id,
+  };
+
+  return guide.distanceSegments.length > 0 || guide.alignmentLines.length > 0
+    ? [guide]
+    : undefined;
+}
+
+function createBoardRelativeDistanceSegments(
+  candidate: AuthoringFootprint,
+  board: RectangleFootprint,
+): AuthoringPlacementDistanceSegment[] {
+  const candidateNormalProjection = projectFootprint(candidate, board.axisY);
+  const boardNormalProjection = projectFootprint(board, board.axisY);
+  const surfaceGap = Math.max(
+    boardNormalProjection.min - candidateNormalProjection.max,
+    candidateNormalProjection.min - boardNormalProjection.max,
+    0,
+  );
+
+  if (surfaceGap > SNAP_EPSILON) {
+    return [];
+  }
+
+  const localCenter = worldToLocal(candidate.center, board.center, board.axisX, board.axisY);
+  const sideY = localCenter.y < 0 ? -board.halfHeight : board.halfHeight;
+  const localAnchorX = clamp(localCenter.x, -board.halfWidth, board.halfWidth);
+  const start = localToWorld({ x: -board.halfWidth, y: sideY }, board.center, board.axisX, board.axisY);
+  const anchor = localToWorld({ x: localAnchorX, y: sideY }, board.center, board.axisX, board.axisY);
+  const end = localToWorld({ x: board.halfWidth, y: sideY }, board.center, board.axisX, board.axisY);
+
+  if (
+    localAnchorX <= -board.halfWidth + SNAP_EPSILON ||
+    localAnchorX >= board.halfWidth - SNAP_EPSILON
+  ) {
+    return [];
+  }
+
+  return [
+    {
+      distance: roundGuideValue(localAnchorX + board.halfWidth),
+      start: roundVector(start),
+      end: roundVector(anchor),
+    },
+    {
+      distance: roundGuideValue(board.halfWidth - localAnchorX),
+      start: roundVector(anchor),
+      end: roundVector(end),
+    },
+  ];
+}
+
 function createFootprint(entity: EditorSceneEntity): AuthoringFootprint {
   if (entity.kind === "ball") {
     return {
@@ -466,6 +763,41 @@ function createFootprint(entity: EditorSceneEntity): AuthoringFootprint {
     halfHeight,
     relativeCorners,
   };
+}
+
+function projectFootprint(footprint: AuthoringFootprint, axis: Vector2): {
+  center: number;
+  max: number;
+  min: number;
+} {
+  if (footprint.kind === "circle") {
+    const center = dot(footprint.center, axis);
+
+    return {
+      center,
+      min: center - footprint.radius,
+      max: center + footprint.radius,
+    };
+  }
+
+  const values = footprint.relativeCorners.map((corner) =>
+    dot(addVectors(footprint.center, corner), axis),
+  );
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+
+  return {
+    center: dot(footprint.center, axis),
+    min,
+    max,
+  };
+}
+
+function projectionGap(
+  a: { max: number; min: number },
+  b: { max: number; min: number },
+): number {
+  return Math.max(b.min - a.max, a.min - b.max, 0);
 }
 
 function worldToLocal(
@@ -553,6 +885,13 @@ function cross(a: Vector2, b: Vector2): number {
   return a.x * b.y - a.y * b.x;
 }
 
+function perpendicularTo(vector: Vector2): Vector2 {
+  return {
+    x: -vector.y,
+    y: vector.x,
+  };
+}
+
 function length(vector: Vector2): number {
   return Math.hypot(vector.x, vector.y);
 }
@@ -563,4 +902,15 @@ function squaredLength(vector: Vector2): number {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function roundGuideValue(value: number): number {
+  return Number(value.toFixed(6));
+}
+
+function roundVector(vector: Vector2): Vector2 {
+  return {
+    x: roundGuideValue(vector.x),
+    y: roundGuideValue(vector.y),
+  };
 }

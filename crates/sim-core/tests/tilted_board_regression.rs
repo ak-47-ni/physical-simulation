@@ -168,9 +168,17 @@ fn rebound_apex_for_elastic_tilted_drop(board_friction: f64) -> f64 {
     let ball_radius = 0.4;
     let normal = vector2(-rotation.sin(), rotation.cos());
     let board_position = vector2(4.0, 2.0);
-    let initial_ball_position = board_position.add(normal.scale(board_half_height + ball_radius + 3.0));
+    let initial_ball_position =
+        board_position.add(normal.scale(board_half_height + ball_radius + 3.0));
     let mut runtime = runtime_for_scene(vec![
-        elastic_board("board", board_position, (8.0, 0.5), board_friction, 1.0, rotation),
+        elastic_board(
+            "board",
+            board_position,
+            (8.0, 0.5),
+            board_friction,
+            1.0,
+            rotation,
+        ),
         elastic_ball(
             "ball",
             initial_ball_position,

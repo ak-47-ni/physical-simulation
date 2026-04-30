@@ -179,13 +179,24 @@ fn quadrant_boundary_regression_runtime_ground_preserves_repeated_elastic_bounce
     let release_peak = 3.5;
     let radius = 0.25;
     let mut runtime = runtime_for_scene_with_gravity(
-        vec![ball("ball", vector2(0.8, release_peak), radius, Vector2::ZERO, 1.0)],
+        vec![ball(
+            "ball",
+            vector2(0.8, release_peak),
+            radius,
+            Vector2::ZERO,
+            1.0,
+        )],
         vector2(0.0, -9.81),
     );
 
     let peaks = bounce_peaks_for_entity(&mut runtime, "ball", 360, 3);
 
-    assert!(peaks.len() >= 3, "release_peak={} peaks={:?}", release_peak, peaks);
+    assert!(
+        peaks.len() >= 3,
+        "release_peak={} peaks={:?}",
+        release_peak,
+        peaks
+    );
 
     for (index, peak) in peaks.iter().enumerate() {
         assert!(

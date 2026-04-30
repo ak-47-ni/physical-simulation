@@ -191,6 +191,7 @@ export function createAuthoringPlacementPreview(
       entity: resolution.entity,
       status: "snap",
       contactWithEntityId: resolution.contactWithEntityId,
+      placementGuides: resolution.placementGuides,
     };
   }
 

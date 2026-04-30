@@ -3,9 +3,9 @@ export type ScreenVelocityVector = {
   dy: number;
 };
 
-const MIN_VECTOR_LENGTH_PX = 18;
-const MAX_VECTOR_LENGTH_PX = 84;
-const VECTOR_SCALE = 3;
+const MIN_VECTOR_LENGTH_PX = 36;
+const MAX_VECTOR_LENGTH_PX = 168;
+const VECTOR_SCALE = 6;
 const ZERO_EPSILON = 1e-9;
 
 function normalizeZero(value: number): number {

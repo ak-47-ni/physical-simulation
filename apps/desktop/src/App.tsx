@@ -761,7 +761,7 @@ export function App() {
     viewport: workspaceViewport,
   });
   const selectedRuntimeVelocityVector =
-    transportRuntime.status === "paused" && selectedEntity?.kind === "ball"
+    visibleRuntimeFrame && selectedEntity
       ? (() => {
           const runtimeVelocity = visibleRuntimeFrame?.entities.find(
             (entity) => entity.id === selectedEntity.id && entity.velocity,

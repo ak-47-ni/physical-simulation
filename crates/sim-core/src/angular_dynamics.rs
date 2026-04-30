@@ -39,7 +39,8 @@ pub fn integrate_rotation(body: &mut RuntimeBodyState, delta_seconds: f64) {
 
 pub fn velocity_at_point(body: &RuntimeBodyState, world_point: Vector2) -> Vector2 {
     let radial_offset = world_point.sub(body.position);
-    body.velocity.add(radial_offset.perp().scale(body.angular_velocity_radians))
+    body.velocity
+        .add(radial_offset.perp().scale(body.angular_velocity_radians))
 }
 
 pub fn apply_impulse(body: &mut RuntimeBodyState, impulse: Vector2, world_point: Vector2) {

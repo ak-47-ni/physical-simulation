@@ -396,8 +396,11 @@ fn serialization_contract_default_elastic_payload_is_not_damped_by_board_frictio
 
 #[test]
 fn serialization_contract_default_elastic_payload_preserves_repeated_bounce_peaks() {
-    let (_, peaks) =
-        bounce_peak_positions_over_steps(elastic_bounce_request(None, None, None, Some(0.0)), 1440, 2);
+    let (_, peaks) = bounce_peak_positions_over_steps(
+        elastic_bounce_request(None, None, None, Some(0.0)),
+        1440,
+        2,
+    );
 
     assert!(peaks.len() >= 2, "peaks={:?}", peaks);
 
@@ -414,10 +417,16 @@ fn serialization_contract_default_elastic_payload_preserves_repeated_bounce_peak
 
 #[test]
 fn serialization_contract_board_friction_does_not_change_repeated_elastic_bounce_peaks() {
-    let (_, low_friction_peaks) =
-        bounce_peak_positions_over_steps(elastic_bounce_request(None, None, Some(0.0), Some(0.0)), 1440, 2);
-    let (_, high_friction_peaks) =
-        bounce_peak_positions_over_steps(elastic_bounce_request(None, None, Some(0.9), Some(0.0)), 1440, 2);
+    let (_, low_friction_peaks) = bounce_peak_positions_over_steps(
+        elastic_bounce_request(None, None, Some(0.0), Some(0.0)),
+        1440,
+        2,
+    );
+    let (_, high_friction_peaks) = bounce_peak_positions_over_steps(
+        elastic_bounce_request(None, None, Some(0.9), Some(0.0)),
+        1440,
+        2,
+    );
 
     assert!(
         low_friction_peaks.len() >= 2 && high_friction_peaks.len() >= 2,

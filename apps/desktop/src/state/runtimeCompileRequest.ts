@@ -25,12 +25,14 @@ import {
   normalizeLengthToSi,
   normalizeMassToSi,
   normalizeVelocityToSi,
+  type MassUnit,
 } from "./sceneUnits";
 import { authoringVelocityToRuntime } from "./velocitySemantics";
 import type { EditorSceneEntity } from "./editorStore";
 
 const DEFAULT_RUNTIME_ARC_TRACK_SIDE = "inside" as const;
 const DEFAULT_RUNTIME_ARC_TRACK_PHYSICS_MODE = "hybrid-rail-body" as const;
+const MIN_RUNTIME_ENTITY_MASS_KG = 0.001;
 
 export type RuntimeSceneEntityPhysics = {
   mass?: number;
@@ -381,7 +383,9 @@ function normalizeRuntimeSceneEntityToSi(
   });
   // Friction and restitution pass through as separate physics knobs in the classroom path.
   const physics = {
-    ...(entity.mass !== undefined ? { mass: normalizeMassToSi(entity.mass, settings.massUnit) } : {}),
+    ...(entity.mass !== undefined
+      ? { mass: normalizeRuntimeMassToSi(entity.mass, settings.massUnit) }
+      : {}),
     ...(entity.friction !== undefined ? { friction: entity.friction } : {}),
     ...(entity.restitution !== undefined ? { restitution: entity.restitution } : {}),
     ...(entity.locked !== undefined ? { locked: entity.locked } : {}),
@@ -435,6 +439,10 @@ function normalizeRuntimeSceneEntityToSi(
     height: normalizeLengthToSi(entity.height, settings.lengthUnit),
     rotationRadians: entity.rotationRadians ?? 0,
   };
+}
+
+function normalizeRuntimeMassToSi(mass: number, unit: MassUnit): number {
+  return Math.max(MIN_RUNTIME_ENTITY_MASS_KG, normalizeMassToSi(mass, unit));
 }
 
 function normalizeRuntimeSceneConstraintToSi(
