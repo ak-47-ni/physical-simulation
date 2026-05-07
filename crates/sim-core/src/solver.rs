@@ -10,8 +10,8 @@ mod contact_geometry;
 use std::collections::{HashMap, HashSet};
 
 use crate::arc_track::{
-    effective_center_radius, ArcTrackAnchorEndpoint, ArcTrackCapturePolicy,
-    ArcTrackEndpointGeometry, CompiledArcTrack,
+    ArcTrackAnchorEndpoint, ArcTrackCapturePolicy, ArcTrackEndpointGeometry, CompiledArcTrack,
+    effective_center_radius,
 };
 use crate::constraint::{ArcTrackSide, CompiledConstraint};
 use crate::entity::Vector2;
@@ -24,6 +24,9 @@ const SUPPORT_CONTACT_LINEAR_SPEED_THRESHOLD: f64 = 1.5;
 const SUPPORT_CONTACT_PENETRATION_THRESHOLD: f64 = 0.15;
 const SUPPORT_CONTACT_ANGULAR_DAMPING: f64 = 0.4;
 const SUPPORT_CONTACT_ANGULAR_REST_THRESHOLD: f64 = 1e-3;
+const SUPPORT_STATIC_FRICTION_ACCELERATION_SLOP: f64 = 1e-9;
+const SUPPORT_STATIC_FRICTION_SPEED_SLOP: f64 = 1e-8;
+const SUPPORT_STATIC_FRICTION_CREEP_SLOP: f64 = 1e-8;
 const ARC_ENTRY_CAPTURE_DISTANCE_THRESHOLD: f64 = 0.75;
 const ARC_ENTRY_CAPTURE_ALIGNMENT_THRESHOLD: f64 = 0.8;
 const ARC_ENTRY_CAPTURE_APPROACH_TOLERANCE: f64 = 0.2;
@@ -125,6 +128,16 @@ pub fn step_bodies(
     delta_seconds: f64,
 ) -> RuntimeBodyStepReport {
     let previous_positions = bodies.iter().map(|body| body.position).collect::<Vec<_>>();
+    let baseline_accelerations = bodies
+        .iter()
+        .map(|body| {
+            if body.is_static {
+                Vector2::ZERO
+            } else {
+                gravity
+            }
+        })
+        .collect::<Vec<_>>();
     let attached_body_ids = attached_arc_track_by_body_id
         .keys()
         .cloned()
@@ -141,27 +154,58 @@ pub fn step_bodies(
         .map(|(index, body)| (body.entity_id.clone(), index))
         .collect::<HashMap<_, _>>();
 
-    for body in bodies.iter_mut() {
+    for (body, baseline_acceleration) in bodies.iter_mut().zip(baseline_accelerations.iter()) {
         if body.is_static {
             body.acceleration = Vector2::ZERO;
             body.angular_velocity_radians = 0.0;
             continue;
         }
 
-        body.acceleration = gravity;
+        body.acceleration = *baseline_acceleration;
     }
 
     apply_constraints(bodies, constraints, &index_by_id);
+    let previous_total_accelerations = bodies
+        .iter()
+        .map(|body| body.acceleration)
+        .collect::<Vec<_>>();
 
     for body in bodies.iter_mut() {
         if body.is_static || attached_body_ids.contains(&body.entity_id) {
             continue;
         }
 
-        integrate_free_body(body, delta_seconds);
+        body.position = body
+            .position
+            .add(body.velocity.scale(delta_seconds))
+            .add(body.acceleration.scale(0.5 * delta_seconds * delta_seconds));
+        angular_dynamics::integrate_rotation(body, delta_seconds);
     }
 
-    resolve_static_contacts(bodies, &static_surfaces, &attached_body_ids, delta_seconds);
+    reset_non_constraint_accelerations(bodies, &baseline_accelerations);
+    apply_constraints(bodies, constraints, &index_by_id);
+
+    for (body, previous_total_acceleration) in
+        bodies.iter_mut().zip(previous_total_accelerations.iter())
+    {
+        if body.is_static || attached_body_ids.contains(&body.entity_id) {
+            continue;
+        }
+
+        body.velocity = body.velocity.add(
+            previous_total_acceleration
+                .add(body.acceleration)
+                .scale(0.5 * delta_seconds),
+        );
+    }
+
+    resolve_static_contacts(
+        bodies,
+        &static_surfaces,
+        &attached_body_ids,
+        Some(&previous_positions),
+        delta_seconds,
+    );
     resolve_dynamic_contacts(bodies, &static_surfaces, &attached_body_ids, delta_seconds);
     enforce_linear_track_bindings(bodies, constraints, &index_by_id);
     let mut attachment_delta_seconds_by_body_id = attached_arc_track_by_body_id
@@ -275,7 +319,7 @@ pub fn resolve_recently_detached_bodies(
             resolve_implicit_boundaries(body, substep_seconds);
 
             for surface in &static_surfaces {
-                resolve_contact_with_surface(body, surface, substep_seconds);
+                resolve_contact_with_surface(body, surface, None, substep_seconds);
             }
 
             resolve_implicit_boundaries(body, substep_seconds);
@@ -454,9 +498,10 @@ fn resolve_static_contacts(
     bodies: &mut [RuntimeBodyState],
     static_surfaces: &[RuntimeBodyState],
     attached_body_ids: &HashSet<String>,
+    previous_positions: Option<&[Vector2]>,
     delta_seconds: f64,
 ) {
-    for body in bodies.iter_mut() {
+    for (body_index, body) in bodies.iter_mut().enumerate() {
         if body.is_static || attached_body_ids.contains(&body.entity_id) {
             continue;
         }
@@ -464,7 +509,12 @@ fn resolve_static_contacts(
         resolve_implicit_boundaries(body, delta_seconds);
 
         for surface in static_surfaces {
-            resolve_contact_with_surface(body, surface, delta_seconds);
+            resolve_contact_with_surface(
+                body,
+                surface,
+                previous_positions.and_then(|positions| positions.get(body_index).copied()),
+                delta_seconds,
+            );
         }
 
         resolve_implicit_boundaries(body, delta_seconds);
@@ -494,7 +544,13 @@ fn resolve_dynamic_contacts(
             }
         }
 
-        resolve_static_contacts(bodies, static_surfaces, attached_body_ids, delta_seconds);
+        resolve_static_contacts(
+            bodies,
+            static_surfaces,
+            attached_body_ids,
+            None,
+            delta_seconds,
+        );
     }
 }
 
@@ -510,6 +566,7 @@ fn integrate_free_body(body: &mut RuntimeBodyState, delta_seconds: f64) {
 fn resolve_contact_with_surface(
     body: &mut RuntimeBodyState,
     surface: &RuntimeBodyState,
+    previous_position: Option<Vector2>,
     delta_seconds: f64,
 ) {
     let Some(contact) = contact_geometry::contact_manifold(body, surface) else {
@@ -522,6 +579,7 @@ fn resolve_contact_with_surface(
         surface.friction_coefficient,
         surface.restitution_coefficient,
         surface.is_static,
+        previous_position,
         delta_seconds,
     );
 }
@@ -538,6 +596,7 @@ fn resolve_implicit_boundaries(body: &mut RuntimeBodyState, delta_seconds: f64) 
             IMPLICIT_BOUNDARY_FRICTION_COEFFICIENT,
             IMPLICIT_BOUNDARY_RESTITUTION_COEFFICIENT,
             true,
+            None,
             delta_seconds,
         );
     }
@@ -549,6 +608,7 @@ fn resolve_surface_contact_manifold(
     surface_friction_coefficient: f64,
     surface_restitution_coefficient: f64,
     locked_surface: bool,
+    previous_position: Option<Vector2>,
     delta_seconds: f64,
 ) {
     let inverse_mass_body = inverse_mass(body);
@@ -557,14 +617,20 @@ fn resolve_surface_contact_manifold(
         return;
     }
 
-    let support_contact =
-        is_support_contact(body, contact.normal, contact.penetration, locked_surface);
+    let support_contact = is_support_contact(
+        body,
+        contact.normal,
+        contact.penetration,
+        locked_surface,
+        delta_seconds,
+    );
     let point = if support_contact {
         body.position
     } else {
         contact.point
     };
     let normal = contact.normal;
+    let support_normal_acceleration = (-body.acceleration.dot(normal)).max(0.0);
     let relative_velocity = angular_dynamics::velocity_at_point(body, point);
     let normal_velocity = relative_velocity.dot(normal);
     let restitution = if support_contact {
@@ -604,7 +670,17 @@ fn resolve_surface_contact_manifold(
         angular_dynamics::apply_impulse(body, normal.scale(normal_impulse), point);
     }
 
-    if support_contact || restitution <= f64::EPSILON {
+    let static_support_locked = support_contact
+        && apply_static_support_friction(
+            body,
+            previous_position,
+            surface_friction_coefficient,
+            normal,
+            support_normal_acceleration,
+            delta_seconds,
+        );
+
+    if !static_support_locked && (support_contact || restitution <= f64::EPSILON) {
         apply_friction_impulse_against_surface(
             body,
             surface_friction_coefficient,
@@ -615,6 +691,7 @@ fn resolve_surface_contact_manifold(
     }
 
     if support_contact {
+        cancel_support_normal_acceleration(body, normal);
         damp_support_rotation(body);
     }
 
@@ -757,6 +834,72 @@ fn resolve_contact_with_attached_body(
     normal_impulse.abs() > f64::EPSILON
 }
 
+fn apply_static_support_friction(
+    body: &mut RuntimeBodyState,
+    previous_position: Option<Vector2>,
+    surface_friction_coefficient: f64,
+    normal: Vector2,
+    support_normal_acceleration: f64,
+    delta_seconds: f64,
+) -> bool {
+    if surface_friction_coefficient <= f64::EPSILON
+        || support_normal_acceleration <= f64::EPSILON
+        || delta_seconds <= f64::EPSILON
+    {
+        return false;
+    }
+
+    let tangential_acceleration = tangential_component(body.acceleration, normal);
+    let required_tangential_acceleration = tangential_acceleration.length();
+
+    if required_tangential_acceleration <= f64::EPSILON {
+        return false;
+    }
+
+    let max_static_acceleration = surface_friction_coefficient * support_normal_acceleration;
+
+    if required_tangential_acceleration
+        > max_static_acceleration + SUPPORT_STATIC_FRICTION_ACCELERATION_SLOP
+    {
+        return false;
+    }
+
+    let tangential_velocity = tangential_component(body.velocity, normal);
+    let tangential_speed = tangential_velocity.length();
+    let max_static_delta_speed = max_static_acceleration * delta_seconds;
+
+    if tangential_speed > max_static_delta_speed + SUPPORT_STATIC_FRICTION_SPEED_SLOP {
+        return false;
+    }
+
+    if let Some(previous_position) = previous_position {
+        let tangential_drift = tangential_component(body.position.sub(previous_position), normal);
+        let max_static_creep = 0.5 * max_static_acceleration * delta_seconds * delta_seconds
+            + SUPPORT_STATIC_FRICTION_CREEP_SLOP;
+
+        if tangential_drift.length() <= max_static_creep {
+            body.position = body.position.sub(tangential_drift);
+        }
+    }
+
+    body.velocity = body.velocity.sub(tangential_velocity);
+    body.acceleration = body.acceleration.sub(tangential_acceleration);
+
+    true
+}
+
+fn cancel_support_normal_acceleration(body: &mut RuntimeBodyState, normal: Vector2) {
+    let normal_acceleration = body.acceleration.dot(normal);
+
+    if normal_acceleration < 0.0 {
+        body.acceleration = body.acceleration.sub(normal.scale(normal_acceleration));
+    }
+}
+
+fn tangential_component(vector: Vector2, normal: Vector2) -> Vector2 {
+    vector.sub(normal.scale(vector.dot(normal)))
+}
+
 fn apply_friction_impulse_against_surface(
     body: &mut RuntimeBodyState,
     surface_friction_coefficient: f64,
@@ -892,8 +1035,9 @@ fn is_support_contact(
     normal: Vector2,
     penetration: f64,
     locked_surface: bool,
+    delta_seconds: f64,
 ) -> bool {
-    if !locked_surface || body.shape != RuntimeBodyShape::Box {
+    if !locked_surface {
         return false;
     }
 
@@ -904,7 +1048,16 @@ fn is_support_contact(
         return false;
     }
 
-    body.velocity.dot(normal) >= -SUPPORT_CONTACT_LINEAR_SPEED_THRESHOLD
+    let support_speed_threshold = match body.shape {
+        RuntimeBodyShape::Box => SUPPORT_CONTACT_LINEAR_SPEED_THRESHOLD,
+        RuntimeBodyShape::Ball => {
+            let support_closing_speed = (-body.acceleration.dot(normal)).max(0.0) * delta_seconds;
+            support_closing_speed * 1.25 + 1e-6
+        }
+        RuntimeBodyShape::ArcTrack => return false,
+    };
+
+    body.velocity.dot(normal) >= -support_speed_threshold
 }
 
 fn damp_support_rotation(body: &mut RuntimeBodyState) {
@@ -929,7 +1082,12 @@ fn apply_constraints(
     bodies: &mut [RuntimeBodyState],
     constraints: &[CompiledConstraint],
     index_by_id: &HashMap<String, usize>,
-) {
+) -> Vec<Vector2> {
+    let prior_constraint_accelerations = bodies
+        .iter()
+        .map(|body| body.acceleration)
+        .collect::<Vec<_>>();
+
     for constraint in constraints {
         if let CompiledConstraint::Spring {
             entity_a,
@@ -964,6 +1122,22 @@ fn apply_constraints(
                 body_b.acceleration = body_b.acceleration.add(force.scale(-1.0 / body_b.mass));
             }
         }
+    }
+
+    prior_constraint_accelerations
+}
+
+fn reset_non_constraint_accelerations(
+    bodies: &mut [RuntimeBodyState],
+    baseline_accelerations: &[Vector2],
+) {
+    for (body, baseline_acceleration) in bodies.iter_mut().zip(baseline_accelerations.iter()) {
+        if body.is_static {
+            body.acceleration = Vector2::ZERO;
+            continue;
+        }
+
+        body.acceleration = *baseline_acceleration;
     }
 }
 

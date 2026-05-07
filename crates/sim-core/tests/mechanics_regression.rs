@@ -3,7 +3,7 @@ use sim_core::bridge::{RuntimeCompileRequest, SimulationBridge};
 use sim_core::entity::{EntityDefinition, ShapeDefinition, Vector2};
 use sim_core::force::ForceSourceDefinition;
 use sim_core::runtime::RuntimeScene;
-use sim_core::scene::{compile_scene, CompileSceneRequest};
+use sim_core::scene::{CompileSceneRequest, compile_scene};
 
 fn vector2(x: f64, y: f64) -> Vector2 {
     Vector2::new(x, y)

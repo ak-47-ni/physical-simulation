@@ -161,6 +161,26 @@ fn payload_frame<'a>(
         .expect("entity should exist in frame")
 }
 
+fn spring_pair_mechanical_energy(
+    frame: &RuntimeFramePayload,
+    left_id: &str,
+    right_id: &str,
+    mass: f64,
+    rest_length: f64,
+    stiffness: f64,
+) -> f64 {
+    let left = payload_frame(frame, left_id);
+    let right = payload_frame(frame, right_id);
+    let left_speed_squared = left.velocity.x.powi(2) + left.velocity.y.powi(2);
+    let right_speed_squared = right.velocity.x.powi(2) + right.velocity.y.powi(2);
+    let separation = right.position.sub(left.position).length();
+    let stretch = separation - rest_length;
+    let kinetic = 0.5 * mass * left_speed_squared + 0.5 * mass * right_speed_squared;
+    let potential = 0.5 * stiffness * stretch.powi(2);
+
+    kinetic + potential
+}
+
 fn arc_tangential_speed(center: Vector2, entity: &sim_core::runtime::RuntimeEntityFrame) -> f64 {
     let radial = entity.position.sub(center).normalized();
     let tangent = radial.perp().scale(-1.0);
@@ -244,6 +264,315 @@ fn constraint_runtime_spring_acceleration_changes_with_stretch() {
         .abs();
 
     assert!(stretched_acceleration > relaxed_acceleration);
+}
+
+#[test]
+fn constraint_runtime_high_friction_board_prevents_spring_supported_balls_from_gaining_speed() {
+    let ball_radius = 0.24;
+    let board_height = 0.18;
+    let board_center = vector2(4.0, 2.0);
+    let board_top = board_center.y + board_height * 0.5;
+    let initial_separation = 1.1;
+    let mut runtime = runtime_for_scene(
+        vec![
+            EntityDefinition {
+                id: "board".to_string(),
+                shape: ShapeDefinition::Block {
+                    width: 4.2,
+                    height: board_height,
+                },
+                position: board_center,
+                rotation_radians: 0.0,
+                initial_velocity: Vector2::ZERO,
+                mass: 0.0,
+                is_static: true,
+                friction_coefficient: 28.0,
+                restitution_coefficient: 1.0,
+            },
+            EntityDefinition {
+                friction_coefficient: 0.0,
+                restitution_coefficient: 1.0,
+                ..ball(
+                    "ball-left",
+                    vector2(
+                        board_center.x - initial_separation * 0.5,
+                        board_top + ball_radius,
+                    ),
+                    Vector2::ZERO,
+                )
+            },
+            EntityDefinition {
+                friction_coefficient: 0.0,
+                restitution_coefficient: 1.0,
+                ..ball(
+                    "ball-right",
+                    vector2(
+                        board_center.x + initial_separation * 0.5,
+                        board_top + ball_radius,
+                    ),
+                    Vector2::ZERO,
+                )
+            },
+        ],
+        vec![ConstraintDefinition::Spring {
+            id: "spring-1".to_string(),
+            entity_a: "ball-left".to_string(),
+            entity_b: "ball-right".to_string(),
+            rest_length: 1.2,
+            stiffness: 24.0,
+        }],
+        vector2(0.0, -9.8),
+        1.0 / 60.0,
+    );
+
+    let mut max_horizontal_speed = 0.0_f64;
+
+    for _ in 0..600 {
+        let frame = runtime.step();
+        for entity_id in ["ball-left", "ball-right"] {
+            let ball = payload_frame(&frame, entity_id);
+            max_horizontal_speed = max_horizontal_speed.max(ball.velocity.x.abs());
+        }
+    }
+
+    assert!(
+        max_horizontal_speed <= 0.05,
+        "high-friction support should keep the spring pair nearly at rest, max_horizontal_speed={max_horizontal_speed}"
+    );
+}
+
+#[test]
+fn constraint_runtime_spring_supported_balls_do_not_gain_mechanical_energy_over_time() {
+    let ball_radius = 0.24;
+    let ball_mass = 1.2;
+    let board_height = 0.18;
+    let board_center = vector2(4.0, 2.0);
+    let board_top = board_center.y + board_height * 0.5;
+    let initial_separation = 1.49;
+    let rest_length = 0.99;
+    let stiffness = 24.0;
+    let mut runtime = runtime_for_scene(
+        vec![
+            EntityDefinition {
+                id: "board".to_string(),
+                shape: ShapeDefinition::Block {
+                    width: 3.2,
+                    height: board_height,
+                },
+                position: board_center,
+                rotation_radians: 0.0,
+                initial_velocity: Vector2::ZERO,
+                mass: 0.0,
+                is_static: true,
+                friction_coefficient: 0.0,
+                restitution_coefficient: 1.0,
+            },
+            EntityDefinition {
+                id: "ball-left".to_string(),
+                shape: ShapeDefinition::Ball {
+                    radius: ball_radius,
+                },
+                position: vector2(
+                    board_center.x - initial_separation * 0.5,
+                    board_top + ball_radius,
+                ),
+                rotation_radians: 0.0,
+                initial_velocity: Vector2::ZERO,
+                mass: ball_mass,
+                is_static: false,
+                friction_coefficient: 0.0,
+                restitution_coefficient: 1.0,
+            },
+            EntityDefinition {
+                id: "ball-right".to_string(),
+                shape: ShapeDefinition::Ball {
+                    radius: ball_radius,
+                },
+                position: vector2(
+                    board_center.x + initial_separation * 0.5,
+                    board_top + ball_radius,
+                ),
+                rotation_radians: 0.0,
+                initial_velocity: Vector2::ZERO,
+                mass: ball_mass,
+                is_static: false,
+                friction_coefficient: 0.0,
+                restitution_coefficient: 1.0,
+            },
+        ],
+        vec![ConstraintDefinition::Spring {
+            id: "spring-1".to_string(),
+            entity_a: "ball-left".to_string(),
+            entity_b: "ball-right".to_string(),
+            rest_length,
+            stiffness,
+        }],
+        vector2(0.0, -9.8),
+        1.0 / 60.0,
+    );
+
+    let initial_energy = spring_pair_mechanical_energy(
+        &runtime.current_frame(),
+        "ball-left",
+        "ball-right",
+        ball_mass,
+        rest_length,
+        stiffness,
+    );
+    let mut max_energy = initial_energy;
+    let mut min_separation = f64::INFINITY;
+    let mut max_vertical_speed = 0.0_f64;
+    let mut max_vertical_offset = 0.0_f64;
+
+    for _ in 0..240 {
+        let frame = runtime.step();
+        let left = payload_frame(&frame, "ball-left");
+        let right = payload_frame(&frame, "ball-right");
+        min_separation = min_separation.min(right.position.sub(left.position).length());
+        max_vertical_speed = max_vertical_speed
+            .max(left.velocity.y.abs())
+            .max(right.velocity.y.abs());
+        max_vertical_offset = max_vertical_offset
+            .max((left.position.y - (board_top + ball_radius)).abs())
+            .max((right.position.y - (board_top + ball_radius)).abs());
+        max_energy = max_energy.max(spring_pair_mechanical_energy(
+            &frame,
+            "ball-left",
+            "ball-right",
+            ball_mass,
+            rest_length,
+            stiffness,
+        ));
+    }
+
+    assert!(
+        max_energy <= initial_energy + 0.5,
+        "spring pair should stay near its initial mechanical energy, initial_energy={initial_energy}, max_energy={max_energy}, min_separation={min_separation}, max_vertical_speed={max_vertical_speed}, max_vertical_offset={max_vertical_offset}"
+    );
+}
+
+#[test]
+fn constraint_runtime_static_friction_holds_resting_spring_pair_without_creep() {
+    let ball_radius = 0.24;
+    let ball_mass = 1.2;
+    let board_friction = 0.1;
+    let gravity = 9.8;
+    let board_height = 0.18;
+    let board_center = vector2(3.0, 2.0);
+    let board_top = board_center.y + board_height * 0.5;
+    let initial_separation = 1.05;
+    let rest_length = 1.29;
+    let stiffness = 24.0;
+    let mut runtime = runtime_for_scene(
+        vec![
+            EntityDefinition {
+                id: "board".to_string(),
+                shape: ShapeDefinition::Block {
+                    width: 3.2,
+                    height: board_height,
+                },
+                position: board_center,
+                rotation_radians: 0.0,
+                initial_velocity: Vector2::ZERO,
+                mass: 0.0,
+                is_static: true,
+                friction_coefficient: board_friction,
+                restitution_coefficient: 1.0,
+            },
+            EntityDefinition {
+                id: "ball-left".to_string(),
+                shape: ShapeDefinition::Ball {
+                    radius: ball_radius,
+                },
+                position: vector2(
+                    board_center.x - initial_separation * 0.5,
+                    board_top + ball_radius,
+                ),
+                rotation_radians: 0.0,
+                initial_velocity: Vector2::ZERO,
+                mass: ball_mass,
+                is_static: false,
+                friction_coefficient: 0.0,
+                restitution_coefficient: 1.0,
+            },
+            EntityDefinition {
+                id: "ball-right".to_string(),
+                shape: ShapeDefinition::Ball {
+                    radius: ball_radius,
+                },
+                position: vector2(
+                    board_center.x + initial_separation * 0.5,
+                    board_top + ball_radius,
+                ),
+                rotation_radians: 0.0,
+                initial_velocity: Vector2::ZERO,
+                mass: ball_mass,
+                is_static: false,
+                friction_coefficient: 0.0,
+                restitution_coefficient: 1.0,
+            },
+        ],
+        vec![ConstraintDefinition::Spring {
+            id: "spring-1".to_string(),
+            entity_a: "ball-left".to_string(),
+            entity_b: "ball-right".to_string(),
+            rest_length,
+            stiffness,
+        }],
+        vector2(0.0, -gravity),
+        1.0 / 60.0,
+    );
+
+    let mut settled_positions = None;
+    let mut max_settled_speed = 0.0_f64;
+    let mut max_settled_drift = 0.0_f64;
+    let mut max_settled_horizontal_acceleration = 0.0_f64;
+
+    for _ in 0..300 {
+        let frame = runtime.step();
+        let left = payload_frame(&frame, "ball-left");
+        let right = payload_frame(&frame, "ball-right");
+        let left_speed = left.velocity.length();
+        let right_speed = right.velocity.length();
+        let separation = right.position.sub(left.position).length();
+        let spring_acceleration = (stiffness * (separation - rest_length)).abs() / ball_mass;
+        let static_friction_acceleration = board_friction * gravity;
+
+        if left_speed <= 1e-9
+            && right_speed <= 1e-9
+            && spring_acceleration <= static_friction_acceleration
+            && settled_positions.is_none()
+        {
+            settled_positions = Some((left.position, right.position));
+        }
+
+        if let Some((settled_left_position, settled_right_position)) = settled_positions {
+            max_settled_speed = max_settled_speed.max(left_speed).max(right_speed);
+            max_settled_horizontal_acceleration = max_settled_horizontal_acceleration
+                .max(left.acceleration.x.abs())
+                .max(right.acceleration.x.abs());
+            max_settled_drift = max_settled_drift
+                .max(left.position.sub(settled_left_position).length())
+                .max(right.position.sub(settled_right_position).length());
+        }
+    }
+
+    assert!(
+        settled_positions.is_some(),
+        "spring pair should enter a static-friction supported rest state"
+    );
+    assert!(
+        max_settled_speed <= 1e-9,
+        "static-friction held balls should not restart sliding, max_settled_speed={max_settled_speed}"
+    );
+    assert!(
+        max_settled_drift <= 1e-5,
+        "static-friction held balls should not creep after stopping, max_settled_drift={max_settled_drift}"
+    );
+    assert!(
+        max_settled_horizontal_acceleration <= 1e-6,
+        "static friction should cancel horizontal spring acceleration while held, max_settled_horizontal_acceleration={max_settled_horizontal_acceleration}"
+    );
 }
 
 #[test]

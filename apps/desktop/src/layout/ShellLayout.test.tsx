@@ -18,6 +18,28 @@ describe("ShellLayout", () => {
     expect(screen.getByTestId("shell-bottom-pane")).toBeDefined();
   });
 
+  it("keeps product name, title, version, and subtitle in one compact row", () => {
+    render(<App />);
+
+    const brandRow = screen.getByTestId("shell-brand-row");
+
+    expect(brandRow.style.display).toBe("flex");
+    expect(brandRow.textContent).toContain("PHYSICS SANDBOX");
+    expect(brandRow.textContent).toContain("Desktop editor");
+    expect(brandRow.textContent).toContain("Version 1.0.25");
+    expect(brandRow.textContent).toContain("Build and review classroom physics scenes.");
+  });
+
+  it("keeps the center pane content-sized instead of stretching to taller side panes", () => {
+    render(<App />);
+
+    const centerPane = screen.getByTestId("shell-center-pane") as HTMLElement;
+
+    expect(centerPane.style.alignSelf).toBe("start");
+    expect(centerPane.style.alignContent).toBe("start");
+    expect(centerPane.style.gridTemplateRows).toBe("auto");
+  });
+
   it("collapses left, right, and bottom panes independently", () => {
     render(<App />);
 

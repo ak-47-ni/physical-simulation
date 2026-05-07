@@ -287,12 +287,12 @@ describe("App selection sync", () => {
     expect(screen.queryByLabelText("Center X")).toBeNull();
     expect(screen.queryByLabelText("Center Y")).toBeNull();
     expect(screen.queryByTestId("workspace-selected-arc-track-junction-debug")).toBeNull();
-    expect(screen.getByText("Rigid rail shell")).toBeDefined();
+    expect(screen.queryByText("Rigid rail shell")).toBeNull();
     expect(
-      screen.getByText(
+      screen.queryByText(
         "Balls slide along the rail path while the curved shell still defines the real boundary.",
       ),
-    ).toBeDefined();
+    ).toBeNull();
     expect((screen.getByLabelText("Radius") as HTMLInputElement).value).toBe("1");
     expect((screen.getByLabelText("Sweep angle") as HTMLInputElement).value).toBe("90");
     expect((screen.getByLabelText("Rotation") as HTMLInputElement).value).toBe("135");
@@ -1284,9 +1284,7 @@ describe("App selection sync", () => {
     render(<App />);
     const transport = within(screen.getByTestId("bottom-transport-bar"));
 
-    expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
-      "Rigid collisions stay elastic, so bounce height should stay consistent. Friction only changes sliding.",
-    );
+    expect(screen.queryByTestId("runtime-status-banner")).toBeNull();
 
     fireEvent.click(screen.getByTestId("scene-entity-board-1"));
     fireEvent.change(screen.getByLabelText("Friction"), { target: { value: "0.9" } });

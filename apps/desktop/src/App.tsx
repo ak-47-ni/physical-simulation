@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 
 import { AnalysisPanel } from "./analysis/AnalysisPanel";
 import { AnnotationLayer, createInitialAnnotationLayerState } from "./annotation/AnnotationLayer";
@@ -8,6 +8,7 @@ import { ShellLayout } from "./layout/ShellLayout";
 import { ObjectLibraryPanel } from "./panels/ObjectLibraryPanel";
 import { PlaybackTransportDeck } from "./panels/PlaybackTransportDeck";
 import { PropertyPanel } from "./panels/PropertyPanel";
+import { ScenePhysicsCard } from "./panels/property/ScenePhysicsCard";
 import { SceneTreePanel } from "./panels/SceneTreePanel";
 import {
   createSpringConstraintFromEntities,
@@ -72,6 +73,13 @@ import type { EditorTool } from "./workspace/tools";
 
 const PRIMARY_ANALYZER_ID = "traj-primary";
 const AUTHORING_LOCK_REASON = "Authoring is locked while runtime is playing.";
+
+const workspaceCenterStackStyle: CSSProperties = {
+  alignContent: "start",
+  display: "grid",
+  gap: "14px",
+  gridTemplateRows: "auto auto auto",
+};
 
 type PendingEntityDragPlacement = {
   entityId: string;
@@ -1409,11 +1417,33 @@ export function App() {
           />
         }
         leftPane={
-          <ObjectLibraryPanel
-            onStartBodyDrag={handleStartBodyDrag}
-            onSelectItem={handleSelectLibraryItem}
-            selectedItemId={selectedLibraryItem}
-          />
+          <div style={{ display: "grid", gap: "16px" }}>
+            <ScenePhysicsCard
+              disabled={authoringLocked}
+              gravity={scenePhysicsState.gravity}
+              gravityUnitLabel={scenePhysicsState.gravityUnitLabel}
+              lengthUnit={scenePhysicsState.lengthUnit}
+              lengthUnitOptions={scenePhysicsState.lengthUnitOptions}
+              lockReason={scenePhysicsState.lockReason}
+              massUnit={scenePhysicsState.massUnit}
+              massUnitOptions={scenePhysicsState.massUnitOptions}
+              pixelsPerMeter={scenePhysicsState.pixelsPerMeter}
+              velocityUnit={scenePhysicsState.velocityUnit}
+              velocityUnitOptions={scenePhysicsState.velocityUnitOptions}
+              onGravityChange={(gravity) => handleScenePhysicsChange({ gravity })}
+              onLengthUnitChange={(lengthUnit) => handleScenePhysicsChange({ lengthUnit })}
+              onMassUnitChange={(massUnit) => handleScenePhysicsChange({ massUnit })}
+              onPixelsPerMeterChange={(pixelsPerMeter) =>
+                handleScenePhysicsChange({ pixelsPerMeter })
+              }
+              onVelocityUnitChange={(velocityUnit) => handleScenePhysicsChange({ velocityUnit })}
+            />
+            <ObjectLibraryPanel
+              onStartBodyDrag={handleStartBodyDrag}
+              onSelectItem={handleSelectLibraryItem}
+              selectedItemId={selectedLibraryItem}
+            />
+          </div>
         }
         rightPane={
           <div style={{ display: "grid", gap: "16px" }}>
@@ -1451,7 +1481,7 @@ export function App() {
           </div>
         }
       >
-        <div style={{ display: "grid", gridTemplateRows: "auto minmax(0, 1fr) auto", gap: "14px" }}>
+        <div data-testid="workspace-center-stack" style={workspaceCenterStackStyle}>
           <PlaybackTransportDeck
             currentTimeSeconds={currentPlaybackTimeSeconds}
             isPreparing={isPreparing}

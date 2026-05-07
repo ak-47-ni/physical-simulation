@@ -29,12 +29,16 @@ const containerStyle: CSSProperties = {
 };
 
 const compactContainerStyle: CSSProperties = {
-  ...containerStyle,
-  gap: "8px",
-  padding: "10px 12px",
-  width: "min(100%, 560px)",
-  maxWidth: "560px",
-  alignSelf: "start",
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "nowrap",
+  rowGap: "4px",
+  columnGap: "12px",
+  padding: 0,
+  border: "none",
+  background: "transparent",
+  width: "auto",
+  minWidth: 0,
 };
 
 const rowStyle: CSSProperties = {
@@ -48,7 +52,36 @@ const rowStyle: CSSProperties = {
 const compactRowStyle: CSSProperties = {
   ...rowStyle,
   justifyContent: "flex-start",
-  gap: "12px",
+  gap: 0,
+  columnGap: "8px",
+  rowGap: "4px",
+  flexWrap: "nowrap",
+};
+
+const compactReadoutStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "nowrap",
+  columnGap: "8px",
+  rowGap: "4px",
+  whiteSpace: "nowrap",
+};
+
+const compactTimelineControlsStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "nowrap",
+  columnGap: "8px",
+  rowGap: "4px",
+  minWidth: 0,
+};
+
+const compactJumpLabelStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "nowrap",
+  columnGap: "6px",
+  whiteSpace: "nowrap",
 };
 
 const inputStyle: CSSProperties = {
@@ -125,7 +158,7 @@ export function TransportTimeline(props: TransportTimelineProps) {
       data-testid={isCompactLayout ? "transport-timeline-compact" : undefined}
       style={isCompactLayout ? compactContainerStyle : containerStyle}
     >
-      <div style={rowStyle}>
+      <div style={isCompactLayout ? compactReadoutStyle : rowStyle}>
         <strong style={{ color: "#17304f", fontSize: "13px" }}>
           {t("transport.timeline.readout", {
             current: formatSeconds(progress.currentTimeSeconds),
@@ -144,13 +177,16 @@ export function TransportTimeline(props: TransportTimelineProps) {
         ) : null}
       </div>
 
-      <div data-testid={isCompactLayout ? "transport-timeline-compact-row" : undefined}>
+      <div
+        data-testid={isCompactLayout ? "transport-timeline-compact-row" : undefined}
+        style={isCompactLayout ? compactTimelineControlsStyle : undefined}
+      >
         <input
           aria-label={t("transport.timeline.playbackTimeline")}
           max={progress.totalDurationSeconds}
           min={0}
           step={1 / 60}
-          style={{ width: "100%" }}
+          style={{ width: isCompactLayout ? "180px" : "100%" }}
           type="range"
           value={progress.currentTimeSeconds}
           disabled={!progress.canSeek}
@@ -170,7 +206,7 @@ export function TransportTimeline(props: TransportTimelineProps) {
         />
 
         <div style={isCompactLayout ? compactRowStyle : rowStyle}>
-          <label style={{ display: "grid", gap: "4px" }}>
+          <label style={isCompactLayout ? compactJumpLabelStyle : { display: "grid", gap: "4px" }}>
             <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
               {t("transport.timeline.jumpToTime")}
             </span>
@@ -179,7 +215,12 @@ export function TransportTimeline(props: TransportTimelineProps) {
               inputMode="decimal"
               min={0}
               step={1 / 60}
-              style={{ ...inputStyle, width: "120px" }}
+              style={{
+                ...inputStyle,
+                width: isCompactLayout ? "82px" : "120px",
+                padding: isCompactLayout ? "7px 9px" : inputStyle.padding,
+                fontSize: isCompactLayout ? "12px" : inputStyle.fontSize,
+              }}
               type="number"
               value={draftTime}
               disabled={!progress.canSeek}
@@ -197,11 +238,13 @@ export function TransportTimeline(props: TransportTimelineProps) {
             />
           </label>
 
-          <span style={hintStyle}>
-            {progress.canSeek
-              ? t("transport.timeline.dragHint")
-              : t("transport.timeline.seekLockedHint")}
-          </span>
+          {isCompactLayout ? null : (
+            <span style={hintStyle}>
+              {progress.canSeek
+                ? t("transport.timeline.dragHint")
+                : t("transport.timeline.seekLockedHint")}
+            </span>
+          )}
         </div>
       </div>
     </div>

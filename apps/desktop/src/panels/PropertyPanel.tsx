@@ -15,7 +15,6 @@ import {
   polarVelocityToCartesian,
 } from "../state/velocityPolar";
 import { MeasurementInput } from "./property/MeasurementInput";
-import { ScenePhysicsCard } from "./property/ScenePhysicsCard";
 
 type ConstraintPanelUpdate = {
   axis?: { x: number; y: number };
@@ -136,15 +135,6 @@ const actionButtonStyle: CSSProperties = {
   fontSize: "13px",
   fontWeight: 600,
   cursor: "pointer",
-};
-
-const semanticsNoteStyle: CSSProperties = {
-  display: "grid",
-  gap: "4px",
-  padding: "10px 12px",
-  borderRadius: "12px",
-  background: "#ffffff",
-  border: "1px solid rgba(108, 128, 173, 0.14)",
 };
 
 const collisionSemanticsHintStyle: CSSProperties = {
@@ -340,7 +330,6 @@ export function PropertyPanel(props: PropertyPanelProps) {
     onDeleteSelectedConstraint = () => undefined,
     onDeleteSelectedEntity,
     onDuplicateSelectedEntity,
-    onScenePhysicsChange = () => undefined,
     onUpdateDisplaySetting,
     onUpdateSelectedArcTrack = () => undefined,
     onUpdateSelectedConstraint = () => undefined,
@@ -359,7 +348,6 @@ export function PropertyPanel(props: PropertyPanelProps) {
   const velocityUnitLabel = scenePhysics?.velocityUnit ?? null;
   const massUnitLabel = scenePhysics?.massUnit ?? null;
   const selectionLockReason = authoringLocked ? authoringLockReason : null;
-  const scenePhysicsLockReason = scenePhysics?.lockReason ?? selectionLockReason;
   const selectedVelocityPolar = selectedEntity
     ? selectedEntity.kind === "arc-track"
       ? null
@@ -374,27 +362,6 @@ export function PropertyPanel(props: PropertyPanelProps) {
 
   return (
     <div style={{ display: "grid", gap: "16px" }}>
-      {scenePhysics ? (
-        <ScenePhysicsCard
-          disabled={authoringLocked}
-          gravity={scenePhysics.gravity}
-          gravityUnitLabel={scenePhysics.gravityUnitLabel}
-          lengthUnit={scenePhysics.lengthUnit}
-          lengthUnitOptions={scenePhysics.lengthUnitOptions}
-          lockReason={scenePhysicsLockReason}
-          massUnit={scenePhysics.massUnit}
-          massUnitOptions={scenePhysics.massUnitOptions}
-          pixelsPerMeter={scenePhysics.pixelsPerMeter}
-          velocityUnit={scenePhysics.velocityUnit}
-          velocityUnitOptions={scenePhysics.velocityUnitOptions}
-          onGravityChange={(gravity) => onScenePhysicsChange({ gravity })}
-          onLengthUnitChange={(lengthUnit) => onScenePhysicsChange({ lengthUnit })}
-          onMassUnitChange={(massUnit) => onScenePhysicsChange({ massUnit })}
-          onPixelsPerMeterChange={(pixelsPerMeter) => onScenePhysicsChange({ pixelsPerMeter })}
-          onVelocityUnitChange={(velocityUnit) => onScenePhysicsChange({ velocityUnit })}
-        />
-      ) : null}
-
       {pendingConstraintPlacement?.kind === "arc-track" &&
       pendingConstraintPlacement.stage === "pick-span" ? (
         <section style={cardStyle}>
@@ -430,14 +397,6 @@ export function PropertyPanel(props: PropertyPanelProps) {
 
       <section style={cardStyle}>
         <h2 style={sectionLabelStyle}>{t("property.selection.title")}</h2>
-        <div style={semanticsNoteStyle}>
-          <span style={{ color: "#17304f", fontSize: "13px", fontWeight: 600 }}>
-            {t("property.selection.contactSemanticsTitle")}
-          </span>
-          <span style={{ color: "#5d6f88", fontSize: "13px" }}>
-            {t("property.selection.contactSemanticsSubtitle")}
-          </span>
-        </div>
         {selectionLockReason ? (
           <span style={{ color: "#9a3412", fontSize: "13px", lineHeight: 1.5 }}>
             {localizeSystemCopy(selectionLockReason, t)}
@@ -678,14 +637,6 @@ export function PropertyPanel(props: PropertyPanelProps) {
                       : translateEndpoint(selectedEntity.entryEndpoint, t)
                   }
                 />
-                <div style={semanticsNoteStyle}>
-                  <span style={{ color: "#17304f", fontSize: "13px", fontWeight: 600 }}>
-                    {t("property.arcTrack.rigidShellTitle")}
-                  </span>
-                  <span style={{ color: "#5d6f88", fontSize: "13px", lineHeight: 1.5 }}>
-                    {t("property.arcTrack.rigidShellDescription")}
-                  </span>
-                </div>
                 <div
                   style={{
                     display: "grid",

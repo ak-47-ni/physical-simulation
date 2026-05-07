@@ -157,8 +157,11 @@ impl RuntimeScene {
     pub fn step(&mut self) -> RuntimeFramePayload {
         self.guide_reattach_blocked_until_frame_by_body_id
             .retain(|_, blocked_until_frame| *blocked_until_frame >= self.frame_number);
-        let substep_count =
-            contact_substeps::recommended_substep_count(&self.bodies, self.fixed_delta_seconds);
+        let substep_count = contact_substeps::recommended_substep_count(
+            &self.bodies,
+            &self.constraints,
+            self.fixed_delta_seconds,
+        );
         let substep_delta_seconds = self.fixed_delta_seconds / substep_count as f64;
         let mut arc_track_handoff_paused_body_ids = HashSet::new();
         let mut guide_handoff_paused_body_ids = HashSet::new();

@@ -51,12 +51,12 @@ function renderDeck() {
 }
 
 describe("PlaybackTransportDeck", () => {
-  it("renders a calculate-first compact transport with progress controls in a second row", () => {
+  it("renders calculate-first controls and progress in one compact row", () => {
     renderDeck();
 
     const deck = within(screen.getByTestId("playback-transport-deck"));
     const topRow = within(deck.getByTestId("transport-compact-row"));
-    const progressRow = within(deck.getByTestId("transport-timeline-compact"));
+    const progressRow = within(topRow.getByTestId("transport-timeline-compact"));
 
     expect(topRow.queryByRole("combobox", { name: /playback mode/i })).toBeNull();
     expect(topRow.getByRole("button", { name: /calculate/i })).toBeDefined();
@@ -64,12 +64,14 @@ describe("PlaybackTransportDeck", () => {
     expect(topRow.getByRole("button", { name: /step/i })).toBeDefined();
     expect(topRow.getByRole("button", { name: /reset/i })).toBeDefined();
     expect(topRow.getByRole("combobox", { name: /speed/i })).toBeDefined();
+    expect(topRow.getByTestId("transport-timeline-compact")).toBeDefined();
     expect(progressRow.getByRole("slider", { name: /playback timeline/i })).toBeDefined();
     expect(progressRow.getByLabelText("Jump to time")).toBeDefined();
     expect((progressRow.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
       true,
     );
     expect((progressRow.getByLabelText("Jump to time") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByTestId("runtime-status-banner")).toBeNull();
   });
 
   it("marks the progress row as left aligned and hides realtime helper copy", () => {

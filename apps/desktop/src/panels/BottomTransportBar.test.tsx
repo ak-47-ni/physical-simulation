@@ -119,6 +119,32 @@ describe("BottomTransportBar", () => {
     expect(screen.queryByText(/realtime cap/i)).toBeNull();
   });
 
+  it("lets the bottom transport container stretch and shrink with its parent width", () => {
+    render(
+      <CompactBottomTransportBar
+        layout="compact"
+        runtime={createRuntimeView({
+          status: "paused",
+          currentTimeSeconds: 3,
+        })}
+        onPause={() => undefined}
+        onReset={() => undefined}
+        onStart={() => undefined}
+        onStep={() => undefined}
+        onTimeScaleChange={() => undefined}
+      />,
+    );
+
+    const transportBar = screen.getByTestId("bottom-transport-bar") as HTMLElement;
+
+    expect(transportBar.style.width).toBe("100%");
+    expect(transportBar.style.maxWidth).toBe("100%");
+    expect(transportBar.style.minWidth).toBe("0");
+    expect(transportBar.style.flex).toBe("1 1 auto");
+    expect(transportBar.style.alignSelf).toBe("stretch");
+    expect(transportBar.style.boxSizing).toBe("border-box");
+  });
+
   it("routes calculate-first transport actions, duration changes, and speed changes through the provided callbacks", () => {
     const calls: string[] = [];
 

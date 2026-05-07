@@ -123,9 +123,9 @@ describe("PropertyPanel", () => {
     );
 
     expect(
-      screen.getByText("Rigid-body contact follows body boundaries. Fill stays visual only."),
-    ).toBeDefined();
-    expect(screen.getByText("Springs are the only stretch-like exception.")).toBeDefined();
+      screen.queryByText("Rigid-body contact follows body boundaries. Fill stays visual only."),
+    ).toBeNull();
+    expect(screen.queryByText("Springs are the only stretch-like exception.")).toBeNull();
 
     fireEvent.change(screen.getByLabelText("Entity name"), { target: { value: "Projectile" } });
     fireEvent.change(screen.getByLabelText("Position X"), { target: { value: "164" } });
@@ -662,12 +662,12 @@ describe("PropertyPanel", () => {
     expect(screen.getByText("board:board-1 (start)")).toBeDefined();
     expect(screen.getByText("Entry endpoint")).toBeDefined();
     expect(screen.getByText("start")).toBeDefined();
-    expect(screen.getByText("Rigid rail shell")).toBeDefined();
+    expect(screen.queryByText("Rigid rail shell")).toBeNull();
     expect(
-      screen.getByText(
+      screen.queryByText(
         "Balls slide along the rail path while the curved shell still defines the real boundary.",
       ),
-    ).toBeDefined();
+    ).toBeNull();
     expect((screen.getByLabelText("Radius") as HTMLInputElement).value).toBe("1.2");
     expect((screen.getByLabelText("Sweep angle") as HTMLInputElement).value).toBe("135");
     expect((screen.getByLabelText("Rotation") as HTMLInputElement).value).toBe("20");
@@ -687,7 +687,7 @@ describe("PropertyPanel", () => {
     ]);
   });
 
-  it("renders scene physics controls and unit-aware readouts for the selected entity", () => {
+  it("renders unit-aware readouts without owning scene physics controls", () => {
     render(
       <PropertyPanel
         display={createSceneDisplaySettings()}
@@ -729,17 +729,19 @@ describe("PropertyPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Scene physics")).toBeDefined();
+    expect(screen.queryByText("Scene physics")).toBeNull();
     expect(screen.getByText("132 m, 176 m")).toBeDefined();
     expect(screen.getByText("4 m/s, -2 m/s")).toBeDefined();
     expect(screen.getByText("1.2 kg")).toBeDefined();
-    expect(screen.getByText("m/s²")).toBeDefined();
+    expect(screen.queryByText("m/s²")).toBeNull();
+    expect(screen.queryByLabelText("Gravity")).toBeNull();
+    expect(screen.queryByLabelText("Pixels per meter")).toBeNull();
     expect(screen.getAllByText("m").length).toBeGreaterThan(0);
     expect(screen.getAllByText("kg").length).toBeGreaterThan(0);
     expect(screen.getAllByText("m/s").length).toBeGreaterThan(0);
   });
 
-  it("disables property and scene physics inputs while authoring is locked but keeps actions visible", () => {
+  it("disables property inputs while authoring is locked but keeps actions visible", () => {
     render(
       <PropertyPanel
         authoringLocked
@@ -789,9 +791,10 @@ describe("PropertyPanel", () => {
     expect((screen.getByLabelText("Radius") as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByLabelText("Mass") as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByLabelText("Velocity X") as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByLabelText("Gravity") as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByLabelText("Length unit") as HTMLSelectElement).disabled).toBe(true);
-    expect((screen.getByLabelText("Pixels per meter") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByText("Scene physics is locked while runtime is playing.")).toBeNull();
+    expect(screen.queryByLabelText("Gravity")).toBeNull();
+    expect(screen.queryByLabelText("Length unit")).toBeNull();
+    expect(screen.queryByLabelText("Pixels per meter")).toBeNull();
     expect(screen.getByRole("button", { name: /duplicate entity/i })).toBeDefined();
     expect(screen.getByRole("button", { name: /delete entity/i })).toBeDefined();
   });

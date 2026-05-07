@@ -73,6 +73,48 @@ function expectArcTrackGuidePath(pathTestId: string) {
 }
 
 describe("WorkspaceCanvas", () => {
+  it("keeps the workspace stage at a fixed authoring height when the scene is empty", () => {
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        entities={[]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={createInitialEditorState()}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    const stage = screen.getByTestId("workspace-stage") as HTMLElement;
+
+    expect(stage.style.height).toBe("928px");
+    expect(stage.style.flexShrink).toBe("0");
+  });
+
+  it("keeps the canvas content-sized so the fixed stage does not leave bottom whitespace", () => {
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        entities={[createBallEntityPx()]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={createInitialEditorState()}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    const canvas = screen.getByTestId("workspace-canvas") as HTMLElement;
+
+    expect(canvas.style.gridTemplateRows).toBe("auto auto");
+    expect(canvas.style.alignContent).toBe("start");
+    expect(canvas.style.alignSelf).toBe("start");
+    expect(canvas.style.minHeight).not.toBe("100%");
+  });
+
   it("mounts the center canvas and renders mock scene entities by id", () => {
     const state = createInitialEditorState();
 
@@ -217,8 +259,8 @@ describe("WorkspaceCanvas", () => {
     expect(board.getAttribute("data-locked")).toBe("true");
     expect(screen.getByTestId("scene-entity-lock-board-1")).toBeDefined();
     expect(
-      screen.getByText("Rigid contacts follow body boundaries. Fill shows shape only."),
-    ).toBeDefined();
+      screen.queryByText("Rigid contacts follow body boundaries. Fill shows shape only."),
+    ).toBeNull();
   });
 
   it("shows no lock marker for movable entities", () => {

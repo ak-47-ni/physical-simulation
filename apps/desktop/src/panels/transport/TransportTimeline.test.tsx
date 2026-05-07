@@ -146,7 +146,11 @@ describe("TransportTimeline", () => {
       />,
     );
 
-    expect(screen.getByTestId("transport-timeline-compact")).toBeDefined();
-    expect(screen.getByTestId("transport-timeline-compact-row")).toBeDefined();
+    const compactTimeline = screen.getByTestId("transport-timeline-compact") as HTMLElement;
+    const compactRow = screen.getByTestId("transport-timeline-compact-row") as HTMLElement;
+
+    expect(compactTimeline.style.display).toBe("flex");
+    expect(compactTimeline.style.flexWrap).toBe("nowrap");
+    expect(compactRow.style.display).toBe("flex");
   });
 });

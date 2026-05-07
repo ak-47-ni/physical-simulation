@@ -25,8 +25,9 @@ type PlaybackTransportDeckProps = {
 };
 
 const deckStyle: CSSProperties = {
-  display: "grid",
-  gap: "12px",
+  display: "flex",
+  alignItems: "center",
+  width: "100%",
 };
 
 export function PlaybackTransportDeck(props: PlaybackTransportDeckProps) {
@@ -64,6 +65,7 @@ export function PlaybackTransportDeck(props: PlaybackTransportDeckProps) {
     <section data-testid="playback-transport-deck" style={deckStyle}>
       <BottomTransportBar
         layout="compact"
+        showStatusBanner={false}
         playbackSettings={{
           mode,
           precomputeDurationSeconds,

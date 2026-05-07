@@ -140,12 +140,16 @@ describe("App runtime features", () => {
   it("mounts scene physics controls with SI defaults and classroom world scale", () => {
     render(<App />);
 
-    expect((screen.getByLabelText("Gravity") as HTMLInputElement).value).toBe("9.8");
-    expect(screen.getByText("m/s²")).toBeDefined();
-    expect((screen.getByLabelText("Length unit") as HTMLSelectElement).value).toBe("m");
-    expect((screen.getByLabelText("Velocity unit") as HTMLSelectElement).value).toBe("m/s");
-    expect((screen.getByLabelText("Mass unit") as HTMLSelectElement).value).toBe("kg");
-    expect((screen.getByLabelText("Pixels per meter") as HTMLInputElement).value).toBe("100");
+    const leftPane = within(screen.getByTestId("shell-left-pane"));
+    const rightPane = within(screen.getByTestId("shell-right-pane"));
+
+    expect((leftPane.getByLabelText("Gravity") as HTMLInputElement).value).toBe("9.8");
+    expect(leftPane.getByText("m/s²")).toBeDefined();
+    expect((leftPane.getByLabelText("Length unit") as HTMLSelectElement).value).toBe("m");
+    expect((leftPane.getByLabelText("Velocity unit") as HTMLSelectElement).value).toBe("m/s");
+    expect((leftPane.getByLabelText("Mass unit") as HTMLSelectElement).value).toBe("kg");
+    expect((leftPane.getByLabelText("Pixels per meter") as HTMLInputElement).value).toBe("100");
+    expect(rightPane.queryByText("Scene physics")).toBeNull();
   });
 
   it("mounts the transport bar, analysis panel, and annotation layer into the desktop shell", () => {
@@ -511,7 +515,10 @@ describe("App runtime features", () => {
 
     const centerPane = screen.getByTestId("shell-center-pane");
     const bottomPane = screen.getByTestId("shell-bottom-pane");
+    const centerStack = within(centerPane).getByTestId("workspace-center-stack") as HTMLElement;
 
+    expect(centerStack.style.gridTemplateRows).toBe("auto auto auto");
+    expect(centerStack.style.alignContent).toBe("start");
     expect(within(centerPane).getByTestId("playback-transport-deck")).toBeDefined();
     expect(within(centerPane).getByTestId("workspace-canvas")).toBeDefined();
     expect(within(centerPane).getByTestId("annotation-layer")).toBeDefined();
@@ -540,21 +547,7 @@ describe("App runtime features", () => {
     fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
     fireEvent.click(getTransportHarness().transport.getByRole("button", { name: /^calculate$/i }));
 
-    await waitFor(() => {
-      expect(
-        (
-          within(screen.getByTestId("bottom-transport-bar")).getByRole("button", {
-            name: "Calculating…",
-          }) as HTMLButtonElement
-        ).disabled,
-      ).toBe(true);
-      expect(screen.getByTestId("runtime-status-banner").textContent).toContain(
-        "Calculating the result.",
-      );
-      expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
-        true,
-      );
-    });
+    expect(screen.queryByTestId("runtime-status-banner")).toBeNull();
 
     await waitFor(() => {
       expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(

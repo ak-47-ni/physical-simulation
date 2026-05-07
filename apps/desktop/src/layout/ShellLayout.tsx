@@ -32,7 +32,8 @@ const topBarStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
-  padding: "18px 22px",
+  gap: "16px",
+  padding: "10px 18px",
   borderRadius: "18px",
   background: "rgba(255, 255, 255, 0.84)",
   border: "1px solid rgba(108, 128, 173, 0.2)",
@@ -59,8 +60,10 @@ const panelHeaderStyle: CSSProperties = {
 
 const centerPaneStyle: CSSProperties = {
   ...panelStyle,
+  alignContent: "start",
+  alignSelf: "start",
   display: "grid",
-  gridTemplateRows: "1fr",
+  gridTemplateRows: "auto",
   minHeight: "520px",
   background:
     "linear-gradient(180deg, rgba(255,255,255,0.9), rgba(245,248,253,0.96))",
@@ -101,12 +104,28 @@ const buttonStyle: CSSProperties = {
   cursor: "pointer",
 };
 
-const topBarMetaRowStyle: CSSProperties = {
+const topBarBrandRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: "10px",
-  marginTop: "6px",
+  gap: "10px 12px",
   flexWrap: "wrap",
+  minWidth: 0,
+};
+
+const productNameStyle: CSSProperties = {
+  color: "#64748b",
+  fontSize: "12px",
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  whiteSpace: "nowrap",
+};
+
+const titleStyle: CSSProperties = {
+  margin: 0,
+  color: "#142033",
+  fontSize: "22px",
+  lineHeight: 1.1,
+  whiteSpace: "nowrap",
 };
 
 const versionBadgeStyle: CSSProperties = {
@@ -121,9 +140,9 @@ const versionBadgeStyle: CSSProperties = {
 };
 
 const subtitleStyle: CSSProperties = {
-  marginTop: "4px",
   color: "#516276",
   fontSize: "13px",
+  whiteSpace: "nowrap",
 };
 
 const actionGroupStyle: CSSProperties = {
@@ -270,7 +289,7 @@ export function ShellLayout(props: ShellLayoutProps) {
 
   const shellStyle: CSSProperties = {
     display: "grid",
-    gridTemplateRows: `72px minmax(0, 1fr) 10px ${bottomPaneSize}px`,
+    gridTemplateRows: `auto minmax(0, 1fr) 10px ${bottomPaneSize}px`,
     gap: "14px",
     minHeight: "calc(100vh - 40px)",
   };
@@ -294,17 +313,13 @@ export function ShellLayout(props: ShellLayoutProps) {
     <div style={appFrameStyle}>
       <div style={shellStyle}>
         <header style={topBarStyle}>
-          <div>
-            <div style={{ fontSize: "13px", letterSpacing: "0.08em", textTransform: "uppercase", color: "#64748b" }}>
-              {desktopAppName}
-            </div>
-            <div style={topBarMetaRowStyle}>
-              <h1 style={{ margin: 0, fontSize: "24px" }}>{t("shell.title")}</h1>
-              <span data-testid="shell-version" style={versionBadgeStyle}>
-                {t("shell.version", { version: desktopAppVersion })}
-              </span>
-            </div>
-            <div style={subtitleStyle}>{t("shell.subtitle")}</div>
+          <div data-testid="shell-brand-row" style={topBarBrandRowStyle}>
+            <span style={productNameStyle}>{desktopAppName.toUpperCase()}</span>
+            <h1 style={titleStyle}>{t("shell.title")}</h1>
+            <span data-testid="shell-version" style={versionBadgeStyle}>
+              {t("shell.version", { version: desktopAppVersion })}
+            </span>
+            <span style={subtitleStyle}>{t("shell.subtitle")}</span>
           </div>
           <div style={actionGroupStyle}>
             <button data-testid="shell-reset-layout" style={buttonStyle} type="button" onClick={resetLayout}>

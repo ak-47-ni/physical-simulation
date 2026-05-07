@@ -140,6 +140,8 @@ type ProjectedPlacementPreview = {
   status: WorkspaceCanvasAuthoringPlacementStatus;
 };
 
+const WORKSPACE_STAGE_FIXED_HEIGHT_PX = 928;
+
 const toolbarStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
@@ -1435,9 +1437,10 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       data-testid="workspace-canvas"
       data-tool={state.activeTool}
       style={{
+        alignContent: "start",
+        alignSelf: "start",
         display: "grid",
-        gridTemplateRows: "auto 1fr",
-        minHeight: "100%",
+        gridTemplateRows: "auto auto",
       }}
     >
       <div style={toolbarStyle}>
@@ -1458,12 +1461,6 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             </>
           ) : null}
         </div>
-        <span
-          data-testid="workspace-rigid-boundary-note"
-          style={{ color: "#516276", fontSize: "13px", textAlign: "right" }}
-        >
-          {t("workspace.rigidBoundaryNote")}
-        </span>
       </div>
 
       <div
@@ -1471,6 +1468,9 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
         style={{
           position: "relative",
           overflow: "hidden",
+          flexShrink: 0,
+          height: `${WORKSPACE_STAGE_FIXED_HEIGHT_PX}px`,
+          minHeight: `${WORKSPACE_STAGE_FIXED_HEIGHT_PX}px`,
           backgroundColor: "#f4f7fb",
           backgroundImage: display.gridVisible
             ? "linear-gradient(0deg, rgba(170, 185, 215, 0.16) 1px, transparent 1px), linear-gradient(90deg, rgba(170, 185, 215, 0.16) 1px, transparent 1px), linear-gradient(180deg, rgba(255,255,255,0.6), rgba(240,244,252,0.92))"

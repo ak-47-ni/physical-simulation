@@ -46,6 +46,7 @@ type BottomTransportBarProps = {
   runtime: BottomTransportRuntimeView;
   playbackSettings?: BottomTransportPlaybackSettings;
   showPlaybackControls?: boolean;
+  showStatusBanner?: boolean;
   onStart: () => void;
   onPause: () => void;
   onStep: () => void;
@@ -57,9 +58,25 @@ type BottomTransportBarProps = {
   timeScalePresets?: readonly number[];
 };
 
+const adaptiveTransportBarStyle: CSSProperties = {
+  alignSelf: "stretch",
+  boxSizing: "border-box",
+  flex: "1 1 auto",
+  width: "100%",
+  maxWidth: "100%",
+  minWidth: 0,
+};
+
 const cardStyle: CSSProperties = {
+  ...adaptiveTransportBarStyle,
   display: "grid",
   gap: "12px",
+};
+
+const compactCardStyle: CSSProperties = {
+  ...adaptiveTransportBarStyle,
+  display: "flex",
+  alignItems: "center",
 };
 
 const rowStyle: CSSProperties = {
@@ -71,8 +88,14 @@ const rowStyle: CSSProperties = {
 };
 
 const compactRowStyle: CSSProperties = {
-  ...rowStyle,
+  display: "flex",
   alignItems: "end",
+  justifyContent: "flex-start",
+  flexWrap: "nowrap",
+  gap: "8px",
+  width: "100%",
+  minWidth: 0,
+  overflowX: "auto",
 };
 
 const fieldGroupStyle: CSSProperties = {
@@ -82,11 +105,24 @@ const fieldGroupStyle: CSSProperties = {
   alignItems: "end",
 };
 
+const compactFieldGroupStyle: CSSProperties = {
+  display: "flex",
+  gap: "8px",
+  flexWrap: "nowrap",
+  alignItems: "end",
+  minWidth: 0,
+};
+
 const buttonGroupStyle: CSSProperties = {
   display: "flex",
   gap: "8px",
   flexWrap: "wrap",
   alignItems: "center",
+};
+
+const compactButtonGroupStyle: CSSProperties = {
+  ...buttonGroupStyle,
+  flexWrap: "nowrap",
 };
 
 const buttonStyle: CSSProperties = {
@@ -108,6 +144,13 @@ const compactButtonStyle: CSSProperties = {
 const fieldStyle: CSSProperties = {
   display: "grid",
   gap: "4px",
+};
+
+const compactFieldStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  whiteSpace: "nowrap",
 };
 
 const inputStyle: CSSProperties = {
@@ -240,6 +283,7 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
   const layout = props.layout ?? "default";
   const isCompactLayout = layout === "compact";
   const showPlaybackControls = props.showPlaybackControls ?? true;
+  const showStatusBanner = props.showStatusBanner ?? true;
   const playbackSettings = props.playbackSettings ?? createFallbackPlaybackSettings(runtime);
   const timeScalePresets = props.timeScalePresets ?? DEFAULT_TIME_SCALE_PRESETS;
   const hasCalculatedResult = runtime.playbackMode === "precomputed" && runtime.canSeek;
@@ -279,8 +323,10 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
     </strong>
   );
 
+  const compactBannerVisible = showStatusBanner && shouldShowCompactBanner(runtime);
+
   const transportButtons = (
-    <div style={buttonGroupStyle}>
+    <div style={isCompactLayout ? compactButtonGroupStyle : buttonGroupStyle}>
       <button
         type="button"
         style={isCompactLayout ? compactButtonStyle : buttonStyle}
@@ -328,9 +374,9 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
   );
 
   const playbackFields = showPlaybackControls ? (
-    <div style={fieldGroupStyle}>
+    <div style={isCompactLayout ? compactFieldGroupStyle : fieldGroupStyle}>
       {playbackSettings.mode === "precomputed" ? (
-        <label style={fieldStyle}>
+        <label style={isCompactLayout ? compactFieldStyle : fieldStyle}>
           <span style={{ color: "#17304f", fontSize: "12px", fontWeight: 600 }}>
             {t("transport.field.precomputeDuration")}
           </span>
@@ -376,34 +422,34 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
 
   if (isCompactLayout) {
     return (
-      <div data-testid="bottom-transport-bar" style={cardStyle}>
-        {shouldShowCompactBanner(runtime) ? <RuntimeStatusBanner runtime={runtime} /> : null}
+      <div
+        data-testid="bottom-transport-bar"
+        style={compactBannerVisible ? cardStyle : compactCardStyle}
+      >
+        {compactBannerVisible ? <RuntimeStatusBanner runtime={runtime} /> : null}
 
         {showPlaybackControls ? (
-          <>
-            <div data-testid="transport-compact-row" style={compactRowStyle}>
-              {playbackFields}
-              <div style={{ ...fieldGroupStyle, marginLeft: "auto" }}>
-                {transportButtons}
-                {preparingProgressLabel ? (
-                  <span
-                    aria-live="polite"
-                    data-testid="transport-compact-preparing-badge"
-                    style={compactPreparingBadgeStyle}
-                  >
-                    {preparingProgressLabel}
-                  </span>
-                ) : null}
-                {speedField}
-                {currentTimeReadout}
-              </div>
+          <div data-testid="transport-compact-row" style={compactRowStyle}>
+            {playbackFields}
+            <div style={compactFieldGroupStyle}>
+              {transportButtons}
+              {preparingProgressLabel ? (
+                <span
+                  aria-live="polite"
+                  data-testid="transport-compact-preparing-badge"
+                  style={compactPreparingBadgeStyle}
+                >
+                  {preparingProgressLabel}
+                </span>
+              ) : null}
+              {speedField}
+              {currentTimeReadout}
             </div>
-
             <TransportTimeline layout="compact" progress={timelineProgress} onSeek={onSeek} />
-          </>
+          </div>
         ) : (
           <div data-testid="transport-compact-row" style={compactRowStyle}>
-            <div style={fieldGroupStyle}>
+            <div style={compactFieldGroupStyle}>
               {transportButtons}
               {speedField}
             </div>
