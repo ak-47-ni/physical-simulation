@@ -7,3 +7,4 @@ target
 worktrees/
 .coordination/
 apps/desktop/src-tauri/gen/
+.desktop-vite.log
