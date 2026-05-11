@@ -28,7 +28,7 @@ import {
   type EditorSceneEntity,
 } from "./editorStore";
 
-export const DEFAULT_SCENE_GRAVITY: Vector2 = { x: 0, y: 9.8 };
+export const DEFAULT_SCENE_GRAVITY: Vector2 = { x: 0, y: 10 };
 export const DEFAULT_GRAVITY_SOURCE_ID = "gravity-primary";
 const DEFAULT_ANALYZER_ID = "traj-primary";
 const DEFAULT_EDITOR_ARC_TRACK_THICKNESS = 0.18;

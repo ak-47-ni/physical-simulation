@@ -168,7 +168,7 @@ describe("editorSceneDocument", () => {
     ]);
     expect(scene.forceSources).toEqual([
       {
-        acceleration: { x: 0, y: 9.8 },
+        acceleration: { x: 0, y: 10 },
         id: "gravity-primary",
         kind: "gravity",
       },
@@ -291,7 +291,7 @@ describe("editorSceneDocument", () => {
     expect(restored.entities).toEqual([
       expect.objectContaining({
         id: "ball-legacy",
-        mass: 1.2,
+        mass: 1,
         friction: 0,
         restitution: 1,
         locked: false,
@@ -330,7 +330,7 @@ describe("editorSceneDocument", () => {
 
     expect(converted.settings).toEqual(
       createSceneAuthoringSettings({
-        gravity: 980,
+        gravity: 1000,
         lengthUnit: "cm",
         velocityUnit: "cm/s",
         massUnit: "g",
@@ -345,7 +345,7 @@ describe("editorSceneDocument", () => {
         x: 13200,
         y: 17600,
         radius: 2400,
-        mass: 1200,
+        mass: 1000,
         friction: 0,
         restitution: 1,
         locked: false,

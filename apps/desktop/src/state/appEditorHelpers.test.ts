@@ -14,6 +14,10 @@ describe("appEditorHelpers", () => {
     expect(board?.locked).toBe(true);
   });
 
+  it("starts the authoring scene with the classroom gravity default", () => {
+    expect(createInitialAuthoringState().settings.gravity).toBe(10);
+  });
+
   it("starts arc-track placement on the locked-board picking step with empty draft fields", () => {
     expect(createConstraintPlacementState("arc-track")).toEqual({
       anchorEntityId: null,

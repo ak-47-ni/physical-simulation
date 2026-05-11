@@ -1,6 +1,15 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { desktopAppVersion } from "./app-meta";
+import { createInitialAuthoringState } from "./state/appEditorHelpers";
+import { createSceneDocumentFromEditorState } from "./state/editorSceneDocument";
+import { createSceneDisplaySettings, parseSceneFile } from "./io/sceneFile";
+import {
+  parseRuntimeResultFile,
+  serializeRuntimeResultFile,
+} from "./io/resultFile";
+
 const workspaceCanvasSpy = vi.hoisted(() => ({
   latestProps: null as null | Record<string, unknown>,
 }));
@@ -100,11 +109,76 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function installDownloadSpy() {
+  let latestBlob: Blob | null = null;
+  const originalCreateObjectUrl = URL.createObjectURL;
+  const originalRevokeObjectUrl = URL.revokeObjectURL;
+  const originalAnchorClick = HTMLAnchorElement.prototype.click;
+
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: vi.fn((blob: Blob) => {
+      latestBlob = blob;
+      return "blob:physics-sandbox-test";
+    }),
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: vi.fn(),
+  });
+  Object.defineProperty(HTMLAnchorElement.prototype, "click", {
+    configurable: true,
+    value: vi.fn(),
+  });
+
+  return {
+    latestBlob() {
+      return latestBlob;
+    },
+    restore() {
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: originalCreateObjectUrl,
+      });
+      Object.defineProperty(URL, "revokeObjectURL", {
+        configurable: true,
+        value: originalRevokeObjectUrl,
+      });
+      Object.defineProperty(HTMLAnchorElement.prototype, "click", {
+        configurable: true,
+        value: originalAnchorClick,
+      });
+    },
+  };
+}
+
+function readBlobText(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read blob."));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsText(blob);
+  });
+}
+
 function getTransportHarness() {
   const transport = within(screen.getByTestId("bottom-transport-bar"));
   const topRow = within(screen.getByTestId("transport-compact-row"));
 
   return { topRow, transport };
+}
+
+function openInspectorTab(name: RegExp | string) {
+  fireEvent.click(screen.getByRole("tab", { name }));
+}
+
+function expectVisibleInspectorPanel(panelId: string) {
+  for (const id of ["selection", "display", "scene-tree", "scene-physics"]) {
+    const panel = screen.getByTestId(`inspector-panel-${id}`) as HTMLElement;
+
+    expect(panel.style.display).toBe(id === panelId ? "block" : "none");
+  }
 }
 
 async function calculateResult(durationSeconds = 1) {
@@ -137,19 +211,141 @@ async function rewindCalculatedResult() {
 }
 
 describe("App runtime features", () => {
-  it("mounts scene physics controls with SI defaults and classroom world scale", () => {
+  it("exports scene files and enables result export after cached calculation is ready", async () => {
+    const downloadSpy = installDownloadSpy();
+
+    try {
+      render(<App />);
+
+      expect(screen.getByRole("button", { name: /^import$/i })).toBeDefined();
+      expect(screen.getByRole("button", { name: /^export scene$/i })).toBeDefined();
+      expect(
+        (screen.getByRole("button", { name: /^export result$/i }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+
+      fireEvent.click(screen.getByRole("button", { name: /^export scene$/i }));
+
+      const sceneBlob = downloadSpy.latestBlob();
+      expect(sceneBlob).not.toBeNull();
+      expect(parseSceneFile(await readBlobText(sceneBlob!)).format).toBe("physics-sandbox-scene");
+
+      await calculateResult(1);
+
+      const exportResultButton = screen.getByRole("button", { name: /^export result$/i });
+      expect((exportResultButton as HTMLButtonElement).disabled).toBe(false);
+
+      fireEvent.click(exportResultButton);
+
+      const resultBlob = downloadSpy.latestBlob();
+      expect(resultBlob).not.toBeNull();
+
+      const parsed = parseRuntimeResultFile(await readBlobText(resultBlob!));
+
+      expect(parsed.appVersion).toBe(desktopAppVersion);
+      expect(parsed.runtime.precomputeDurationSeconds).toBe(1);
+      expect(parsed.runtime.stepSeconds).toBe(1 / 60);
+      expect(parsed.runtime.frames.length).toBeGreaterThan(1);
+      expect(parsed.scene.entities.length).toBeGreaterThan(0);
+    } finally {
+      downloadSpy.restore();
+    }
+  });
+
+  it("imports a runtime result file and restores calculated playback without recalculating", async () => {
+    const authoringState = createInitialAuthoringState();
+    const scene = createSceneDocumentFromEditorState({
+      constraints: authoringState.constraints,
+      entities: authoringState.entities,
+    });
+    const serialized = serializeRuntimeResultFile({
+      appVersion: desktopAppVersion,
+      authoring: authoringState.settings,
+      display: createSceneDisplaySettings({ showLabels: true }),
+      frames: [
+        {
+          frame: {
+            entities: [
+              {
+                id: "ball-1",
+                transform: { rotation: 0, x: 4.64, y: 2.44 },
+                velocity: { x: 0.5, y: 0 },
+              },
+            ],
+            frameNumber: 0,
+          },
+          timeSeconds: 0,
+        },
+        {
+          frame: {
+            entities: [
+              {
+                id: "ball-1",
+                transform: { rotation: 0, x: 4.66, y: 2.46 },
+                velocity: { x: 0.5, y: 0.2 },
+              },
+            ],
+            frameNumber: 1,
+          },
+          timeSeconds: 1 / 60,
+        },
+      ],
+      precomputeDurationSeconds: 1,
+      scene,
+      selectedConstraintId: null,
+      selectedEntityId: "ball-1",
+    });
+
+    render(<App />);
+
+    const input = screen.getByTestId("file-import-input") as HTMLInputElement;
+    const file = new File([serialized], "lesson-result.psresult.json", {
+      type: "application/json",
+    });
+
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect((screen.getByRole("slider", { name: /playback timeline/i }) as HTMLInputElement).disabled).toBe(
+        false,
+      );
+      const ball = screen.getByTestId("scene-entity-ball-1") as HTMLElement;
+      expect(ball.style.left).toBe("440px");
+      expect(ball.style.top).toBe("220px");
+      expect(screen.getByText("0.00 s")).toBeDefined();
+    });
+  });
+
+  it("moves scene physics into the inspector tab set with SI defaults and classroom world scale", () => {
     render(<App />);
 
     const leftPane = within(screen.getByTestId("shell-left-pane"));
     const rightPane = within(screen.getByTestId("shell-right-pane"));
+    const inspectorTabs = screen.getAllByRole("tab");
 
-    expect((leftPane.getByLabelText("Gravity") as HTMLInputElement).value).toBe("9.8");
-    expect(leftPane.getByText("m/s²")).toBeDefined();
-    expect((leftPane.getByLabelText("Length unit") as HTMLSelectElement).value).toBe("m");
-    expect((leftPane.getByLabelText("Velocity unit") as HTMLSelectElement).value).toBe("m/s");
-    expect((leftPane.getByLabelText("Mass unit") as HTMLSelectElement).value).toBe("kg");
-    expect((leftPane.getByLabelText("Pixels per meter") as HTMLInputElement).value).toBe("100");
-    expect(rightPane.queryByText("Scene physics")).toBeNull();
+    expect(inspectorTabs.map((tab) => tab.textContent)).toEqual([
+      "SELECTION",
+      "DISPLAY",
+      "SCENE TREE",
+      "SCENE PHYSICS",
+    ]);
+    expect(screen.getByRole("tab", { name: "SELECTION" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expect(leftPane.queryByLabelText("Gravity")).toBeNull();
+    expectVisibleInspectorPanel("selection");
+
+    openInspectorTab("SCENE PHYSICS");
+
+    expect(screen.getByRole("tab", { name: "SCENE PHYSICS" }).getAttribute("aria-selected")).toBe(
+      "true",
+    );
+    expectVisibleInspectorPanel("scene-physics");
+    expect((rightPane.getByLabelText("Gravity") as HTMLInputElement).value).toBe("10");
+    expect(rightPane.getByText("m/s²")).toBeDefined();
+    expect((rightPane.getByLabelText("Length unit") as HTMLSelectElement).value).toBe("m");
+    expect((rightPane.getByLabelText("Velocity unit") as HTMLSelectElement).value).toBe("m/s");
+    expect((rightPane.getByLabelText("Mass unit") as HTMLSelectElement).value).toBe("kg");
+    expect((rightPane.getByLabelText("Pixels per meter") as HTMLInputElement).value).toBe("100");
   });
 
   it("mounts the transport bar, analysis panel, and annotation layer into the desktop shell", () => {
@@ -204,19 +400,58 @@ describe("App runtime features", () => {
   it("syncs analysis overlay toggles back into app display state", () => {
     render(<App />);
 
-    expect((screen.getByLabelText("Show trajectories") as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByLabelText("Show trajectories")).toBeNull();
+    expect(screen.queryByTestId("trajectory-overlay")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /show trajectories/i }));
 
-    expect((screen.getByLabelText("Show trajectories") as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByTestId("trajectory-overlay")).toBeDefined();
   });
 
-  it("syncs annotation visibility through app state", () => {
+  it("locks workspace authoring while ink mode is active", () => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole("button", { name: /hide annotations/i }));
+    expect(
+      (workspaceCanvasSpy.latestProps as { authoringLocked?: boolean } | null)?.authoringLocked,
+    ).toBe(false);
 
-    expect(screen.getByTestId("annotation-layer").getAttribute("data-visible")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: /^ink$/i }));
+
+    expect(
+      (workspaceCanvasSpy.latestProps as { authoringLocked?: boolean } | null)?.authoringLocked,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: /cancel ink/i }));
+
+    expect(
+      (workspaceCanvasSpy.latestProps as { authoringLocked?: boolean } | null)?.authoringLocked,
+    ).toBe(false);
+  });
+
+  it("keeps the calculated runtime frame visible while drawing annotations", async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
+
+    let harness = await calculateResult();
+    harness = await rewindCalculatedResult();
+    fireEvent.click(harness.transport.getByRole("button", { name: /^step$/i }));
+
+    await waitFor(() => {
+      expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("133px");
+      expect(screen.getByText("0.02 s")).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^ink$/i }));
+    const surface = screen.getByTestId("annotation-layer-surface");
+    fireEvent.pointerDown(surface, { clientX: 10, clientY: 12 });
+    fireEvent.pointerMove(surface, { clientX: 30, clientY: 24 });
+    fireEvent.pointerUp(surface, { clientX: 30, clientY: 24 });
+
+    expect(screen.getByTestId("annotation-stroke-0")).toBeDefined();
+    expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("133px");
+    expect(screen.getByText("0.02 s")).toBeDefined();
   });
 
   it("shows runtime analysis guidance before samples and updates the summary after stepping", async () => {
@@ -367,6 +602,7 @@ describe("App runtime features", () => {
 
     expect(pausedTop).not.toBe("176px");
 
+    openInspectorTab("SCENE PHYSICS");
     fireEvent.change(screen.getByLabelText("Gravity"), { target: { value: "12.5" } });
 
     await waitFor(() => {
@@ -482,12 +718,14 @@ describe("App runtime features", () => {
     });
 
     fireEvent.click(harness.transport.getByRole("button", { name: /^pause$/i }));
+    openInspectorTab("SCENE PHYSICS");
     fireEvent.change(screen.getByLabelText("Length unit"), { target: { value: "cm" } });
     fireEvent.change(screen.getByLabelText("Velocity unit"), { target: { value: "cm/s" } });
+    openInspectorTab("SELECTION");
 
     await waitFor(() => {
       expect(screen.getByText("0.00 s")).toBeDefined();
-      expect((screen.getByLabelText("Gravity") as HTMLInputElement).value).toBe("980");
+      expect((screen.getByLabelText("Gravity") as HTMLInputElement).value).toBe("1000");
       expect(screen.getByText("cm/s²")).toBeDefined();
       expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("132");
       expect((screen.getByLabelText("Velocity X") as HTMLInputElement).value).toBe("60");
@@ -517,7 +755,7 @@ describe("App runtime features", () => {
     const bottomPane = screen.getByTestId("shell-bottom-pane");
     const centerStack = within(centerPane).getByTestId("workspace-center-stack") as HTMLElement;
 
-    expect(centerStack.style.gridTemplateRows).toBe("auto auto auto");
+    expect(centerStack.style.gridTemplateRows).toBe("auto auto");
     expect(centerStack.style.alignContent).toBe("start");
     expect(within(centerPane).getByTestId("playback-transport-deck")).toBeDefined();
     expect(within(centerPane).getByTestId("workspace-canvas")).toBeDefined();
@@ -542,7 +780,7 @@ describe("App runtime features", () => {
     fireEvent.click(ball);
     fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
 
-    expect((screen.getByLabelText("Precompute duration") as HTMLInputElement).value).toBe("20");
+    expect((screen.getByLabelText("Precompute duration") as HTMLInputElement).value).toBe("5");
 
     fireEvent.change(screen.getByLabelText("Precompute duration"), { target: { value: "1" } });
     fireEvent.click(getTransportHarness().transport.getByRole("button", { name: /^calculate$/i }));
@@ -579,6 +817,30 @@ describe("App runtime features", () => {
       expect(screen.getByText("0.25 s")).toBeDefined();
       expect(ball.style.left).toBe("147px");
     });
+  });
+
+  it("shows selected-object trajectory and motion charts from cached playback frames", async () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId("scene-entity-ball-1"));
+    fireEvent.change(screen.getByLabelText("Velocity X"), { target: { value: "0.6" } });
+
+    await calculateResult(1);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Motion samples: [1-9]/)).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByLabelText("Show selected trajectory"));
+
+    expect(screen.getByTestId("scene-selected-trajectory-ball-1")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /motion charts/i }));
+
+    expect(screen.getByRole("dialog", { name: /motion charts/i })).toBeDefined();
+    expect(screen.getByTestId("motion-chart-displacement")).toBeDefined();
+    expect(screen.getByTestId("motion-chart-velocity")).toBeDefined();
+    expect(screen.getByText(/Absolute position:/)).toBeDefined();
   });
 
   it("shows intermediate preparing progress before cached playback finishes building", async () => {

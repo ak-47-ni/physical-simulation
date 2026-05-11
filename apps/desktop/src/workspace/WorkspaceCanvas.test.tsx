@@ -405,6 +405,40 @@ describe("WorkspaceCanvas", () => {
     );
   });
 
+  it("renders the selected runtime trajectory from precomputed samples", () => {
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        entities={[authoredBallInMeters]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        selectedRuntimeTrajectories={[
+          {
+            entityId: "ball-1",
+            points: [
+              { timeSeconds: 0, x: 1.44, y: 2.04 },
+              { timeSeconds: 1, x: 1.8, y: 2.2 },
+            ],
+          },
+        ]}
+        state={{
+          ...createInitialEditorState(),
+          selectedEntityId: "ball-1",
+        }}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+        viewport={meterViewport}
+      />,
+    );
+
+    const trajectory = screen.getByTestId("scene-selected-trajectory-ball-1");
+    const polyline = screen.getByTestId("scene-selected-trajectory-ball-1-polyline");
+
+    expect(trajectory.getAttribute("data-point-count")).toBe("2");
+    expect(polyline.getAttribute("points")).toBe("144,204 180,220");
+  });
+
   it("does not create a new entity from legacy place-body stage clicks", () => {
     const created: Array<{ x: number; y: number }> = [];
 
@@ -1360,7 +1394,7 @@ describe("WorkspaceCanvas", () => {
     );
 
     expect(
-      screen.getByText("Playback running. Move, placement, and constraint editing are temporarily locked."),
+      screen.getByText("Move, placement, and constraint editing are temporarily locked."),
     ).toBeDefined();
   });
 });

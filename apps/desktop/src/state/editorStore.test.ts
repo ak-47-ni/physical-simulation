@@ -48,7 +48,13 @@ describe("editorStore", () => {
 
   it("publishes per-body classroom rigid defaults that preserve ideal elastic board support scenes", () => {
     expect(readDefaultRigidBodyPhysics("ball")).toMatchObject({
-      mass: 1.2,
+      mass: 1,
+      friction: 0,
+      restitution: 1,
+      locked: false,
+    });
+    expect(readDefaultRigidBodyPhysics("block")).toMatchObject({
+      mass: 1,
       friction: 0,
       restitution: 1,
       locked: false,
@@ -74,6 +80,10 @@ describe("editorStore", () => {
 
   it("seeds the initial scene with the board-only friction policy", () => {
     expect(createInitialSceneEntities().map((entity) => entity.friction)).toEqual([0, 0.42]);
+  });
+
+  it("seeds the initial scene with one-kilogram ball defaults", () => {
+    expect(createInitialSceneEntities().map((entity) => entity.mass)).toEqual([1, 5]);
   });
 
   it("seeds the initial scene with a locked support board", () => {

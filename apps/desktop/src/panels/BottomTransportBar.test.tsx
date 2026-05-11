@@ -270,7 +270,7 @@ describe("BottomTransportBar", () => {
     );
   });
 
-  it("shows a precomputed duration input defaulting to 20 seconds", () => {
+  it("shows a precomputed duration input defaulting to 5 whole seconds", () => {
     render(
       <BottomTransportBar
         runtime={createRuntimeView({
@@ -288,7 +288,41 @@ describe("BottomTransportBar", () => {
       />,
     );
 
-    expect((screen.getByLabelText("Precompute duration") as HTMLInputElement).value).toBe("20");
+    const input = screen.getByLabelText("Precompute duration") as HTMLInputElement;
+
+    expect(input.value).toBe("5");
+    expect(input.min).toBe("1");
+    expect(input.step).toBe("1");
+  });
+
+  it("emits whole-second precompute duration edits from fractional browser spinner values", () => {
+    const durations: number[] = [];
+
+    render(
+      <BottomTransportBar
+        runtime={createRuntimeView({
+          playbackMode: "precomputed",
+        })}
+        playbackSettings={createPlaybackSettings({
+          mode: "precomputed",
+          precomputeDurationSeconds: 5,
+        })}
+        onPause={() => undefined}
+        onPrecomputeDurationChange={(durationSeconds) => {
+          durations.push(durationSeconds);
+        }}
+        onReset={() => undefined}
+        onStart={() => undefined}
+        onStep={() => undefined}
+        onTimeScaleChange={() => undefined}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("Precompute duration"), {
+      target: { value: "1.01666666666667" },
+    });
+
+    expect(durations).toEqual([1]);
   });
 
   it("shows calculate-first progress while a result is being prepared", () => {

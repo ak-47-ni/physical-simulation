@@ -213,7 +213,7 @@ describe("runtimeCompileRequest", () => {
         ],
         forceSources: [
           {
-            acceleration: { x: 0, y: 9.8 },
+            acceleration: { x: 0, y: 10 },
             id: "gravity-primary",
             kind: "gravity",
           },
@@ -235,7 +235,7 @@ describe("runtimeCompileRequest", () => {
             x: 132,
             y: 176,
             radius: 24,
-            mass: 1.2,
+            mass: 1,
             friction: 0,
             restitution: 1,
             locked: false,
@@ -485,7 +485,7 @@ describe("runtimeCompileRequest", () => {
     expect(request.scene.entities).toContainEqual(
       expect.objectContaining({
         id: "ball-legacy",
-        mass: 1.2,
+        mass: 1,
         friction: 0,
         restitution: 1,
         locked: false,
@@ -954,7 +954,7 @@ describe("runtimeCompileRequest", () => {
       y: 176,
     });
     expect(clonedRequest.scene.forceSources[0]).toMatchObject({
-      acceleration: { x: 0, y: 9.8 },
+      acceleration: { x: 0, y: 10 },
     });
     expect(clonedRequest.scene).not.toHaveProperty("pixelsPerMeter");
   });

@@ -8,7 +8,7 @@ import {
 describe("sceneAuthoringSettings", () => {
   it("creates stable default authoring settings for classroom scenes", () => {
     expect(createDefaultSceneAuthoringSettings()).toEqual({
-      gravity: 9.8,
+      gravity: 10,
       lengthUnit: "m",
       velocityUnit: "m/s",
       massUnit: "kg",

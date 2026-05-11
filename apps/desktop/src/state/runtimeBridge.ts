@@ -31,7 +31,8 @@ export type RuntimeBridgeCommandAction =
   | "seek";
 
 export const DEFAULT_REALTIME_DURATION_CAP_SECONDS = 40;
-export const DEFAULT_PRECOMPUTED_DURATION_SECONDS = 20;
+export const DEFAULT_PRECOMPUTED_DURATION_SECONDS = 5;
+export const MIN_PRECOMPUTED_DURATION_SECONDS = 1;
 const RUNTIME_STEP_SECONDS = 1 / 60;
 const MOCK_PRECOMPUTE_PROGRESS_INCREMENT = 0.25;
 
@@ -746,12 +747,12 @@ function readRuntimeTotalDurationSeconds(config: RuntimePlaybackConfig): number 
   return normalizePrecomputeDurationSeconds(config.precomputeDurationSeconds);
 }
 
-function normalizePrecomputeDurationSeconds(duration: number | undefined): number {
+export function normalizePrecomputeDurationSeconds(duration: number | undefined): number {
   if (!Number.isFinite(duration) || duration === undefined || duration <= 0) {
     return DEFAULT_PRECOMPUTED_DURATION_SECONDS;
   }
 
-  return duration;
+  return Math.max(MIN_PRECOMPUTED_DURATION_SECONDS, Math.round(duration));
 }
 
 export { createRuntimeCompileRequest } from "./runtimeCompileRequest";

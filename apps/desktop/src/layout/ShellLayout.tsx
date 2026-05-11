@@ -16,6 +16,7 @@ type ShellLayoutProps = PropsWithChildren<{
   leftPane?: ReactNode;
   rightPane?: ReactNode;
   bottomPane?: ReactNode;
+  topActions?: ReactNode;
 }>;
 
 const appFrameStyle: CSSProperties = {
@@ -235,7 +236,7 @@ type ResizeSession = {
 };
 
 export function ShellLayout(props: ShellLayoutProps) {
-  const { children, leftPane, rightPane, bottomPane } = props;
+  const { children, leftPane, rightPane, bottomPane, topActions } = props;
   const { locale, locales, setLocale, t } = useI18n();
   const { layout, resetLayout, resizePane, togglePane } = usePaneLayout();
   const [activeResize, setActiveResize] = useState<ResizeSession | null>(null);
@@ -322,6 +323,7 @@ export function ShellLayout(props: ShellLayoutProps) {
             <span style={subtitleStyle}>{t("shell.subtitle")}</span>
           </div>
           <div style={actionGroupStyle}>
+            {topActions}
             <button data-testid="shell-reset-layout" style={buttonStyle} type="button" onClick={resetLayout}>
               {t("shell.resetLayout")}
             </button>

@@ -36,14 +36,14 @@ const LENGTH_UNIT_OPTIONS = ["m", "cm"] as const satisfies readonly LengthUnit[]
 const VELOCITY_UNIT_OPTIONS = ["m/s", "cm/s"] as const satisfies readonly VelocityUnit[];
 const MASS_UNIT_OPTIONS = ["kg", "g"] as const satisfies readonly MassUnit[];
 const INITIAL_SCENE_SETTINGS = createSceneAuthoringSettings({
-  gravity: 9.8,
+  gravity: 10,
   lengthUnit: "m",
   velocityUnit: "m/s",
   massUnit: "kg",
   pixelsPerMeter: 100,
 });
 const LEGACY_SCENE_SETTINGS = createSceneAuthoringSettings({
-  gravity: 980,
+  gravity: 1000,
   lengthUnit: "cm",
   velocityUnit: "cm/s",
   massUnit: "kg",

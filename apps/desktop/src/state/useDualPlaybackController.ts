@@ -6,6 +6,8 @@ import type { PlaybackMode } from "../panels/PlaybackTransportDeck";
 import type { EditorConstraint } from "./editorConstraints";
 import type { EditorSceneEntity } from "./editorStore";
 import {
+  DEFAULT_PRECOMPUTED_DURATION_SECONDS,
+  normalizePrecomputeDurationSeconds,
   type RuntimeBridgePort,
   type RuntimeBridgePortSnapshot,
   type RuntimeFrameView,
@@ -16,7 +18,7 @@ import type { SceneAuthoringSettings } from "./sceneAuthoringSettings";
 import { useRuntimePlaybackLoop } from "./useRuntimePlaybackLoop";
 import { yieldToBrowserFrame } from "./yieldToBrowserFrame";
 
-export const DEFAULT_PRECOMPUTE_DURATION_SECONDS = 20;
+export const DEFAULT_PRECOMPUTE_DURATION_SECONDS = DEFAULT_PRECOMPUTED_DURATION_SECONDS;
 export const REALTIME_MAX_DURATION_SECONDS = 40;
 const PRECOMPUTE_STEP_SECONDS = 1 / 60;
 const PRECOMPUTE_PROGRESS_BATCH_SIZE = 10;
@@ -24,6 +26,12 @@ const PRECOMPUTE_PROGRESS_BATCH_SIZE = 10;
 type PrecomputedFrame = {
   frame: RuntimeFrameView | null;
   timeSeconds: number;
+};
+
+export type ImportedPrecomputedPlayback = {
+  frames: readonly PrecomputedFrame[];
+  importId: string;
+  precomputeDurationSeconds: number;
 };
 
 type PrecomputedPlaybackState = {
@@ -40,6 +48,7 @@ type UseDualPlaybackControllerInput = {
   annotationStrokes: AnnotationLayerStroke[];
   constraints: EditorConstraint[];
   entities: EditorSceneEntity[];
+  importedPrecomputedPlayback?: ImportedPrecomputedPlayback | null;
   runtimePort: RuntimeBridgePort;
   runtimeSnapshot: RuntimeBridgePortSnapshot;
   sceneSettings: SceneAuthoringSettings;
@@ -59,6 +68,7 @@ type UseDualPlaybackControllerResult = {
   playbackMode: PlaybackMode;
   playbackResultState: RuntimeResultState;
   precomputeDurationSeconds: number;
+  precomputedFrames: readonly PrecomputedFrame[];
   preparationProgress: number;
   realtimeCapSeconds: number;
   seekEnabled: boolean;
@@ -146,6 +156,7 @@ export function useDualPlaybackController(
     annotationStrokes,
     constraints,
     entities,
+    importedPrecomputedPlayback,
     runtimePort,
     runtimeSnapshot,
     sceneSettings,
@@ -158,6 +169,7 @@ export function useDualPlaybackController(
     createInitialPrecomputedPlaybackState,
   );
   const precomputeBuildTokenRef = useRef(0);
+  const hydratedImportIdRef = useRef<string | null>(null);
   const precomputedPlaybackFrameHandleRef = useRef<number | null>(null);
   const precomputedPlaybackLastTimestampRef = useRef<number | null>(null);
   const precomputedPlaybackLoopTokenRef = useRef(0);
@@ -174,7 +186,33 @@ export function useDualPlaybackController(
       ...createInitialPrecomputedPlaybackState(),
       resultState: readInvalidatedPrecomputedResultState(current.resultState),
     }));
-  }, [annotationStrokes, constraints, entities, sceneSettings]);
+  }, [constraints, entities, sceneSettings]);
+
+  useEffect(() => {
+    if (
+      !importedPrecomputedPlayback ||
+      importedPrecomputedPlayback.importId === hydratedImportIdRef.current ||
+      importedPrecomputedPlayback.frames.length === 0
+    ) {
+      return;
+    }
+
+    hydratedImportIdRef.current = importedPrecomputedPlayback.importId;
+    precomputeBuildTokenRef.current += 1;
+    invalidatePrecomputedPlaybackLoop();
+    setPlaybackMode("precomputed");
+    setPrecomputeDurationSeconds(
+      normalizePrecomputeDurationSeconds(importedPrecomputedPlayback.precomputeDurationSeconds),
+    );
+    setPrecomputedPlayback({
+      currentFrameIndex: 0,
+      errorMessage: null,
+      frames: importedPrecomputedPlayback.frames.map(clonePrecomputedFrame),
+      preparationProgress: 1,
+      resultState: "ready",
+      status: "idle",
+    });
+  }, [importedPrecomputedPlayback]);
 
   useEffect(() => {
     if (playbackMode !== "realtime") {
@@ -563,15 +601,17 @@ export function useDualPlaybackController(
   }
 
   function handlePrecomputeDurationChange(nextDurationSeconds: number) {
-    if (
-      !Number.isFinite(nextDurationSeconds) ||
-      nextDurationSeconds <= 0 ||
-      nextDurationSeconds === precomputeDurationSeconds
-    ) {
+    if (!Number.isFinite(nextDurationSeconds)) {
       return;
     }
 
-    setPrecomputeDurationSeconds(nextDurationSeconds);
+    const normalizedDurationSeconds = normalizePrecomputeDurationSeconds(nextDurationSeconds);
+
+    if (normalizedDurationSeconds === precomputeDurationSeconds) {
+      return;
+    }
+
+    setPrecomputeDurationSeconds(normalizedDurationSeconds);
     resetPrecomputedPlayback(true);
     void runtimePort.reset();
   }
@@ -645,6 +685,8 @@ export function useDualPlaybackController(
     playbackMode,
     playbackResultState,
     precomputeDurationSeconds,
+    precomputedFrames:
+      precomputedPlayback.resultState === "ready" ? precomputedPlayback.frames : [],
     preparationProgress: precomputedPlayback.preparationProgress,
     realtimeCapSeconds: REALTIME_MAX_DURATION_SECONDS,
     seekEnabled,
@@ -673,4 +715,21 @@ function readFailedPrecomputedBuildState(
   }
 
   return "uncomputed";
+}
+
+function clonePrecomputedFrame(frame: PrecomputedFrame): PrecomputedFrame {
+  return {
+    frame: frame.frame
+      ? {
+          frameNumber: frame.frame.frameNumber,
+          entities: frame.frame.entities.map((entity) => ({
+            id: entity.id,
+            transform: { ...entity.transform },
+            velocity: entity.velocity ? { ...entity.velocity } : undefined,
+            acceleration: entity.acceleration ? { ...entity.acceleration } : undefined,
+          })),
+        }
+      : null,
+    timeSeconds: frame.timeSeconds,
+  };
 }

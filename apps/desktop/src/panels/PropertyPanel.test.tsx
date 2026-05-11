@@ -687,7 +687,7 @@ describe("PropertyPanel", () => {
     ]);
   });
 
-  it("renders unit-aware readouts without owning scene physics controls", () => {
+  it("keeps unit-aware editable fields without repeating read-only position, velocity, and mass summaries", () => {
     render(
       <PropertyPanel
         display={createSceneDisplaySettings()}
@@ -730,15 +730,107 @@ describe("PropertyPanel", () => {
     );
 
     expect(screen.queryByText("Scene physics")).toBeNull();
-    expect(screen.getByText("132 m, 176 m")).toBeDefined();
-    expect(screen.getByText("4 m/s, -2 m/s")).toBeDefined();
-    expect(screen.getByText("1.2 kg")).toBeDefined();
+    expect(screen.queryByText("132 m, 176 m")).toBeNull();
+    expect(screen.queryByText("4 m/s, -2 m/s")).toBeNull();
+    expect(screen.queryByText("1.2 kg")).toBeNull();
     expect(screen.queryByText("m/s²")).toBeNull();
     expect(screen.queryByLabelText("Gravity")).toBeNull();
     expect(screen.queryByLabelText("Pixels per meter")).toBeNull();
+    expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("132");
+    expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe("176");
+    expect((screen.getByLabelText("Velocity X") as HTMLInputElement).value).toBe("4");
+    expect((screen.getByLabelText("Velocity Y") as HTMLInputElement).value).toBe("-2");
+    expect((screen.getByLabelText("Mass") as HTMLInputElement).value).toBe("1.2");
     expect(screen.getAllByText("m").length).toBeGreaterThan(0);
     expect(screen.getAllByText("kg").length).toBeGreaterThan(0);
     expect(screen.getAllByText("m/s").length).toBeGreaterThan(0);
+  });
+
+  it("places selected-object trajectory and chart controls in the selection section", () => {
+    const trajectoryUpdates: boolean[] = [];
+    let chartOpenCount = 0;
+
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings({
+          gridVisible: true,
+          showForceVectors: false,
+          showLabels: true,
+          showTrajectories: false,
+          showVelocityVectors: false,
+        })}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onOpenSelectedMotionCharts={() => {
+          chartOpenCount += 1;
+        }}
+        onSelectedTrajectoryVisibilityChange={(visible) => {
+          trajectoryUpdates.push(visible);
+        }}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        scenePhysics={TEST_SCENE_PHYSICS}
+        selectedEntity={{
+          id: "ball-1",
+          kind: "ball",
+          label: "Ball 1",
+          x: 1.32,
+          y: 1.76,
+          radius: 0.24,
+          mass: 1.2,
+          friction: 0.14,
+          restitution: 0.82,
+          locked: false,
+          velocityX: 4,
+          velocityY: -2,
+        }}
+        selectedMotionAnalysis={{
+          canOpenCharts: true,
+          sampleCount: 3,
+          showTrajectory: false,
+        }}
+        visibleSections={["selection"]}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Show trajectories")).toBeNull();
+    expect(screen.getByText("Motion samples: 3")).toBeDefined();
+
+    fireEvent.click(screen.getByLabelText("Show selected trajectory"));
+    fireEvent.click(screen.getByRole("button", { name: /motion charts/i }));
+
+    expect(trajectoryUpdates).toEqual([true]);
+    expect(chartOpenCount).toBe(1);
+  });
+
+  it("does not keep the old global trajectory toggle in the display section", () => {
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings({
+          gridVisible: true,
+          showForceVectors: false,
+          showLabels: true,
+          showTrajectories: false,
+          showVelocityVectors: false,
+        })}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        selectedEntity={null}
+        visibleSections={["display"]}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Show trajectories")).toBeNull();
   });
 
   it("disables property inputs while authoring is locked but keeps actions visible", () => {

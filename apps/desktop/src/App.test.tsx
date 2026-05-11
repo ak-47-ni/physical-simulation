@@ -124,15 +124,26 @@ function readRenderedBallCenterPx() {
   };
 }
 
+function openInspectorTab(name: RegExp | string) {
+  fireEvent.click(screen.getByRole("tab", { name }));
+}
+
+function expectSelectedPosition(positionX: string, positionY: string) {
+  expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe(positionX);
+  expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe(positionY);
+}
+
 describe("App selection sync", () => {
   it("synchronizes selection across scene tree, workspace, and property panel", () => {
     render(<App />);
 
     expect(screen.getByText("No entity selected")).toBeDefined();
 
+    openInspectorTab("SCENE TREE");
     fireEvent.click(screen.getByRole("button", { name: "Board 1" }));
+    openInspectorTab("SELECTION");
 
-    expect(screen.getByText("3.18 m, 2.72 m")).toBeDefined();
+    expectSelectedPosition("3.18", "2.72");
     expect(screen.getByTestId("scene-entity-board-1").getAttribute("data-selected")).toBe("true");
     expect(screen.getByTestId("scene-tree-item-board-1").getAttribute("data-selected")).toBe("true");
 
@@ -140,7 +151,7 @@ describe("App selection sync", () => {
 
     expect(screen.getByTestId("scene-entity-ball-1").getAttribute("data-selected")).toBe("true");
     expect(screen.getByTestId("scene-tree-item-ball-1").getAttribute("data-selected")).toBe("true");
-    expect(screen.getByText("1.32 m, 1.76 m")).toBeDefined();
+    expectSelectedPosition("1.32", "1.76");
   }, 10_000);
 
   it("updates entity positions after dragging in the workspace", () => {
@@ -154,7 +165,7 @@ describe("App selection sync", () => {
 
     expect(ball.style.left).toBe("168px");
     expect(ball.style.top).toBe("220px");
-    expect(screen.getByText("1.68 m, 2.2 m")).toBeDefined();
+    expectSelectedPosition("1.68", "2.2");
   });
 
   it("rejects dragging a body into an overlapping authored position", () => {
@@ -168,7 +179,7 @@ describe("App selection sync", () => {
 
     expect(ball.style.left).toBe("132px");
     expect(ball.style.top).toBe("176px");
-    expect(screen.getByText("1.32 m, 1.76 m")).toBeDefined();
+    expectSelectedPosition("1.32", "1.76");
   });
 
   it("updates entity positions from the property panel", () => {
@@ -182,7 +193,7 @@ describe("App selection sync", () => {
 
     expect(board.style.left).toBe("340px");
     expect(board.style.top).toBe("290px");
-    expect(screen.getByText("3.4 m, 2.9 m")).toBeDefined();
+    expectSelectedPosition("3.4", "2.9");
   });
 
   it("quantizes and clamps inspector position edits before commit", () => {
@@ -202,7 +213,7 @@ describe("App selection sync", () => {
     expect(ball.style.top).toBe("0px");
     expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("0.94");
     expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe("0");
-    expect(screen.getByText("0.94 m, 0 m")).toBeDefined();
+    expectSelectedPosition("0.94", "0");
   });
 
   it("rejects inspector position edits that would overlap another body", () => {
@@ -250,7 +261,7 @@ describe("App selection sync", () => {
     expect((screen.getByLabelText("Angle") as HTMLInputElement).value).toBe("15");
     expect(readExpectedBlockContactTopLeftY(15)).toBeCloseTo(2.100155286221784, 6);
     expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe("2.1");
-    expect(screen.getByText("3.36 m, 2.1 m")).toBeDefined();
+    expectSelectedPosition("3.36", "2.1");
   });
 
   it("rejects block rotation edits that cannot resolve within the snap distance", () => {
@@ -1141,7 +1152,7 @@ describe("App selection sync", () => {
 
     expect(screen.getByTestId("scene-entity-board-2")).toBeDefined();
     expect(screen.getByTestId("scene-tree-item-board-2").getAttribute("data-selected")).toBe("true");
-    expect(screen.getByText("3.42 m, 2.96 m")).toBeDefined();
+    expectSelectedPosition("3.42", "2.96");
   });
 
   it("rejects duplicating the selected entity when the duplicate offset overlaps the source", () => {
@@ -1159,7 +1170,7 @@ describe("App selection sync", () => {
     expect(screen.queryByTestId("scene-entity-board-2")).toBeNull();
     expect(screen.queryByTestId("scene-tree-item-board-2")).toBeNull();
     expect(screen.getByTestId("scene-entity-board-1").getAttribute("data-selected")).toBe("true");
-    expect(screen.getByText("5 m, 1 m")).toBeDefined();
+    expectSelectedPosition("5", "1");
   });
 
   it("preserves edited physics properties when duplicating an entity", () => {
@@ -1186,7 +1197,7 @@ describe("App selection sync", () => {
     fireEvent.keyDown(window, { ctrlKey: true, key: "d" });
 
     expect(screen.getByTestId("scene-entity-board-2")).toBeDefined();
-    expect(screen.getByText("3.42 m, 2.96 m")).toBeDefined();
+    expectSelectedPosition("3.42", "2.96");
 
     fireEvent.keyDown(window, { key: "Delete" });
 
@@ -1312,7 +1323,7 @@ describe("App selection sync", () => {
     expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.left).toBe("132px");
     expect((screen.getByTestId("scene-entity-ball-1") as HTMLElement).style.top).toBe("176px");
     expect(
-      screen.getByText("Playback running. Move, placement, and constraint editing are temporarily locked."),
+      screen.getByText("Move, placement, and constraint editing are temporarily locked."),
     ).toBeDefined();
 
     fireEvent.click(transport.getByRole("button", { name: /^pause$/i }));

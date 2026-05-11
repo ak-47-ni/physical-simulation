@@ -1,15 +1,36 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ChangeEvent } from "react";
 
 import { AnalysisPanel } from "./analysis/AnalysisPanel";
+import { createSelectedMotionSamples } from "./analysis/selectedMotionSeries";
 import { AnnotationLayer, createInitialAnnotationLayerState } from "./annotation/AnnotationLayer";
-import { LanguageProvider } from "./i18n";
-import { createSceneDisplaySettings, type SceneDisplaySettings } from "./io/sceneFile";
+import { desktopAppVersion } from "./app-meta";
+import { compileSceneDraft, type SceneDraftCompileMode } from "./ai/sceneDraftCompiler";
+import { generateSceneDraftFromText } from "./ai/textToSceneClient";
+import type { SceneDraft } from "./ai/sceneDraft";
+import { LanguageProvider, useI18n } from "./i18n";
+import {
+  createSceneDisplaySettings,
+  parseSceneFile,
+  serializeSceneFile,
+  type SceneDisplaySettings,
+  type SceneFilePayload,
+} from "./io/sceneFile";
+import { exportTextFile } from "./io/exportFile";
+import {
+  RUNTIME_RESULT_STEP_SECONDS,
+  parseRuntimeResultFile,
+  serializeRuntimeResultFile,
+  type RuntimeResultFilePayload,
+} from "./io/resultFile";
 import { ShellLayout } from "./layout/ShellLayout";
+import { InspectorTabs, type InspectorTabId } from "./panels/InspectorTabs";
 import { ObjectLibraryPanel } from "./panels/ObjectLibraryPanel";
 import { PlaybackTransportDeck } from "./panels/PlaybackTransportDeck";
+import { MotionChartsModal } from "./panels/MotionChartsModal";
 import { PropertyPanel } from "./panels/PropertyPanel";
 import { ScenePhysicsCard } from "./panels/property/ScenePhysicsCard";
 import { SceneTreePanel } from "./panels/SceneTreePanel";
+import { TextToSceneModal } from "./panels/TextToSceneModal";
 import {
   createSpringConstraintFromEntities,
   createTrackConstraintFromEntityAndPoint,
@@ -51,7 +72,11 @@ import {
   replaceEntityInCollection,
   resolveAuthoringPlacementForCommit,
 } from "./state/authoringPlacementGuards";
-import { convertSceneAuthoringUnits } from "./state/editorSceneDocument";
+import {
+  convertSceneAuthoringUnits,
+  createEditorSceneStateFromSceneDocument,
+  createSceneDocumentFromEditorState,
+} from "./state/editorSceneDocument";
 import {
   getDefaultAuthoringSnapDistance,
   resolveAuthoringPlacement,
@@ -65,6 +90,7 @@ import { quantizeArcTrackRadiusForLengthUnit } from "./state/sceneUnits";
 import { runtimeVelocityToAuthoring } from "./state/velocitySemantics";
 import { createSceneAuthoringSettings, type SceneAuthoringSettings } from "./state/sceneAuthoringSettings";
 import { useDualPlaybackController } from "./state/useDualPlaybackController";
+import type { ImportedPrecomputedPlayback } from "./state/useDualPlaybackController";
 import { useEditorHotkeys } from "./state/useEditorHotkeys";
 import type { LibraryDragSession } from "./workspace/libraryDragSession";
 import { WorkspaceCanvas } from "./workspace/WorkspaceCanvas";
@@ -78,7 +104,31 @@ const workspaceCenterStackStyle: CSSProperties = {
   alignContent: "start",
   display: "grid",
   gap: "14px",
-  gridTemplateRows: "auto auto auto",
+  gridTemplateRows: "auto auto",
+};
+
+const fileActionsStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "8px",
+  flexWrap: "wrap",
+};
+
+const fileActionButtonStyle: CSSProperties = {
+  border: "1px solid rgba(17, 37, 64, 0.12)",
+  borderRadius: "999px",
+  background: "#ffffff",
+  color: "#112540",
+  cursor: "pointer",
+  fontSize: "12px",
+  fontWeight: 700,
+  padding: "8px 12px",
+};
+
+const disabledFileActionButtonStyle: CSSProperties = {
+  ...fileActionButtonStyle,
+  cursor: "not-allowed",
+  opacity: 0.52,
 };
 
 type PendingEntityDragPlacement = {
@@ -273,6 +323,96 @@ function resolveArcTrackAnchorTarget(input: {
   return closest;
 }
 
+function FileActions(props: {
+  canExportResult: boolean;
+  onGenerateScene: () => void;
+  onExportResult: () => void;
+  onExportScene: () => void;
+  onImportFile: (file: File) => void;
+}) {
+  const { t } = useI18n();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    props.onImportFile(file);
+  }
+
+  return (
+    <div data-testid="file-actions" style={fileActionsStyle}>
+      <input
+        ref={inputRef}
+        accept=".json,.psscene.json,.psresult.json,application/json"
+        aria-label={t("file.importInput")}
+        data-testid="file-import-input"
+        style={{ display: "none" }}
+        type="file"
+        onChange={handleFileChange}
+      />
+      <button
+        style={fileActionButtonStyle}
+        type="button"
+        onClick={() => inputRef.current?.click()}
+      >
+        {t("file.import")}
+      </button>
+      <button style={fileActionButtonStyle} type="button" onClick={props.onExportScene}>
+        {t("file.exportScene")}
+      </button>
+      <button
+        disabled={!props.canExportResult}
+        style={props.canExportResult ? fileActionButtonStyle : disabledFileActionButtonStyle}
+        type="button"
+        onClick={props.onExportResult}
+      >
+        {t("file.exportResult")}
+      </button>
+      <button style={fileActionButtonStyle} type="button" onClick={props.onGenerateScene}>
+        {t("aiScene.open")}
+      </button>
+    </div>
+  );
+}
+
+function createDownloadTimestamp(): string {
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+function downloadTextFile(filename: string, contents: string) {
+  const blob = new Blob([contents], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function shouldAllowBrowserExportFallback() {
+  return typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("jsdom");
+}
+
+function readBrowserFileText(file: File): Promise<string> {
+  if (typeof file.text === "function") {
+    return file.text();
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(reader.error ?? new Error("Failed to read file."));
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.readAsText(file);
+  });
+}
+
 function createAnchoredArcTrackEntity(input: {
   anchorTarget: ArcTrackAnchorTarget;
   baseEntity: ArcTrackEntity;
@@ -338,7 +478,17 @@ export function App() {
       showTrajectories: false,
     }),
   );
+  const [activeInspectorTabId, setActiveInspectorTabId] = useState<InspectorTabId>("selection");
+  const [visibleTrajectoryEntityIds, setVisibleTrajectoryEntityIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [motionChartsEntityId, setMotionChartsEntityId] = useState<string | null>(null);
+  const [textToSceneModalOpen, setTextToSceneModalOpen] = useState(false);
+  const [generatedSceneDraft, setGeneratedSceneDraft] = useState<SceneDraft | null>(null);
+  const [sceneDraftGenerating, setSceneDraftGenerating] = useState(false);
+  const [sceneDraftErrorMessage, setSceneDraftErrorMessage] = useState<string | null>(null);
   const entityCatalogRef = useRef(entities);
+  const fileImportSequenceRef = useRef(0);
   const sceneSettingsRef = useRef(sceneSettings);
   const workspaceViewport = createWorkspaceViewport(sceneSettings);
   const [runtimePort] = useState(() =>
@@ -362,6 +512,8 @@ export function App() {
   );
   const [runtimeSnapshot, setRuntimeSnapshot] = useState(() => runtimePort.getSnapshot());
   const [pendingCalculateStart, setPendingCalculateStart] = useState(false);
+  const [importedPrecomputedPlayback, setImportedPrecomputedPlayback] =
+    useState<ImportedPrecomputedPlayback | null>(null);
 
   useEffect(() => {
     entityCatalogRef.current = entities;
@@ -377,13 +529,12 @@ export function App() {
     void runtimePort.compile(
       createRuntimeCompileRequestFromEditorState({
         analyzerId: PRIMARY_ANALYZER_ID,
-        annotations: annotationState.strokes,
         constraints,
         entities,
         settings: sceneSettings,
       }),
     );
-  }, [annotationState.strokes, constraints, entities, runtimePort, sceneSettings]);
+  }, [constraints, entities, runtimePort, sceneSettings]);
 
   const {
     currentPlaybackTimeSeconds,
@@ -397,7 +548,9 @@ export function App() {
     isPreparing,
     playbackLocked,
     playbackMode,
+    playbackResultState,
     precomputeDurationSeconds,
+    precomputedFrames,
     preparationProgress,
     realtimeCapSeconds,
     seekEnabled,
@@ -410,6 +563,7 @@ export function App() {
     annotationStrokes: annotationState.strokes,
     constraints,
     entities,
+    importedPrecomputedPlayback,
     runtimePort,
     runtimeSnapshot,
     sceneSettings,
@@ -432,6 +586,178 @@ export function App() {
 
     setPendingCalculateStart(true);
     handlePlaybackModeChange("precomputed");
+  }
+
+  function createCurrentSceneDocument() {
+    return createSceneDocumentFromEditorState({
+      analyzerId: PRIMARY_ANALYZER_ID,
+      annotations: annotationState.strokes,
+      constraints,
+      entities,
+      gravity: { x: 0, y: sceneSettings.gravity },
+    });
+  }
+
+  function applySceneFilePayload(payload: SceneFilePayload | RuntimeResultFilePayload) {
+    const importedState = createEditorSceneStateFromSceneDocument({
+      scene: payload.scene,
+      selectedConstraintId: payload.selectedConstraintId,
+      selectedEntityId: payload.selectedEntityId,
+    });
+
+    setConstraints(importedState.constraints);
+    setEntities(reconcileAnchoredArcTrackEntities(importedState.entities));
+    setSceneSettings(createSceneAuthoringSettings(payload.authoring));
+    setDisplaySettings(createSceneDisplaySettings(payload.display));
+    setEditorState((current) => ({
+      ...current,
+      gridVisible: payload.display.gridVisible,
+      selectedConstraintId: importedState.selectedConstraintId,
+      selectedEntityId: importedState.selectedEntityId,
+    }));
+    setAnnotationState({
+      ...createInitialAnnotationLayerState(),
+      strokes: payload.scene.annotations.map((stroke) => ({
+        ...stroke,
+        color: "#000000",
+      })),
+    });
+    setVisibleTrajectoryEntityIds(new Set());
+    setMotionChartsEntityId(null);
+    setActiveInspectorTabId("selection");
+  }
+
+  async function saveExportedTextFile(defaultFileName: string, contents: string) {
+    try {
+      await exportTextFile({
+        allowDownloadFallback: shouldAllowBrowserExportFallback(),
+        contents,
+        defaultFileName,
+        fallbackDownload: downloadTextFile,
+      });
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Unable to export file.");
+    }
+  }
+
+  function handleExportSceneFile() {
+    void saveExportedTextFile(
+      `physics-sandbox-scene-${createDownloadTimestamp()}.psscene.json`,
+      serializeSceneFile({
+        authoring: sceneSettings,
+        display: displaySettings,
+        scene: createCurrentSceneDocument(),
+        selectedConstraintId: editorState.selectedConstraintId,
+        selectedEntityId: editorState.selectedEntityId,
+      }),
+    );
+  }
+
+  function handleExportResultFile() {
+    if (playbackResultState !== "ready" || precomputedFrames.length === 0) {
+      return;
+    }
+
+    void saveExportedTextFile(
+      `physics-sandbox-result-${createDownloadTimestamp()}.psresult.json`,
+      serializeRuntimeResultFile({
+        appVersion: desktopAppVersion,
+        authoring: sceneSettings,
+        display: displaySettings,
+        frames: precomputedFrames,
+        precomputeDurationSeconds,
+        scene: createCurrentSceneDocument(),
+        selectedConstraintId: editorState.selectedConstraintId,
+        selectedEntityId: editorState.selectedEntityId,
+        stepSeconds: RUNTIME_RESULT_STEP_SECONDS,
+      }),
+    );
+  }
+
+  function handleImportSceneFile(payload: SceneFilePayload) {
+    applySceneFilePayload(payload);
+    setImportedPrecomputedPlayback(null);
+    void runtimePort.reset();
+  }
+
+  function handleImportResultFile(payload: RuntimeResultFilePayload) {
+    fileImportSequenceRef.current += 1;
+    applySceneFilePayload(payload);
+    setImportedPrecomputedPlayback({
+      frames: payload.runtime.frames,
+      importId: `result-file-${fileImportSequenceRef.current}`,
+      precomputeDurationSeconds: payload.runtime.precomputeDurationSeconds,
+    });
+  }
+
+  async function handleImportFile(file: File) {
+    try {
+      const text = await readBrowserFileText(file);
+
+      try {
+        handleImportResultFile(parseRuntimeResultFile(text));
+        return;
+      } catch {
+        handleImportSceneFile(parseSceneFile(text));
+      }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Unsupported import file.");
+    }
+  }
+
+  async function handleGenerateSceneDraft(prompt: string) {
+    setSceneDraftGenerating(true);
+    setSceneDraftErrorMessage(null);
+
+    try {
+      setGeneratedSceneDraft(await generateSceneDraftFromText({ prompt }));
+    } catch (error) {
+      setSceneDraftErrorMessage(
+        error instanceof Error ? error.message : "Unable to generate scene draft.",
+      );
+    } finally {
+      setSceneDraftGenerating(false);
+    }
+  }
+
+  function handleCloseTextToSceneModal() {
+    setTextToSceneModalOpen(false);
+    setGeneratedSceneDraft(null);
+    setSceneDraftErrorMessage(null);
+    setSceneDraftGenerating(false);
+  }
+
+  function handleApplyGeneratedScene(mode: SceneDraftCompileMode) {
+    if (!generatedSceneDraft) {
+      return;
+    }
+
+    const compiled = compileSceneDraft({
+      draft: generatedSceneDraft,
+      existingConstraints: constraints,
+      existingEntities: entities,
+      mode,
+      settings: sceneSettings,
+    });
+
+    setConstraints(compiled.constraints);
+    setEntities(compiled.entities);
+    setSceneSettings((current) =>
+      createSceneAuthoringSettings({
+        ...current,
+        gravity: compiled.gravity,
+      }),
+    );
+    setEditorState((current) => ({
+      ...current,
+      selectedConstraintId: null,
+      selectedEntityId: compiled.selectedEntityId,
+    }));
+    setVisibleTrajectoryEntityIds(compiled.visibleTrajectoryEntityIds);
+    setMotionChartsEntityId(null);
+    setImportedPrecomputedPlayback(null);
+    void runtimePort.reset();
+    handleCloseTextToSceneModal();
   }
 
   const transportDeckRuntime =
@@ -757,11 +1083,66 @@ export function App() {
           ? null
           : current.selectedEntityId,
     }));
+    setVisibleTrajectoryEntityIds((current) => {
+      const hasRemovedArcTrackTrajectory = Array.from(removedArcTrackIds).some((id) =>
+        current.has(id),
+      );
+
+      if (!current.has(deletedEntityId) && !hasRemovedArcTrackTrajectory) {
+        return current;
+      }
+
+      const next = new Set(current);
+      next.delete(deletedEntityId);
+      for (const arcTrackId of removedArcTrackIds) {
+        next.delete(arcTrackId);
+      }
+
+      return next;
+    });
+    setMotionChartsEntityId((current) =>
+      current === deletedEntityId || (current !== null && removedArcTrackIds.has(current))
+        ? null
+        : current,
+    );
   }
 
   const selectedEntity = entities.find((entity) => entity.id === editorState.selectedEntityId) ?? null;
   const selectedConstraint =
     constraints.find((constraint) => constraint.id === editorState.selectedConstraintId) ?? null;
+  const selectedMotionSamples =
+    selectedEntity && selectedEntity.kind !== "arc-track" && playbackResultState === "ready"
+      ? createSelectedMotionSamples(precomputedFrames, selectedEntity.id)
+      : [];
+  const selectedMotionAnalysis =
+    selectedEntity && selectedEntity.kind !== "arc-track"
+      ? {
+          canOpenCharts: selectedMotionSamples.length > 0,
+          sampleCount: selectedMotionSamples.length,
+          showTrajectory: visibleTrajectoryEntityIds.has(selectedEntity.id),
+        }
+      : null;
+  const visibleRuntimeTrajectories =
+    playbackResultState === "ready"
+      ? Array.from(visibleTrajectoryEntityIds)
+          .map((entityId) => ({
+            entityId,
+            points: createSelectedMotionSamples(precomputedFrames, entityId).map((sample) => ({
+              timeSeconds: sample.timeSeconds,
+              x: sample.position.x,
+              y: sample.position.y,
+            })),
+          }))
+          .filter((trajectory) => trajectory.points.length >= 2)
+      : [];
+  const motionChartsEntity =
+    motionChartsEntityId !== null
+      ? entities.find((entity) => entity.id === motionChartsEntityId) ?? null
+      : null;
+  const motionChartSamples =
+    motionChartsEntity && motionChartsEntity.kind !== "arc-track" && playbackResultState === "ready"
+      ? createSelectedMotionSamples(precomputedFrames, motionChartsEntity.id)
+      : [];
   const workspaceEntities = entities;
   const displayEntities = projectRuntimeSceneEntities({
     editorEntities: workspaceEntities,
@@ -785,6 +1166,7 @@ export function App() {
       : null;
   const authoringSnapDistance = getDefaultAuthoringSnapDistance(sceneSettings.lengthUnit);
   const authoringLocked = playbackLocked;
+  const workspaceAuthoringLocked = authoringLocked || annotationState.active;
   const scenePhysicsState = createScenePhysicsPanelState(sceneSettings, authoringLocked);
   const libraryDragArcTrackPreview =
     libraryDragSession?.bodyKind === "arc-track" &&
@@ -1065,6 +1447,36 @@ export function App() {
         gridVisible: nextGridVisible,
       }));
     }
+  }
+
+  function handleSelectedTrajectoryVisibilityChange(visible: boolean) {
+    if (!selectedEntity || selectedEntity.kind === "arc-track") {
+      return;
+    }
+
+    setVisibleTrajectoryEntityIds((current) => {
+      const next = new Set(current);
+
+      if (visible) {
+        next.add(selectedEntity.id);
+      } else {
+        next.delete(selectedEntity.id);
+      }
+
+      return next;
+    });
+  }
+
+  function handleOpenSelectedMotionCharts() {
+    if (
+      !selectedEntity ||
+      selectedEntity.kind === "arc-track" ||
+      selectedMotionSamples.length === 0
+    ) {
+      return;
+    }
+
+    setMotionChartsEntityId(selectedEntity.id);
   }
 
   function handleScenePhysicsChange(update: {
@@ -1401,143 +1813,226 @@ export function App() {
 
   return (
     <LanguageProvider>
-      <ShellLayout
-        bottomPane={
-          <AnalysisPanel
-            analyzerId={PRIMARY_ANALYZER_ID}
-            display={{
-              showTrajectories: displaySettings.showTrajectories,
-              showVelocityVectors: displaySettings.showVelocityVectors,
-              showForceVectors: displaySettings.showForceVectors,
-            }}
-            onDisplayChange={(nextDisplay) => {
-              handleUpdateDisplaySetting(nextDisplay);
-            }}
-            runtimePort={runtimePort}
-          />
-        }
-        leftPane={
-          <div style={{ display: "grid", gap: "16px" }}>
-            <ScenePhysicsCard
-              disabled={authoringLocked}
-              gravity={scenePhysicsState.gravity}
-              gravityUnitLabel={scenePhysicsState.gravityUnitLabel}
-              lengthUnit={scenePhysicsState.lengthUnit}
-              lengthUnitOptions={scenePhysicsState.lengthUnitOptions}
-              lockReason={scenePhysicsState.lockReason}
-              massUnit={scenePhysicsState.massUnit}
-              massUnitOptions={scenePhysicsState.massUnitOptions}
-              pixelsPerMeter={scenePhysicsState.pixelsPerMeter}
-              velocityUnit={scenePhysicsState.velocityUnit}
-              velocityUnitOptions={scenePhysicsState.velocityUnitOptions}
-              onGravityChange={(gravity) => handleScenePhysicsChange({ gravity })}
-              onLengthUnitChange={(lengthUnit) => handleScenePhysicsChange({ lengthUnit })}
-              onMassUnitChange={(massUnit) => handleScenePhysicsChange({ massUnit })}
-              onPixelsPerMeterChange={(pixelsPerMeter) =>
-                handleScenePhysicsChange({ pixelsPerMeter })
-              }
-              onVelocityUnitChange={(velocityUnit) => handleScenePhysicsChange({ velocityUnit })}
+      <>
+        <ShellLayout
+          topActions={
+            <FileActions
+              canExportResult={playbackResultState === "ready" && precomputedFrames.length > 0}
+              onGenerateScene={() => setTextToSceneModalOpen(true)}
+              onExportResult={handleExportResultFile}
+              onExportScene={handleExportSceneFile}
+              onImportFile={(file) => {
+                void handleImportFile(file);
+              }}
             />
+          }
+          bottomPane={
+            <AnalysisPanel
+              analyzerId={PRIMARY_ANALYZER_ID}
+              display={{
+                showTrajectories: displaySettings.showTrajectories,
+                showVelocityVectors: displaySettings.showVelocityVectors,
+                showForceVectors: displaySettings.showForceVectors,
+              }}
+              onDisplayChange={(nextDisplay) => {
+                handleUpdateDisplaySetting(nextDisplay);
+              }}
+              runtimePort={runtimePort}
+            />
+          }
+          leftPane={
             <ObjectLibraryPanel
               onStartBodyDrag={handleStartBodyDrag}
               onSelectItem={handleSelectLibraryItem}
               selectedItemId={selectedLibraryItem}
             />
-          </div>
-        }
-        rightPane={
-          <div style={{ display: "grid", gap: "16px" }}>
-            <PropertyPanel
-              authoringLocked={authoringLocked}
-              authoringLockReason={AUTHORING_LOCK_REASON}
-              display={displaySettings}
-              onApplyPendingArcSpanPreset={handlePendingArcSpanPresetApply}
-              onDeleteSelectedConstraint={handleDeleteSelectedConstraint}
-              onDeleteSelectedEntity={handleDeleteSelectedEntity}
-              onDuplicateSelectedEntity={handleDuplicateSelectedEntity}
-              onScenePhysicsChange={handleScenePhysicsChange}
-              onUpdateDisplaySetting={handleUpdateDisplaySetting}
-              onUpdateSelectedArcTrack={handleUpdateSelectedArcTrack}
-              onUpdateSelectedConstraint={handleUpdateSelectedConstraint}
-              onUpdateSelectedEntityLabel={handleUpdateSelectedEntityLabel}
-              onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
-              onUpdateSelectedEntityPhysics={handleUpdateSelectedEntityPhysics}
-              onUpdateSelectedEntityRadius={handleUpdateSelectedEntityRadius}
-              onUpdateSelectedEntityRotation={handleUpdateSelectedEntityRotation}
-              onUpdateSelectedEntitySize={handleUpdateSelectedEntitySize}
-              pendingConstraintPlacement={constraintPlacement}
-              scenePhysics={scenePhysicsState}
-              selectedConstraint={selectedConstraint}
-              selectedEntity={selectedEntity}
+          }
+          rightPane={
+            <InspectorTabs
+              activeTabId={activeInspectorTabId}
+              tabs={[
+                {
+                  content: (
+                    <PropertyPanel
+                      authoringLocked={authoringLocked}
+                      authoringLockReason={AUTHORING_LOCK_REASON}
+                      display={displaySettings}
+                      onApplyPendingArcSpanPreset={handlePendingArcSpanPresetApply}
+                      onDeleteSelectedConstraint={handleDeleteSelectedConstraint}
+                      onDeleteSelectedEntity={handleDeleteSelectedEntity}
+                      onDuplicateSelectedEntity={handleDuplicateSelectedEntity}
+                      onOpenSelectedMotionCharts={handleOpenSelectedMotionCharts}
+                      onScenePhysicsChange={handleScenePhysicsChange}
+                      onSelectedTrajectoryVisibilityChange={handleSelectedTrajectoryVisibilityChange}
+                      onUpdateDisplaySetting={handleUpdateDisplaySetting}
+                      onUpdateSelectedArcTrack={handleUpdateSelectedArcTrack}
+                      onUpdateSelectedConstraint={handleUpdateSelectedConstraint}
+                      onUpdateSelectedEntityLabel={handleUpdateSelectedEntityLabel}
+                      onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
+                      onUpdateSelectedEntityPhysics={handleUpdateSelectedEntityPhysics}
+                      onUpdateSelectedEntityRadius={handleUpdateSelectedEntityRadius}
+                      onUpdateSelectedEntityRotation={handleUpdateSelectedEntityRotation}
+                      onUpdateSelectedEntitySize={handleUpdateSelectedEntitySize}
+                      pendingConstraintPlacement={constraintPlacement}
+                      scenePhysics={scenePhysicsState}
+                      selectedConstraint={selectedConstraint}
+                      selectedEntity={selectedEntity}
+                      selectedMotionAnalysis={selectedMotionAnalysis}
+                      visibleSections={["selection"]}
+                    />
+                  ),
+                  id: "selection",
+                  labelKey: "property.selection.title",
+                },
+                {
+                  content: (
+                    <PropertyPanel
+                      display={displaySettings}
+                      onDeleteSelectedEntity={handleDeleteSelectedEntity}
+                      onDuplicateSelectedEntity={handleDuplicateSelectedEntity}
+                      onUpdateDisplaySetting={handleUpdateDisplaySetting}
+                      onUpdateSelectedEntityLabel={handleUpdateSelectedEntityLabel}
+                      onUpdateSelectedEntityPosition={handleUpdateSelectedEntityPosition}
+                      onUpdateSelectedEntityPhysics={handleUpdateSelectedEntityPhysics}
+                      onUpdateSelectedEntityRadius={handleUpdateSelectedEntityRadius}
+                      onUpdateSelectedEntitySize={handleUpdateSelectedEntitySize}
+                      selectedEntity={selectedEntity}
+                      visibleSections={["display"]}
+                    />
+                  ),
+                  id: "display",
+                  labelKey: "property.display.title",
+                },
+                {
+                  content: (
+                    <SceneTreePanel
+                      constraints={constraints}
+                      entities={entities}
+                      onSelectConstraint={handleSelectConstraint}
+                      onSelectEntity={handleSelectEntity}
+                      selectedConstraintId={editorState.selectedConstraintId}
+                      selectedEntityId={editorState.selectedEntityId}
+                    />
+                  ),
+                  id: "scene-tree",
+                  labelKey: "sceneTree.title",
+                },
+                {
+                  content: (
+                    <ScenePhysicsCard
+                      disabled={authoringLocked}
+                      gravity={scenePhysicsState.gravity}
+                      gravityUnitLabel={scenePhysicsState.gravityUnitLabel}
+                      lengthUnit={scenePhysicsState.lengthUnit}
+                      lengthUnitOptions={scenePhysicsState.lengthUnitOptions}
+                      lockReason={scenePhysicsState.lockReason}
+                      massUnit={scenePhysicsState.massUnit}
+                      massUnitOptions={scenePhysicsState.massUnitOptions}
+                      pixelsPerMeter={scenePhysicsState.pixelsPerMeter}
+                      velocityUnit={scenePhysicsState.velocityUnit}
+                      velocityUnitOptions={scenePhysicsState.velocityUnitOptions}
+                      onGravityChange={(gravity) => handleScenePhysicsChange({ gravity })}
+                      onLengthUnitChange={(lengthUnit) => handleScenePhysicsChange({ lengthUnit })}
+                      onMassUnitChange={(massUnit) => handleScenePhysicsChange({ massUnit })}
+                      onPixelsPerMeterChange={(pixelsPerMeter) =>
+                        handleScenePhysicsChange({ pixelsPerMeter })
+                      }
+                      onVelocityUnitChange={(velocityUnit) =>
+                        handleScenePhysicsChange({ velocityUnit })
+                      }
+                    />
+                  ),
+                  id: "scene-physics",
+                  labelKey: "property.scenePhysics.title",
+                },
+              ]}
+              onActiveTabChange={setActiveInspectorTabId}
             />
-            <SceneTreePanel
+          }
+        >
+          <div data-testid="workspace-center-stack" style={workspaceCenterStackStyle}>
+            <PlaybackTransportDeck
+              currentTimeSeconds={currentPlaybackTimeSeconds}
+              isPreparing={isPreparing}
+              mode="precomputed"
+              onModeChange={handlePlaybackModeChange}
+              onPause={handleTransportPause}
+              onPrecomputeDurationChange={handlePrecomputeDurationChange}
+              onReset={handleTransportReset}
+              onSeek={seekPrecomputedPlayback}
+              onStart={handleCalculateFirstTransportStart}
+              onStep={handleTransportStep}
+              onTimeScaleChange={handleTransportTimeScaleChange}
+              precomputeDurationSeconds={precomputeDurationSeconds}
+              preparationProgress={preparationProgress}
+              realtimeCapSeconds={realtimeCapSeconds}
+              runtime={transportDeckRuntime}
+              seekEnabled={seekEnabled}
+              timelineMaxSeconds={precomputeDurationSeconds}
+            />
+
+            <WorkspaceCanvas
+              authoringLocked={workspaceAuthoringLocked}
+              authoringPlacementPreview={workspaceAuthoringPlacementPreview}
+              constraintPlacement={constraintPlacement}
               constraints={constraints}
-              entities={entities}
+              display={displaySettings}
+              displayEntities={displayEntities}
+              entities={workspaceEntities}
+              libraryDragBlocked={libraryDragBlocked}
+              onCancelPlacement={handleCancelConstraintPlacement}
+              onCreateEntity={handleCreateEntity}
+              onGridVisibleChange={handleGridVisibleChange}
+              onLibraryDragHoverChange={handleLibraryDragHoverChange}
+              onMoveEntity={handleMoveEntity}
+              onPlaceConstraintBoardEndpoint={handleConstraintBoardEndpointPick}
+              onPlaceConstraintEntity={handleConstraintEntityPick}
+              onPlaceConstraintPoint={handleConstraintPointPick}
               onSelectConstraint={handleSelectConstraint}
               onSelectEntity={handleSelectEntity}
-              selectedConstraintId={editorState.selectedConstraintId}
-              selectedEntityId={editorState.selectedEntityId}
+              onToolChange={handleToolChange}
+              selectedRuntimeVelocityVector={
+                selectedRuntimeVelocityVector && selectedEntity
+                  ? {
+                      entityId: selectedEntity.id,
+                      velocityX: selectedRuntimeVelocityVector.velocityX,
+                      velocityY: selectedRuntimeVelocityVector.velocityY,
+                    }
+                  : null
+              }
+              selectedRuntimeTrajectories={visibleRuntimeTrajectories}
+              state={editorState}
+              stageOverlay={
+                <AnnotationLayer state={annotationState} onStateChange={setAnnotationState} />
+              }
+              libraryDragSession={libraryDragSession}
+              viewport={workspaceViewport}
             />
           </div>
-        }
-      >
-        <div data-testid="workspace-center-stack" style={workspaceCenterStackStyle}>
-          <PlaybackTransportDeck
-            currentTimeSeconds={currentPlaybackTimeSeconds}
-            isPreparing={isPreparing}
-            mode="precomputed"
-            onModeChange={handlePlaybackModeChange}
-            onPause={handleTransportPause}
-            onPrecomputeDurationChange={handlePrecomputeDurationChange}
-            onReset={handleTransportReset}
-            onSeek={seekPrecomputedPlayback}
-            onStart={handleCalculateFirstTransportStart}
-            onStep={handleTransportStep}
-            onTimeScaleChange={handleTransportTimeScaleChange}
-            precomputeDurationSeconds={precomputeDurationSeconds}
-            preparationProgress={preparationProgress}
-            realtimeCapSeconds={realtimeCapSeconds}
-            runtime={transportDeckRuntime}
-            seekEnabled={seekEnabled}
-            timelineMaxSeconds={precomputeDurationSeconds}
+        </ShellLayout>
+        {motionChartsEntity && motionChartSamples.length > 0 ? (
+          <MotionChartsModal
+            entityLabel={motionChartsEntity.label}
+            lengthUnitLabel={scenePhysicsState.lengthUnit}
+            samples={motionChartSamples}
+            velocityUnitLabel={scenePhysicsState.velocityUnit}
+            onClose={() => setMotionChartsEntityId(null)}
           />
-
-          <WorkspaceCanvas
-            authoringLocked={authoringLocked}
-            authoringPlacementPreview={workspaceAuthoringPlacementPreview}
-            constraintPlacement={constraintPlacement}
-            constraints={constraints}
-            display={displaySettings}
-            displayEntities={displayEntities}
-            entities={workspaceEntities}
-            libraryDragBlocked={libraryDragBlocked}
-            onCancelPlacement={handleCancelConstraintPlacement}
-            onCreateEntity={handleCreateEntity}
-            onGridVisibleChange={handleGridVisibleChange}
-            onLibraryDragHoverChange={handleLibraryDragHoverChange}
-            onMoveEntity={handleMoveEntity}
-            onPlaceConstraintBoardEndpoint={handleConstraintBoardEndpointPick}
-            onPlaceConstraintEntity={handleConstraintEntityPick}
-            onPlaceConstraintPoint={handleConstraintPointPick}
-            onSelectConstraint={handleSelectConstraint}
-            onSelectEntity={handleSelectEntity}
-            onToolChange={handleToolChange}
-            selectedRuntimeVelocityVector={
-              selectedRuntimeVelocityVector && selectedEntity
-                ? {
-                    entityId: selectedEntity.id,
-                    velocityX: selectedRuntimeVelocityVector.velocityX,
-                    velocityY: selectedRuntimeVelocityVector.velocityY,
-                  }
-                : null
-            }
-            state={editorState}
-            libraryDragSession={libraryDragSession}
-            viewport={workspaceViewport}
+        ) : null}
+        {textToSceneModalOpen ? (
+          <TextToSceneModal
+            draft={generatedSceneDraft}
+            errorMessage={sceneDraftErrorMessage}
+            generating={sceneDraftGenerating}
+            onCancel={handleCloseTextToSceneModal}
+            onGenerateDraft={(prompt) => {
+              void handleGenerateSceneDraft(prompt);
+            }}
+            onInsert={() => handleApplyGeneratedScene("insert")}
+            onReplace={() => handleApplyGeneratedScene("replace")}
           />
-          <AnnotationLayer state={annotationState} onStateChange={setAnnotationState} />
-        </div>
-      </ShellLayout>
+        ) : null}
+      </>
     </LanguageProvider>
   );
 }

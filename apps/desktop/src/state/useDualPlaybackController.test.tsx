@@ -5,7 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createInitialSceneEntities } from "./editorStore";
 import { createMockRuntimeBridgePort, type RuntimeBridgePort } from "./runtimeBridge";
 import { createDefaultSceneAuthoringSettings } from "./sceneAuthoringSettings";
-import { useDualPlaybackController } from "./useDualPlaybackController";
+import {
+  useDualPlaybackController,
+  type ImportedPrecomputedPlayback,
+} from "./useDualPlaybackController";
 
 const FRAME_STEP_SECONDS = 1 / 60;
 
@@ -129,9 +132,10 @@ function createControllerRuntimePort(): RuntimeBridgePort {
 }
 
 type HarnessOverrides = {
-  annotationStrokes?: [];
+  annotationStrokes?: Array<{ id: string; points: Array<{ x: number; y: number }> }>;
   constraints?: [];
   entities?: ReturnType<typeof createInitialSceneEntities>;
+  importedPrecomputedPlayback?: ImportedPrecomputedPlayback | null;
 };
 
 function useDualPlaybackControllerHarness(
@@ -153,6 +157,7 @@ function useDualPlaybackControllerHarness(
       annotationStrokes,
       constraints,
       entities,
+      importedPrecomputedPlayback: overrides.importedPrecomputedPlayback,
       runtimePort,
       runtimeSnapshot,
       sceneSettings,
@@ -227,9 +232,33 @@ describe("useDualPlaybackController", () => {
     const { result } = renderHook(() => useDualPlaybackControllerHarness(runtimePort));
 
     expect(result.current.playbackMode).toBe("precomputed");
+    expect(result.current.precomputeDurationSeconds).toBe(5);
     expect(result.current.playbackResultState).toBe("uncomputed");
     expect(result.current.seekEnabled).toBe(false);
     expect(result.current.transportRuntime.canSeek).toBe(false);
+  });
+
+  it("normalizes precompute duration edits to whole seconds with a one-second floor", () => {
+    const runtimePort = createControllerRuntimePort();
+    const { result } = renderHook(() => useDualPlaybackControllerHarness(runtimePort));
+
+    act(() => {
+      result.current.handlePrecomputeDurationChange(1.01666666666667);
+    });
+
+    expect(result.current.precomputeDurationSeconds).toBe(1);
+
+    act(() => {
+      result.current.handlePrecomputeDurationChange(2.6);
+    });
+
+    expect(result.current.precomputeDurationSeconds).toBe(3);
+
+    act(() => {
+      result.current.handlePrecomputeDurationChange(0.1);
+    });
+
+    expect(result.current.precomputeDurationSeconds).toBe(1);
   });
 
   it("exposes intermediate preparation progress before a precomputed build finishes", async () => {
@@ -443,6 +472,109 @@ describe("useDualPlaybackController", () => {
     expect(result.current.playbackResultState).toBe("stale");
     expect(result.current.seekEnabled).toBe(false);
     expect(result.current.visibleRuntimeFrame).toBeNull();
+  });
+
+  it("keeps cached playback visible after annotation-only edits", async () => {
+    const runtimePort = createControllerRuntimePort();
+    const { result, rerender } = renderHook(
+      ({ annotationStrokes }) =>
+        useDualPlaybackControllerHarness(runtimePort, { annotationStrokes }),
+      {
+        initialProps: {
+          annotationStrokes: EMPTY_ANNOTATION_STROKES,
+        },
+      },
+    );
+
+    await startPrecomputedPlayback(result);
+
+    await waitFor(() => {
+      expect(result.current.playbackResultState).toBe("ready");
+      expect(result.current.seekEnabled).toBe(true);
+    });
+
+    act(() => {
+      result.current.seekPrecomputedPlayback(1.25);
+    });
+
+    const cachedFrameNumber = result.current.visibleRuntimeFrame?.frameNumber;
+    const cachedPlaybackTime = result.current.currentPlaybackTimeSeconds;
+
+    rerender({
+      annotationStrokes: [
+        {
+          id: "stroke-1",
+          points: [
+            { x: 12, y: 16 },
+            { x: 30, y: 32 },
+          ],
+        },
+      ],
+    });
+
+    expect(result.current.playbackMode).toBe("precomputed");
+    expect(result.current.playbackResultState).toBe("ready");
+    expect(result.current.seekEnabled).toBe(true);
+    expect(result.current.currentPlaybackTimeSeconds).toBeCloseTo(cachedPlaybackTime, 5);
+    expect(result.current.visibleRuntimeFrame?.frameNumber).toBe(cachedFrameNumber);
+  });
+
+  it("hydrates imported precomputed frames as a ready cached result", () => {
+    const runtimePort = createControllerRuntimePort();
+    const importedPrecomputedPlayback: ImportedPrecomputedPlayback = {
+      frames: [
+        {
+          frame: {
+            frameNumber: 0,
+            entities: [
+              {
+                id: "ball-1",
+                transform: { rotation: 0, x: 10, y: 20 },
+              },
+            ],
+          },
+          timeSeconds: 0,
+        },
+        {
+          frame: {
+            frameNumber: 1,
+            entities: [
+              {
+                id: "ball-1",
+                transform: { rotation: 0, x: 11, y: 22 },
+                velocity: { x: 1, y: 2 },
+              },
+            ],
+          },
+          timeSeconds: FRAME_STEP_SECONDS,
+        },
+      ],
+      importId: "result-file-1",
+      precomputeDurationSeconds: 1,
+    };
+    const { result } = renderHook(() =>
+      useDualPlaybackControllerHarness(runtimePort, { importedPrecomputedPlayback }),
+    );
+
+    expect(result.current.playbackMode).toBe("precomputed");
+    expect(result.current.precomputeDurationSeconds).toBe(1);
+    expect(result.current.playbackResultState).toBe("ready");
+    expect(result.current.seekEnabled).toBe(true);
+    expect(result.current.currentPlaybackTimeSeconds).toBe(0);
+    expect(result.current.visibleRuntimeFrame?.entities[0]).toMatchObject({
+      id: "ball-1",
+      transform: { x: 10, y: 20 },
+    });
+
+    act(() => {
+      result.current.seekPrecomputedPlayback(FRAME_STEP_SECONDS);
+    });
+
+    expect(result.current.currentPlaybackTimeSeconds).toBe(FRAME_STEP_SECONDS);
+    expect(result.current.visibleRuntimeFrame?.entities[0]).toMatchObject({
+      transform: { x: 11, y: 22 },
+      velocity: { x: 1, y: 2 },
+    });
   });
 
   it("ignores seek requests while realtime playback remains active", async () => {

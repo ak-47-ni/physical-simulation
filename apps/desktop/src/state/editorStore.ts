@@ -137,7 +137,7 @@ const BODY_DEFAULTS = {
 
 const BODY_PHYSICS_DEFAULTS: Record<Exclude<LibraryBodyKind, "arc-track">, EditorEntityPhysics> = {
   ball: {
-    mass: 1.2,
+    mass: 1,
     friction: DEFAULT_RIGID_BODY_FRICTION_BY_KIND.ball,
     restitution: DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION,
     locked: false,
@@ -145,7 +145,7 @@ const BODY_PHYSICS_DEFAULTS: Record<Exclude<LibraryBodyKind, "arc-track">, Edito
     velocityY: 0,
   },
   block: {
-    mass: 2.8,
+    mass: 1,
     friction: DEFAULT_RIGID_BODY_FRICTION_BY_KIND.block,
     restitution: DEFAULT_CLASSROOM_RIGID_BODY_RESTITUTION,
     locked: false,

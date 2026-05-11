@@ -56,6 +56,14 @@ type ScenePhysicsPanelUpdate = {
   velocityUnit?: string;
 };
 
+type SelectedMotionAnalysisState = {
+  canOpenCharts: boolean;
+  sampleCount: number;
+  showTrajectory: boolean;
+};
+
+export type PropertyPanelSection = "display" | "selection";
+
 type PropertyPanelProps = {
   authoringLocked?: boolean;
   authoringLockReason?: string | null;
@@ -74,13 +82,18 @@ type PropertyPanelProps = {
   onUpdateSelectedEntityRadius: (radius: number) => void;
   onUpdateSelectedEntityRotation?: (rotationDegrees: number) => void;
   onUpdateSelectedEntitySize: (size: { width: number; height: number }) => void;
+  onOpenSelectedMotionCharts?: () => void;
+  onSelectedTrajectoryVisibilityChange?: (visible: boolean) => void;
   pendingConstraintPlacement?: ConstraintPlacementState | null;
   scenePhysics?: ScenePhysicsPanelState | null;
   selectedConstraint?: EditorConstraint | null;
   selectedEntity: EditorSceneEntity | null;
+  selectedMotionAnalysis?: SelectedMotionAnalysisState | null;
+  visibleSections?: readonly PropertyPanelSection[];
 };
 
 const MIN_ENTITY_MASS = 0.001;
+const DEFAULT_PROPERTY_PANEL_SECTIONS: readonly PropertyPanelSection[] = ["selection", "display"];
 
 const sectionLabelStyle: CSSProperties = {
   margin: 0,
@@ -141,6 +154,15 @@ const collisionSemanticsHintStyle: CSSProperties = {
   color: "#5d6f88",
   fontSize: "12px",
   lineHeight: 1.5,
+};
+
+const motionControlsStyle: CSSProperties = {
+  display: "grid",
+  gap: "8px",
+  padding: "10px 12px",
+  borderRadius: "12px",
+  background: "#ffffff",
+  border: "1px solid rgba(108, 128, 173, 0.14)",
 };
 
 function ReadonlyField(props: { label: string; value: string }) {
@@ -339,11 +361,17 @@ export function PropertyPanel(props: PropertyPanelProps) {
     onUpdateSelectedEntityRadius,
     onUpdateSelectedEntityRotation = () => undefined,
     onUpdateSelectedEntitySize,
+    onOpenSelectedMotionCharts = () => undefined,
+    onSelectedTrajectoryVisibilityChange = () => undefined,
     pendingConstraintPlacement = null,
     scenePhysics = null,
     selectedConstraint = null,
     selectedEntity,
+    selectedMotionAnalysis = null,
+    visibleSections = DEFAULT_PROPERTY_PANEL_SECTIONS,
   } = props;
+  const showSelectionSection = visibleSections.includes("selection");
+  const showDisplaySection = visibleSections.includes("display");
   const lengthUnitLabel = scenePhysics?.lengthUnit ?? null;
   const velocityUnitLabel = scenePhysics?.velocityUnit ?? null;
   const massUnitLabel = scenePhysics?.massUnit ?? null;
@@ -362,7 +390,8 @@ export function PropertyPanel(props: PropertyPanelProps) {
 
   return (
     <div style={{ display: "grid", gap: "16px" }}>
-      {pendingConstraintPlacement?.kind === "arc-track" &&
+      {showSelectionSection &&
+      pendingConstraintPlacement?.kind === "arc-track" &&
       pendingConstraintPlacement.stage === "pick-span" ? (
         <section style={cardStyle}>
           <h2 style={sectionLabelStyle}>{t("property.pendingArcTrack.title")}</h2>
@@ -395,6 +424,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
         </section>
       ) : null}
 
+      {showSelectionSection ? (
       <section style={cardStyle}>
         <h2 style={sectionLabelStyle}>{t("property.selection.title")}</h2>
         {selectionLockReason ? (
@@ -673,26 +703,6 @@ export function PropertyPanel(props: PropertyPanelProps) {
               </>
             ) : (
               <>
-                <ReadonlyField
-                  label={t("property.field.position")}
-                  value={
-                    lengthUnitLabel
-                      ? `${selectedEntity.x} ${lengthUnitLabel}, ${selectedEntity.y} ${lengthUnitLabel}`
-                      : `${selectedEntity.x}, ${selectedEntity.y}`
-                  }
-                />
-                {velocityUnitLabel ? (
-                  <ReadonlyField
-                    label={t("property.field.velocity")}
-                    value={`${selectedEntity.velocityX} ${velocityUnitLabel}, ${selectedEntity.velocityY} ${velocityUnitLabel}`}
-                  />
-                ) : null}
-                {massUnitLabel ? (
-                  <ReadonlyField
-                    label={t("property.field.mass")}
-                    value={`${selectedEntity.mass} ${massUnitLabel}`}
-                  />
-                ) : null}
                 <div
                   style={{
                     display: "grid",
@@ -861,6 +871,38 @@ export function PropertyPanel(props: PropertyPanelProps) {
                     }
                   />
                 </div>
+                {selectedMotionAnalysis ? (
+                  <div style={motionControlsStyle}>
+                    <strong style={{ color: "#17304f", fontSize: "13px" }}>
+                      {t("property.motion.samples", {
+                        count: selectedMotionAnalysis.sampleCount,
+                      })}
+                    </strong>
+                    <CheckboxInput
+                      disabled={selectedMotionAnalysis.sampleCount < 2}
+                      label={t("property.motion.showSelectedTrajectory")}
+                      checked={selectedMotionAnalysis.showTrajectory}
+                      onChange={onSelectedTrajectoryVisibilityChange}
+                    />
+                    <button
+                      disabled={!selectedMotionAnalysis.canOpenCharts}
+                      style={{
+                        ...actionButtonStyle,
+                        opacity: selectedMotionAnalysis.canOpenCharts ? 1 : 0.55,
+                        cursor: selectedMotionAnalysis.canOpenCharts ? "pointer" : "not-allowed",
+                      }}
+                      type="button"
+                      onClick={onOpenSelectedMotionCharts}
+                    >
+                      {t("property.motion.openCharts")}
+                    </button>
+                    {!selectedMotionAnalysis.canOpenCharts ? (
+                      <span style={{ color: "#64748b", fontSize: "12px", lineHeight: 1.4 }}>
+                        {t("property.motion.chartsUnavailable")}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
               </>
             )}
             <div style={{ display: "grid", gap: "8px", gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
@@ -888,7 +930,9 @@ export function PropertyPanel(props: PropertyPanelProps) {
           </span>
         )}
       </section>
+      ) : null}
 
+      {showDisplaySection ? (
       <section style={cardStyle}>
         <h2 style={sectionLabelStyle}>{t("property.display.title")}</h2>
         <CheckboxInput
@@ -902,11 +946,6 @@ export function PropertyPanel(props: PropertyPanelProps) {
           onChange={(showLabels) => onUpdateDisplaySetting({ showLabels })}
         />
         <CheckboxInput
-          label={t("property.display.showTrajectories")}
-          checked={display.showTrajectories}
-          onChange={(showTrajectories) => onUpdateDisplaySetting({ showTrajectories })}
-        />
-        <CheckboxInput
           label={t("property.display.showVelocityVectors")}
           checked={display.showVelocityVectors}
           onChange={(showVelocityVectors) => onUpdateDisplaySetting({ showVelocityVectors })}
@@ -917,6 +956,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
           onChange={(showForceVectors) => onUpdateDisplaySetting({ showForceVectors })}
         />
       </section>
+      ) : null}
     </div>
   );
 }

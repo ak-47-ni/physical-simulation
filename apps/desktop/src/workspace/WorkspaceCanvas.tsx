@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type MouseEvent } from "react";
+import { useEffect, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 
 import { useI18n } from "../i18n";
 import type { SceneDisplaySettings } from "../io/sceneFile";
@@ -46,6 +46,7 @@ import {
   DEFAULT_WORKSPACE_VIEWPORT,
   projectAuthoringPointToScreen,
   projectScreenPointToAuthoring,
+  projectSiPointToScreen,
   readViewportOffsetPx,
   type UnitViewport,
 } from "./unitViewport";
@@ -97,7 +98,12 @@ type WorkspaceCanvasProps = {
     velocityX: number;
     velocityY: number;
   } | null;
+  selectedRuntimeTrajectories?: Array<{
+    entityId: string;
+    points: Array<{ timeSeconds: number; x: number; y: number }>;
+  }>;
   showArcTrackJunctionDebug?: boolean;
+  stageOverlay?: ReactNode;
   state: import("../state/editorStore").EditorState;
   viewport?: UnitViewport;
 };
@@ -685,6 +691,19 @@ function formatPlacementDistanceLabel(value: number, lengthUnit: UnitViewport["l
   return `${formatted}${lengthUnit}`;
 }
 
+function createRuntimeTrajectoryPolylinePoints(
+  points: Array<{ x: number; y: number }>,
+  viewport: UnitViewport,
+): string {
+  return points
+    .map((point) => {
+      const projectedPoint = projectSiPointToScreen(point, viewport);
+
+      return `${projectedPoint.x},${projectedPoint.y}`;
+    })
+    .join(" ");
+}
+
 type SelectedArcTrackJunctionDebugSurface = {
   anchorEndpoint: "start" | "end";
   anchorEntityId: string;
@@ -840,7 +859,9 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     onSelectEntity,
     onViewportOffsetChange,
     selectedRuntimeVelocityVector = null,
+    selectedRuntimeTrajectories = [],
     showArcTrackJunctionDebug = false,
+    stageOverlay = null,
     state,
     viewport = DEFAULT_WORKSPACE_VIEWPORT,
   } = props;
@@ -1505,6 +1526,43 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           }}
         />
 
+        {selectedRuntimeTrajectories.map((trajectory) => {
+          if (trajectory.points.length < 2) {
+            return null;
+          }
+
+          const points = createRuntimeTrajectoryPolylinePoints(trajectory.points, viewport);
+
+          return (
+            <svg
+              key={trajectory.entityId}
+              aria-hidden="true"
+              data-point-count={trajectory.points.length}
+              data-testid={`scene-selected-trajectory-${trajectory.entityId}`}
+              height="100%"
+              style={{
+                position: "absolute",
+                inset: 0,
+                overflow: "visible",
+                pointerEvents: "none",
+                zIndex: 2,
+              }}
+              width="100%"
+            >
+              <polyline
+                data-testid={`scene-selected-trajectory-${trajectory.entityId}-polyline`}
+                fill="none"
+                points={points}
+                stroke="#2457a6"
+                strokeDasharray="7 7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="3"
+              />
+            </svg>
+          );
+        })}
+
         {selectedArcTrackJunctionDebugSurface ? (
           <div
             data-anchor-endpoint={selectedArcTrackJunctionDebugSurface.anchorEndpoint}
@@ -1812,6 +1870,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             </button>
           );
         })}
+        {stageOverlay}
       </div>
     </section>
   );

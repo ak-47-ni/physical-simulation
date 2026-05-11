@@ -318,6 +318,11 @@ function readGuideMidpointFromArcTrack(entity: {
   };
 }
 
+function expectSelectedPosition(positionX: string, positionY: string) {
+  expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe(positionX);
+  expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe(positionY);
+}
+
 describe("App direct manipulation contracts", () => {
   it("creates exactly one body when a dragged library body is released over the stage", () => {
     render(<App />);
@@ -333,7 +338,7 @@ describe("App direct manipulation contracts", () => {
     fireEvent.pointerUp(window);
 
     expect(screen.getByTestId("scene-tree-item-ball-2").getAttribute("data-selected")).toBe("true");
-    expect(screen.getByText("2.48 m, 2.04 m")).toBeDefined();
+    expectSelectedPosition("2.48", "2.04");
     expect(screen.getByTestId("mock-workspace-canvas").getAttribute("data-library-drag-active")).toBe(
       "false",
     );
@@ -395,7 +400,7 @@ describe("App direct manipulation contracts", () => {
     fireEvent.pointerUp(window);
 
     expect(screen.getByTestId("scene-tree-item-block-1").getAttribute("data-selected")).toBe("true");
-    expect(screen.getByText("3.36 m, 2.2 m")).toBeDefined();
+    expectSelectedPosition("3.36", "2.2");
   });
 
   it("publishes a blocked arc-track preview when the drag is away from a board or block endpoint", () => {
@@ -477,15 +482,15 @@ describe("App direct manipulation contracts", () => {
     fireEvent.click(screen.getByRole("button", { name: "Hover stage" }));
     fireEvent.pointerUp(window);
 
-    expect(screen.getByText("2.48 m, 2.04 m")).toBeDefined();
+    expectSelectedPosition("2.48", "2.04");
 
     fireEvent.click(screen.getByRole("button", { name: "Move block near board face" }));
 
-    expect(screen.getByText("2.48 m, 2.04 m")).toBeDefined();
+    expectSelectedPosition("2.48", "2.04");
 
     fireEvent.mouseUp(window);
 
-    expect(screen.getByText("3.36 m, 2.2 m")).toBeDefined();
+    expectSelectedPosition("3.36", "2.2");
   });
 
   it("clamps a drag move and release into the first quadrant", () => {
@@ -497,7 +502,7 @@ describe("App direct manipulation contracts", () => {
 
     expect((screen.getByLabelText("Position X") as HTMLInputElement).value).toBe("0");
     expect((screen.getByLabelText("Position Y") as HTMLInputElement).value).toBe("0");
-    expect(screen.getByText("0 m, 0 m")).toBeDefined();
+    expectSelectedPosition("0", "0");
   });
 
   it("keeps the last legal block pose when release target cannot resolve to contact", () => {
@@ -510,7 +515,7 @@ describe("App direct manipulation contracts", () => {
     fireEvent.click(screen.getByRole("button", { name: "Move block to deep overlap" }));
     fireEvent.mouseUp(window);
 
-    expect(screen.getByText("2.48 m, 2.04 m")).toBeDefined();
+    expectSelectedPosition("2.48", "2.04");
   });
 
   it("keeps guided constraint placement cancelable while body drags use the select tool", () => {

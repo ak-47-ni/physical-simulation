@@ -5,10 +5,12 @@ import { localizeSystemCopy } from "../localizeSystemCopy";
 import {
   DEFAULT_PRECOMPUTED_DURATION_SECONDS,
   DEFAULT_REALTIME_DURATION_CAP_SECONDS,
+  MIN_PRECOMPUTED_DURATION_SECONDS,
   type RuntimeBridgeBlockReason,
   type RuntimeBridgeBlockedAction,
   type RuntimeBridgeStatus,
   type RuntimePlaybackMode,
+  normalizePrecomputeDurationSeconds,
 } from "../state/runtimeBridge";
 import { RuntimeStatusBanner } from "./RuntimeStatusBanner";
 import { TransportSpeedSelect } from "./transport/TransportSpeedSelect";
@@ -382,7 +384,7 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
           </span>
           <input
             aria-label={t("transport.field.precomputeDuration")}
-            min={1 / 60}
+            min={MIN_PRECOMPUTED_DURATION_SECONDS}
             step={1}
             style={{
               ...inputStyle,
@@ -393,10 +395,11 @@ export function BottomTransportBar(props: BottomTransportBarProps) {
             type="number"
             value={playbackSettings.precomputeDurationSeconds}
             onChange={(event) => {
-              const nextValue = Number(event.currentTarget.value);
+              const rawValue = event.currentTarget.value;
+              const nextValue = Number(rawValue);
 
-              if (Number.isFinite(nextValue)) {
-                onPrecomputeDurationChange?.(nextValue);
+              if (rawValue.trim() !== "" && Number.isFinite(nextValue)) {
+                onPrecomputeDurationChange?.(normalizePrecomputeDurationSeconds(nextValue));
               }
             }}
           />

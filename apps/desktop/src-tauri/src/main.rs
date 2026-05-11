@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fs::{File, OpenOptions},
+    fs::{self, File, OpenOptions},
     io::Write,
     path::{Path, PathBuf},
     sync::Mutex,
@@ -20,6 +20,8 @@ const FIXED_STEP_SECONDS: f64 = 1.0 / 60.0;
 #[cfg(not(test))]
 const DEFAULT_RUNTIME_TRACE_PATH: &str = "/tmp/physics-sandbox-runtime-trace.jsonl";
 const RUNTIME_TRACE_SCHEMA_VERSION: u32 = 1;
+const DEFAULT_OPENAI_MODEL: &str = "gpt-5.4-mini";
+const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 
 #[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -217,6 +219,20 @@ fn mark_scene_dirty(
 #[tauri::command]
 fn runtime_trace_path(trace_state: tauri::State<'_, RuntimeTraceState>) -> String {
     trace_state.path.display().to_string()
+}
+
+#[tauri::command]
+fn write_export_text_file(path: String, contents: String) -> Result<String, String> {
+    let path = PathBuf::from(path);
+
+    write_export_text_contents(&path, &contents)?;
+
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn generate_scene_draft(prompt: String) -> Result<String, String> {
+    generate_scene_draft_with_env(prompt).await
 }
 
 fn with_bridge<T>(
@@ -598,6 +614,303 @@ fn format_bridge_error(error: BridgeError) -> String {
     }
 }
 
+fn write_export_text_contents(path: &Path, contents: &str) -> Result<(), String> {
+    fs::write(path, contents).map_err(|error| format!("failed to export file: {error}"))
+}
+
+async fn generate_scene_draft_with_env(prompt: String) -> Result<String, String> {
+    let local_env = read_desktop_env_file();
+    let api_key = read_desktop_config_value("OPENAI_API_KEY", &local_env)
+        .map_err(|_| "OPENAI_API_KEY is not configured.".to_string())?;
+    let model = read_desktop_config_value("OPENAI_MODEL", &local_env)
+        .unwrap_or_else(|_| DEFAULT_OPENAI_MODEL.to_string());
+    let base_url = read_desktop_config_value("OPENAI_BASE_URL", &local_env)
+        .unwrap_or_else(|_| DEFAULT_OPENAI_BASE_URL.to_string());
+
+    request_openai_scene_draft(&api_key, &model, &base_url, &prompt).await
+}
+
+fn read_desktop_config_value(
+    key: &str,
+    local_env: &HashMap<String, String>,
+) -> Result<String, std::env::VarError> {
+    match std::env::var(key) {
+        Ok(value) => Ok(value),
+        Err(std::env::VarError::NotPresent) => local_env
+            .get(key)
+            .cloned()
+            .ok_or(std::env::VarError::NotPresent),
+        Err(error) => Err(error),
+    }
+}
+
+fn read_desktop_env_file() -> HashMap<String, String> {
+    let mut values = HashMap::new();
+    let Ok(contents) = fs::read_to_string(".desktop.env") else {
+        return values;
+    };
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+
+        if key.is_empty() {
+            continue;
+        }
+
+        values.insert(key.to_string(), trim_env_value(value));
+    }
+
+    values
+}
+
+fn trim_env_value(value: &str) -> String {
+    let trimmed = value.trim();
+
+    if trimmed.len() >= 2 {
+        let first = trimmed.as_bytes()[0];
+        let last = trimmed.as_bytes()[trimmed.len() - 1];
+
+        if (first == b'"' && last == b'"') || (first == b'\'' && last == b'\'') {
+            return trimmed[1..trimmed.len() - 1].to_string();
+        }
+    }
+
+    trimmed.to_string()
+}
+
+async fn request_openai_scene_draft(
+    api_key: &str,
+    model: &str,
+    base_url: &str,
+    prompt: &str,
+) -> Result<String, String> {
+    if prompt.trim().is_empty() {
+        return Err("Prompt is empty.".to_string());
+    }
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(resolve_openai_responses_url(base_url)?)
+        .bearer_auth(api_key)
+        .json(&build_openai_scene_draft_request(model, prompt))
+        .send()
+        .await
+        .map_err(|error| format!("failed to call OpenAI: {error}"))?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| format!("failed to read OpenAI response: {error}"))?;
+
+    if !status.is_success() {
+        return Err(format!("OpenAI scene generation failed ({status}): {body}"));
+    }
+
+    extract_openai_response_text(&body)
+}
+
+fn resolve_openai_responses_url(base_url: &str) -> Result<String, String> {
+    let trimmed = base_url.trim().trim_end_matches('/');
+
+    if trimmed.is_empty() {
+        return Err("OPENAI_BASE_URL is empty.".to_string());
+    }
+
+    if trimmed.ends_with("/responses") {
+        return Ok(trimmed.to_string());
+    }
+
+    Ok(format!("{trimmed}/responses"))
+}
+
+fn build_openai_scene_draft_request(model: &str, prompt: &str) -> serde_json::Value {
+    serde_json::json!({
+        "model": model,
+        "input": [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": build_scene_draft_system_prompt()
+                    }
+                ]
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": prompt
+                    }
+                ]
+            }
+        ],
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "physics_scene_draft",
+                "strict": true,
+                "schema": scene_draft_json_schema()
+            }
+        }
+    })
+}
+
+fn build_scene_draft_system_prompt() -> &'static str {
+    "You convert Chinese high-school mechanics exam prompts into a JSON SceneDraft for a classroom physics sandbox. Only support mechanics scenes with balls, blocks, boards, springs, gravity, friction, and initial velocity. If diagram information is missing, make conservative assumptions and write them in assumptions. Do not solve the problem. Return only data matching the schema."
+}
+
+fn scene_draft_json_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+            "title",
+            "locale",
+            "domain",
+            "gravity",
+            "entities",
+            "relationships",
+            "analyzers",
+            "assumptions",
+            "warnings",
+            "unsupported"
+        ],
+        "properties": {
+            "title": { "type": "string" },
+            "locale": { "type": "string", "enum": ["zh-CN"] },
+            "domain": { "type": "string", "enum": ["mechanics"] },
+            "gravity": { "type": ["number", "null"] },
+            "entities": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                        "kind",
+                        "name",
+                        "mass",
+                        "friction",
+                        "restitution",
+                        "locked",
+                        "initialVelocity",
+                        "length",
+                        "width",
+                        "height",
+                        "radius",
+                        "angleDegrees"
+                    ],
+                    "properties": {
+                        "kind": { "type": "string", "enum": ["ball", "block", "board"] },
+                        "name": { "type": "string" },
+                        "mass": { "type": ["number", "null"] },
+                        "friction": { "type": ["number", "null"] },
+                        "restitution": { "type": ["number", "null"] },
+                        "locked": { "type": ["boolean", "null"] },
+                        "initialVelocity": {
+                            "type": ["object", "null"],
+                            "additionalProperties": false,
+                            "required": ["x", "y"],
+                            "properties": {
+                                "x": { "type": "number" },
+                                "y": { "type": "number" }
+                            }
+                        },
+                        "length": { "type": ["number", "null"] },
+                        "width": { "type": ["number", "null"] },
+                        "height": { "type": ["number", "null"] },
+                        "radius": { "type": ["number", "null"] },
+                        "angleDegrees": { "type": ["number", "null"] }
+                    }
+                }
+            },
+            "relationships": {
+                "type": "array",
+                "items": {
+                    "anyOf": [
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["kind", "entity", "target", "position"],
+                            "properties": {
+                                "kind": { "type": "string", "enum": ["place-on"] },
+                                "entity": { "type": "string" },
+                                "target": { "type": "string" },
+                                "position": { "type": ["string", "null"], "enum": ["left", "center", "right", null] }
+                            }
+                        },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["kind", "entityA", "entityB", "restLength", "stiffness"],
+                            "properties": {
+                                "kind": { "type": "string", "enum": ["spring-between"] },
+                                "entityA": { "type": "string" },
+                                "entityB": { "type": "string" },
+                                "restLength": { "type": ["number", "null"] },
+                                "stiffness": { "type": ["number", "null"] }
+                            }
+                        }
+                    ]
+                }
+            },
+            "analyzers": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["kind", "entity"],
+                    "properties": {
+                        "kind": { "type": "string", "enum": ["trajectory"] },
+                        "entity": { "type": "string" }
+                    }
+                }
+            },
+            "assumptions": { "type": "array", "items": { "type": "string" } },
+            "warnings": { "type": "array", "items": { "type": "string" } },
+            "unsupported": { "type": "array", "items": { "type": "string" } }
+        }
+    })
+}
+
+fn extract_openai_response_text(body: &str) -> Result<String, String> {
+    let value = serde_json::from_str::<serde_json::Value>(body)
+        .map_err(|error| format!("failed to parse OpenAI response JSON: {error}"))?;
+
+    if let Some(text) = value.get("output_text").and_then(serde_json::Value::as_str) {
+        return Ok(text.to_string());
+    }
+
+    let output = value
+        .get("output")
+        .and_then(serde_json::Value::as_array)
+        .ok_or_else(|| "OpenAI response did not include output.".to_string())?;
+
+    for item in output {
+        let Some(content) = item.get("content").and_then(serde_json::Value::as_array) else {
+            continue;
+        };
+
+        for content_item in content {
+            if let Some(text) = content_item.get("text").and_then(serde_json::Value::as_str) {
+                return Ok(text.to_string());
+            }
+        }
+    }
+
+    Err("OpenAI response did not include generated text.".to_string())
+}
+
 fn format_scene_compile_error(error: SceneCompileError) -> String {
     match error {
         SceneCompileError::DuplicateEntityId { id } => format!("duplicate entity id: {id}"),
@@ -658,6 +971,7 @@ pub fn register_runtime_commands<R: tauri::Runtime>(
     builder
         .manage(RuntimeBridgeState::default())
         .manage(RuntimeTraceState::default())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             compile_scene,
             start_runtime,
@@ -673,7 +987,9 @@ pub fn register_runtime_commands<R: tauri::Runtime>(
             seek_runtime_to_time,
             runtime_status,
             mark_scene_dirty,
-            runtime_trace_path
+            runtime_trace_path,
+            write_export_text_file,
+            generate_scene_draft
         ])
 }
 
@@ -698,7 +1014,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::PathBuf, time::Duration};
+    use std::{collections::HashMap, fs, path::PathBuf, time::Duration};
 
     use serde_json::json;
     use sim_core::bridge::BridgeStatus;
@@ -710,7 +1026,47 @@ mod tests {
 
     use super::{
         BridgeError, BridgeStatusSnapshot, build_desktop_app, format_bridge_error, run_desktop_app,
+        read_desktop_config_value, resolve_openai_responses_url, trim_env_value,
+        write_export_text_contents,
     };
+
+    #[test]
+    fn resolve_openai_responses_url_accepts_base_or_full_responses_url() {
+        assert_eq!(
+            resolve_openai_responses_url("https://api.openai.com/v1").as_deref(),
+            Ok("https://api.openai.com/v1/responses")
+        );
+        assert_eq!(
+            resolve_openai_responses_url("https://gateway.example.com/v1/responses").as_deref(),
+            Ok("https://gateway.example.com/v1/responses")
+        );
+        assert!(resolve_openai_responses_url("   ").is_err());
+    }
+
+    #[test]
+    fn read_desktop_config_value_prefers_process_env_over_local_file() {
+        let key = "PHYSICS_SANDBOX_TEST_OPENAI_BASE_URL";
+        unsafe {
+            std::env::set_var(key, "https://env.example.com/v1");
+        }
+        let local_env = HashMap::from([(key.to_string(), "https://file.example.com/v1".to_string())]);
+
+        assert_eq!(
+            read_desktop_config_value(key, &local_env).as_deref(),
+            Ok("https://env.example.com/v1")
+        );
+
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+
+    #[test]
+    fn trim_env_value_removes_matching_quotes() {
+        assert_eq!(trim_env_value("  \"secret\"  "), "secret");
+        assert_eq!(trim_env_value("  'secret'  "), "secret");
+        assert_eq!(trim_env_value(" secret "), "secret");
+    }
 
     #[test]
     fn build_desktop_app_registers_runtime_status_command() {
@@ -923,6 +1279,61 @@ mod tests {
         });
 
         run_desktop_app(builder, mock_context(noop_assets())).expect("app runs");
+    }
+
+    #[test]
+    fn write_export_text_file_writes_the_selected_export_path() {
+        let path = std::env::temp_dir().join(format!(
+            "physics-sandbox-export-test-{}.json",
+            std::process::id()
+        ));
+
+        let _ = fs::remove_file(&path);
+        write_export_text_contents(&path, "{\"ok\":true}").expect("export file writes");
+
+        assert_eq!(
+            fs::read_to_string(&path).expect("export file is readable"),
+            "{\"ok\":true}"
+        );
+
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn build_desktop_app_registers_export_file_write_command() {
+        let app =
+            build_desktop_app(mock_builder(), mock_context(noop_assets())).expect("app builds");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("webview builds");
+        let path = std::env::temp_dir().join(format!(
+            "physics-sandbox-ipc-export-test-{}.json",
+            std::process::id()
+        ));
+
+        let _ = fs::remove_file(&path);
+        let response = get_ipc_response(
+            &webview,
+            invoke_request_with_body(
+                "write_export_text_file",
+                json!({
+                    "path": path,
+                    "contents": "{\"saved\":true}"
+                }),
+            ),
+        )
+        .expect("export write command succeeds");
+        let saved_path = response
+            .deserialize::<String>()
+            .expect("saved path deserializes");
+
+        assert_eq!(PathBuf::from(saved_path), path);
+        assert_eq!(
+            fs::read_to_string(&path).expect("export file is readable"),
+            "{\"saved\":true}"
+        );
+
+        let _ = fs::remove_file(&path);
     }
 
     #[test]
