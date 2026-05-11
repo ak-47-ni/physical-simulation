@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "io.physics-sandbox.desktop",
   "build": {
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },
   "app": {
