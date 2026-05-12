@@ -237,6 +237,7 @@ export function WorkspaceCanvasPanHarness(props: {
       <output data-testid="viewport-offset-readout">
         {`${viewport.offsetPx?.x ?? 0},${viewport.offsetPx?.y ?? 0}`}
       </output>
+      <output data-testid="viewport-scale-readout">{viewport.pixelsPerMeter}</output>
       <WorkspaceCanvas
         display={createDisplaySettings()}
         displayEntities={projectRuntimeSceneEntities({
@@ -256,6 +257,13 @@ export function WorkspaceCanvasPanHarness(props: {
         libraryDragSession={props.libraryDragSession ?? null}
         onLibraryDragHoverChange={props.onLibraryDragHoverChange}
         onGridVisibleChange={() => undefined}
+        onViewportChange={(nextViewport) => {
+          setViewport((current) => ({
+            ...current,
+            offsetPx: nextViewport.offsetPx,
+            pixelsPerMeter: nextViewport.pixelsPerMeter,
+          }));
+        }}
         onViewportOffsetChange={(offsetPx) => {
           setViewport((current) => ({
             ...current,

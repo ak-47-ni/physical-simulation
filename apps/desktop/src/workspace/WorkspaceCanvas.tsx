@@ -1,4 +1,11 @@
-import { useEffect, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactNode,
+  type WheelEvent,
+} from "react";
 
 import { useI18n } from "../i18n";
 import type { SceneDisplaySettings } from "../io/sceneFile";
@@ -92,6 +99,7 @@ type WorkspaceCanvasProps = {
   onSelectConstraint?: (constraintId: string) => void;
   onSelectEntity: (entityId: string) => void;
   onToolChange: (tool: EditorTool) => void;
+  onViewportChange?: (viewport: WorkspaceViewportChange) => void;
   onViewportOffsetChange?: (offsetPx: { x: number; y: number }) => void;
   selectedRuntimeVelocityVector?: {
     entityId: string;
@@ -130,8 +138,14 @@ type EntityDragSession = {
 type PanSession = {
   originOffsetX: number;
   originOffsetY: number;
+  pixelsPerMeter: number;
   startClientX: number;
   startClientY: number;
+};
+
+type WorkspaceViewportChange = {
+  offsetPx: { x: number; y: number };
+  pixelsPerMeter: number;
 };
 
 type WorkspaceCanvasLibraryDragHover = {
@@ -147,6 +161,10 @@ type ProjectedPlacementPreview = {
 };
 
 const WORKSPACE_STAGE_FIXED_HEIGHT_PX = 928;
+const WORKSPACE_ZOOM_MIN_PIXELS_PER_METER = 25;
+const WORKSPACE_ZOOM_MAX_PIXELS_PER_METER = 400;
+const WORKSPACE_ZOOM_STEP = 1.1;
+const WORKSPACE_GRID_BASE_SIZE_PX = 24;
 
 const toolbarStyle: CSSProperties = {
   display: "flex",
@@ -165,6 +183,43 @@ const actionButtonStyle: CSSProperties = {
   padding: "8px 12px",
   cursor: "pointer",
 };
+
+function clampNumber(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function roundViewportValue(value: number): number {
+  return Number(value.toFixed(3));
+}
+
+function createWheelZoomViewportChange(
+  viewport: UnitViewport,
+  screenPosition: { x: number; y: number },
+  deltaY: number,
+): WorkspaceViewportChange {
+  const currentPixelsPerMeter = clampNumber(
+    viewport.pixelsPerMeter,
+    WORKSPACE_ZOOM_MIN_PIXELS_PER_METER,
+    WORKSPACE_ZOOM_MAX_PIXELS_PER_METER,
+  );
+  const nextPixelsPerMeter = roundViewportValue(
+    clampNumber(
+      currentPixelsPerMeter * (deltaY < 0 ? WORKSPACE_ZOOM_STEP : 1 / WORKSPACE_ZOOM_STEP),
+      WORKSPACE_ZOOM_MIN_PIXELS_PER_METER,
+      WORKSPACE_ZOOM_MAX_PIXELS_PER_METER,
+    ),
+  );
+  const scaleRatio = nextPixelsPerMeter / currentPixelsPerMeter;
+  const offsetPx = readViewportOffsetPx(viewport);
+
+  return {
+    pixelsPerMeter: nextPixelsPerMeter,
+    offsetPx: {
+      x: roundViewportValue(screenPosition.x - (screenPosition.x - offsetPx.x) * scaleRatio),
+      y: roundViewportValue(screenPosition.y - (screenPosition.y - offsetPx.y) * scaleRatio),
+    },
+  };
+}
 
 function isArcTrackLocked(entity: ArcTrackBodyEntity): boolean {
   return entity.locked ?? false;
@@ -857,6 +912,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     onMoveEntity,
     onSelectConstraint,
     onSelectEntity,
+    onViewportChange,
     onViewportOffsetChange,
     selectedRuntimeVelocityVector = null,
     selectedRuntimeTrajectories = [],
@@ -959,10 +1015,20 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     const currentSession = panSession;
 
     function handleMouseMove(event: globalThis.MouseEvent) {
-      onViewportOffsetChange?.({
+      const offsetPx = {
         x: Math.round(currentSession.originOffsetX + event.clientX - currentSession.startClientX),
         y: Math.round(currentSession.originOffsetY + event.clientY - currentSession.startClientY),
-      });
+      };
+
+      if (onViewportChange) {
+        onViewportChange({
+          offsetPx,
+          pixelsPerMeter: currentSession.pixelsPerMeter,
+        });
+        return;
+      }
+
+      onViewportOffsetChange?.(offsetPx);
     }
 
     function handleMouseUp() {
@@ -976,7 +1042,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [onViewportOffsetChange, panSession]);
+  }, [onViewportChange, onViewportOffsetChange, panSession]);
 
   useEffect(() => {
     if (libraryDragSession) {
@@ -1030,7 +1096,11 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
   }
 
   function handleStageMouseDown(event: MouseEvent<HTMLDivElement>) {
-    if (event.button !== 2) {
+    if (
+      event.button !== 2 ||
+      event.target !== event.currentTarget ||
+      (!onViewportChange && !onViewportOffsetChange)
+    ) {
       return;
     }
 
@@ -1040,9 +1110,30 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     setPanSession({
       originOffsetX: offsetPx.x,
       originOffsetY: offsetPx.y,
+      pixelsPerMeter: viewport.pixelsPerMeter,
       startClientX: event.clientX,
       startClientY: event.clientY,
     });
+  }
+
+  function handleStageWheel(event: WheelEvent<HTMLDivElement>) {
+    if (!onViewportChange || event.deltaY === 0) {
+      return;
+    }
+
+    const stageBounds = event.currentTarget.getBoundingClientRect();
+
+    event.preventDefault();
+    onViewportChange(
+      createWheelZoomViewportChange(
+        viewport,
+        {
+          x: Math.round(event.clientX - stageBounds.left),
+          y: Math.round(event.clientY - stageBounds.top),
+        },
+        event.deltaY,
+      ),
+    );
   }
 
   function handleStageMouseMove(event: MouseEvent<HTMLDivElement>) {
@@ -1452,6 +1543,17 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     ));
   }
 
+  const viewportOffsetPx = readViewportOffsetPx(viewport);
+  const workspaceGridSizePx = roundViewportValue(
+    clampNumber(
+      (viewport.pixelsPerMeter / DEFAULT_WORKSPACE_VIEWPORT.pixelsPerMeter) *
+        WORKSPACE_GRID_BASE_SIZE_PX,
+      8,
+      96,
+    ),
+  );
+  const workspaceGridPosition = `${viewportOffsetPx.x}px ${viewportOffsetPx.y}px`;
+
   return (
     <section
       data-grid-visible={String(display.gridVisible)}
@@ -1497,13 +1599,20 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
             ? "linear-gradient(0deg, rgba(170, 185, 215, 0.16) 1px, transparent 1px), linear-gradient(90deg, rgba(170, 185, 215, 0.16) 1px, transparent 1px), linear-gradient(180deg, rgba(255,255,255,0.6), rgba(240,244,252,0.92))"
             : "linear-gradient(180deg, rgba(255,255,255,0.65), rgba(240,244,252,0.95))",
           backgroundRepeat: "repeat, repeat, no-repeat",
-          backgroundSize: display.gridVisible ? "24px 24px, 24px 24px, auto" : "auto",
+          backgroundPosition: display.gridVisible
+            ? `${workspaceGridPosition}, ${workspaceGridPosition}, 0 0`
+            : undefined,
+          backgroundSize: display.gridVisible
+            ? `${workspaceGridSizePx}px ${workspaceGridSizePx}px, ${workspaceGridSizePx}px ${workspaceGridSizePx}px, auto`
+            : "auto",
+          cursor: panSession ? "grabbing" : "default",
         }}
         onClick={handleStageClick}
         onContextMenu={handleStageContextMenu}
         onMouseDown={handleStageMouseDown}
         onMouseLeave={handleStageMouseLeave}
         onMouseMove={handleStageMouseMove}
+        onWheel={handleStageWheel}
       >
         {sceneDomainOverlay.invalidRegions.map((region) => (
           <div key={region.testId} data-testid={region.testId} style={region.style} />

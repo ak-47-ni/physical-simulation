@@ -136,6 +136,14 @@ type PendingEntityDragPlacement = {
   position: { x: number; y: number };
 };
 
+type WorkspaceCameraState = {
+  offsetPx: { x: number; y: number };
+};
+
+const DEFAULT_WORKSPACE_CAMERA_STATE: WorkspaceCameraState = {
+  offsetPx: { x: 0, y: 0 },
+};
+
 type ArcTrackEntity = Extract<EditorSceneEntity, { kind: "arc-track" }>;
 type ArcTrackAnchorableEntity = Extract<EditorSceneEntity, { kind: "board" | "block" }>;
 type ArcTrackAnchorTarget = {
@@ -464,6 +472,9 @@ export function App() {
   const [constraints, setConstraints] = useState<EditorConstraint[]>(initialAuthoringState.constraints);
   const [entities, setEntities] = useState<EditorSceneEntity[]>(initialAuthoringState.entities);
   const [sceneSettings, setSceneSettings] = useState<SceneAuthoringSettings>(initialAuthoringState.settings);
+  const [workspaceCamera, setWorkspaceCamera] = useState<WorkspaceCameraState>(
+    DEFAULT_WORKSPACE_CAMERA_STATE,
+  );
   const [selectedLibraryItem, setSelectedLibraryItem] = useState<LibraryItemKind>("ball");
   const [constraintPlacement, setConstraintPlacement] = useState<ConstraintPlacementState | null>(null);
   const [libraryDragHover, setLibraryDragHover] = useState<LibraryDragHoverState | null>(null);
@@ -490,7 +501,11 @@ export function App() {
   const entityCatalogRef = useRef(entities);
   const fileImportSequenceRef = useRef(0);
   const sceneSettingsRef = useRef(sceneSettings);
-  const workspaceViewport = createWorkspaceViewport(sceneSettings);
+  const workspaceBaseViewport = createWorkspaceViewport(sceneSettings);
+  const workspaceViewport = {
+    ...workspaceBaseViewport,
+    offsetPx: workspaceCamera.offsetPx,
+  };
   const [runtimePort] = useState(() =>
     createDesktopRuntimeBridgePort({
       fallbackPort: createMockRuntimeBridgePort({
@@ -1991,6 +2006,12 @@ export function App() {
               onSelectConstraint={handleSelectConstraint}
               onSelectEntity={handleSelectEntity}
               onToolChange={handleToolChange}
+              onViewportChange={(nextViewport) => {
+                setWorkspaceCamera({
+                  offsetPx: nextViewport.offsetPx,
+                });
+                handleScenePhysicsChange({ pixelsPerMeter: nextViewport.pixelsPerMeter });
+              }}
               selectedRuntimeVelocityVector={
                 selectedRuntimeVelocityVector && selectedEntity
                   ? {

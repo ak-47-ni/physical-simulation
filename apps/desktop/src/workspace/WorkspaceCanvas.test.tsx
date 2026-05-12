@@ -465,7 +465,7 @@ describe("WorkspaceCanvas", () => {
     expect(created).toEqual([]);
   });
 
-  it("right-drag pans from an entity and suppresses the native context menu", () => {
+  it("right-drag pans only from blank stage space and suppresses the native context menu", () => {
     render(<WorkspaceCanvasPanHarness />);
 
     const stage = screen.getByTestId("workspace-stage");
@@ -494,8 +494,40 @@ describe("WorkspaceCanvas", () => {
     });
     entity.dispatchEvent(contextMenuEvent);
 
-    expect(screen.getByTestId("viewport-offset-readout").textContent).toBe("60,48");
+    expect(screen.getByTestId("viewport-offset-readout").textContent).toBe("0,0");
     expect(contextMenuEvent.defaultPrevented).toBe(true);
+
+    fireEvent.mouseDown(stage, {
+      button: 2,
+      buttons: 2,
+      clientX: 240,
+      clientY: 200,
+    });
+    fireEvent.mouseMove(window, {
+      buttons: 2,
+      clientX: 300,
+      clientY: 248,
+    });
+    fireEvent.mouseUp(window, {
+      button: 2,
+      clientX: 300,
+      clientY: 248,
+    });
+
+    expect(screen.getByTestId("viewport-offset-readout").textContent).toBe("60,48");
+  });
+
+  it("zooms the stage toward the mouse pointer without changing the focused world point", () => {
+    render(<WorkspaceCanvasPanHarness />);
+
+    fireEvent.wheel(screen.getByTestId("workspace-stage"), {
+      clientX: 250,
+      clientY: 200,
+      deltaY: -100,
+    });
+
+    expect(screen.getByTestId("viewport-scale-readout").textContent).toBe("110");
+    expect(screen.getByTestId("viewport-offset-readout").textContent).toBe("-25,-20");
   });
 
   it("routes entity picks and stage picks through constraint placement callbacks", () => {

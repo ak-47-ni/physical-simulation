@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { AnnotationLayerStroke } from "../annotation/AnnotationLayer";
 import type { BottomTransportRuntimeView } from "../panels/BottomTransportBar";
@@ -78,6 +78,11 @@ type UseDualPlaybackControllerResult = {
   visibleRuntimeFrame: RuntimeFrameView | null;
 };
 
+type RuntimeRelevantSceneSettings = Pick<
+  SceneAuthoringSettings,
+  "gravity" | "lengthUnit" | "massUnit" | "velocityUnit"
+>;
+
 function createInitialPrecomputedPlaybackState(): PrecomputedPlaybackState {
   return {
     currentFrameIndex: 0,
@@ -148,6 +153,17 @@ function maxCachedFrameAdvancePerPaint(timeScale: number): number {
   return Math.ceil(timeScale);
 }
 
+function readRuntimeRelevantSceneSettings(
+  sceneSettings: SceneAuthoringSettings,
+): RuntimeRelevantSceneSettings {
+  return {
+    gravity: sceneSettings.gravity,
+    lengthUnit: sceneSettings.lengthUnit,
+    massUnit: sceneSettings.massUnit,
+    velocityUnit: sceneSettings.velocityUnit,
+  };
+}
+
 export function useDualPlaybackController(
   input: UseDualPlaybackControllerInput,
 ): UseDualPlaybackControllerResult {
@@ -173,6 +189,15 @@ export function useDualPlaybackController(
   const precomputedPlaybackFrameHandleRef = useRef<number | null>(null);
   const precomputedPlaybackLastTimestampRef = useRef<number | null>(null);
   const precomputedPlaybackLoopTokenRef = useRef(0);
+  const runtimeRelevantSceneSettings = useMemo(
+    () => readRuntimeRelevantSceneSettings(sceneSettings),
+    [
+      sceneSettings.gravity,
+      sceneSettings.lengthUnit,
+      sceneSettings.massUnit,
+      sceneSettings.velocityUnit,
+    ],
+  );
 
   useRuntimePlaybackLoop({
     runtimePort,
@@ -186,7 +211,7 @@ export function useDualPlaybackController(
       ...createInitialPrecomputedPlaybackState(),
       resultState: readInvalidatedPrecomputedResultState(current.resultState),
     }));
-  }, [constraints, entities, sceneSettings]);
+  }, [constraints, entities, runtimeRelevantSceneSettings]);
 
   useEffect(() => {
     if (

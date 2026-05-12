@@ -36,4 +36,21 @@ describe("generateSceneDraftFromText", () => {
       }),
     ).rejects.toThrow(/desktop ai generation is unavailable/i);
   });
+
+  it("preserves desktop command string errors for diagnostics", async () => {
+    const invoke = vi.fn().mockRejectedValue("OpenAI scene generation failed (404): not found");
+
+    try {
+      await generateSceneDraftFromText({
+        invoke,
+        prompt: "测试",
+      });
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe("OpenAI scene generation failed (404): not found");
+      return;
+    }
+
+    throw new Error("expected generateSceneDraftFromText to reject");
+  });
 });

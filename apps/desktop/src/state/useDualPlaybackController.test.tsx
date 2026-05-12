@@ -4,7 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createInitialSceneEntities } from "./editorStore";
 import { createMockRuntimeBridgePort, type RuntimeBridgePort } from "./runtimeBridge";
-import { createDefaultSceneAuthoringSettings } from "./sceneAuthoringSettings";
+import {
+  createDefaultSceneAuthoringSettings,
+  type SceneAuthoringSettings,
+} from "./sceneAuthoringSettings";
 import {
   useDualPlaybackController,
   type ImportedPrecomputedPlayback,
@@ -136,6 +139,7 @@ type HarnessOverrides = {
   constraints?: [];
   entities?: ReturnType<typeof createInitialSceneEntities>;
   importedPrecomputedPlayback?: ImportedPrecomputedPlayback | null;
+  sceneSettings?: SceneAuthoringSettings;
 };
 
 function useDualPlaybackControllerHarness(
@@ -144,10 +148,11 @@ function useDualPlaybackControllerHarness(
 ) {
   const [runtimeSnapshot, setRuntimeSnapshot] = useState(() => runtimePort.getSnapshot());
   const [defaultEntities] = useState(() => createInitialSceneEntities());
-  const [sceneSettings] = useState(() => createDefaultSceneAuthoringSettings());
+  const [defaultSceneSettings] = useState(() => createDefaultSceneAuthoringSettings());
   const annotationStrokes = overrides.annotationStrokes ?? EMPTY_ANNOTATION_STROKES;
   const constraints = overrides.constraints ?? EMPTY_CONSTRAINTS;
   const entities = overrides.entities ?? defaultEntities;
+  const sceneSettings = overrides.sceneSettings ?? defaultSceneSettings;
 
   useEffect(() => runtimePort.subscribe(setRuntimeSnapshot), [runtimePort]);
 
@@ -602,5 +607,43 @@ describe("useDualPlaybackController", () => {
       beforeSeekRuntimeTime,
       5,
     );
+  });
+
+  it("keeps cached playback ready after pixels-per-meter-only viewport edits", async () => {
+    const runtimePort = createControllerRuntimePort();
+    const initialSceneSettings = createDefaultSceneAuthoringSettings();
+    const { result, rerender } = renderHook(
+      ({ sceneSettings }) =>
+        useDualPlaybackControllerHarness(runtimePort, { sceneSettings }),
+      {
+        initialProps: {
+          sceneSettings: initialSceneSettings,
+        },
+      },
+    );
+
+    await startPrecomputedPlayback(result);
+
+    await waitFor(() => {
+      expect(result.current.playbackResultState).toBe("ready");
+      expect(result.current.seekEnabled).toBe(true);
+    });
+
+    act(() => {
+      result.current.seekPrecomputedPlayback(1.25);
+    });
+
+    const cachedFrameNumber = result.current.visibleRuntimeFrame?.frameNumber;
+
+    rerender({
+      sceneSettings: {
+        ...initialSceneSettings,
+        pixelsPerMeter: 110,
+      },
+    });
+
+    expect(result.current.playbackResultState).toBe("ready");
+    expect(result.current.seekEnabled).toBe(true);
+    expect(result.current.visibleRuntimeFrame?.frameNumber).toBe(cachedFrameNumber);
   });
 });

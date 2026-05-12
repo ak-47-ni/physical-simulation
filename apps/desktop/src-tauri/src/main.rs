@@ -729,32 +729,30 @@ fn resolve_openai_responses_url(base_url: &str) -> Result<String, String> {
         return Ok(trimmed.to_string());
     }
 
+    if trimmed.ends_with("/v1") {
+        return Ok(format!("{trimmed}/responses"));
+    }
+
+    if base_url_has_no_path(trimmed) {
+        return Ok(format!("{trimmed}/v1/responses"));
+    }
+
     Ok(format!("{trimmed}/responses"))
+}
+
+fn base_url_has_no_path(trimmed_url: &str) -> bool {
+    let Some((_, rest)) = trimmed_url.split_once("://") else {
+        return !trimmed_url.contains('/');
+    };
+
+    !rest.contains('/')
 }
 
 fn build_openai_scene_draft_request(model: &str, prompt: &str) -> serde_json::Value {
     serde_json::json!({
         "model": model,
-        "input": [
-            {
-                "role": "system",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": build_scene_draft_system_prompt()
-                    }
-                ]
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_text",
-                        "text": prompt
-                    }
-                ]
-            }
-        ],
+        "instructions": build_scene_draft_system_prompt(),
+        "input": prompt,
         "text": {
             "format": {
                 "type": "json_schema",
@@ -1037,10 +1035,26 @@ mod tests {
             Ok("https://api.openai.com/v1/responses")
         );
         assert_eq!(
+            resolve_openai_responses_url("https://gateway.example.com").as_deref(),
+            Ok("https://gateway.example.com/v1/responses")
+        );
+        assert_eq!(
             resolve_openai_responses_url("https://gateway.example.com/v1/responses").as_deref(),
             Ok("https://gateway.example.com/v1/responses")
         );
         assert!(resolve_openai_responses_url("   ").is_err());
+    }
+
+    #[test]
+    fn build_openai_scene_draft_request_uses_top_level_instructions() {
+        let request = super::build_openai_scene_draft_request("gpt-test", "测试题目");
+
+        assert_eq!(request["model"], json!("gpt-test"));
+        assert_eq!(
+            request["instructions"],
+            json!(super::build_scene_draft_system_prompt())
+        );
+        assert_eq!(request["input"], json!("测试题目"));
     }
 
     #[test]

@@ -27,6 +27,8 @@ export async function generateSceneDraftFromText(
 
   const rawDraft = await invoke<unknown>("generate_scene_draft", {
     prompt: input.prompt,
+  }).catch((error: unknown) => {
+    throw new Error(readDesktopGenerationErrorMessage(error));
   });
 
   return validateSceneDraft(readDraftCandidate(rawDraft));
@@ -42,6 +44,18 @@ function readDraftCandidate(value: unknown): unknown {
   } catch {
     throw new Error("AI scene generation returned invalid JSON.");
   }
+}
+
+function readDesktopGenerationErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  return "Unable to generate scene draft.";
 }
 
 function resolveTauriInvoke(): DesktopInvoke | null {

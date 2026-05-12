@@ -348,6 +348,20 @@ describe("App runtime features", () => {
     expect((rightPane.getByLabelText("Pixels per meter") as HTMLInputElement).value).toBe("100");
   });
 
+  it("syncs wheel zoom changes into the scene physics pixels-per-meter field", () => {
+    render(<App />);
+
+    openInspectorTab("SCENE PHYSICS");
+
+    fireEvent.wheel(screen.getByTestId("workspace-stage"), {
+      clientX: 250,
+      clientY: 200,
+      deltaY: -100,
+    });
+
+    expect((screen.getByLabelText("Pixels per meter") as HTMLInputElement).value).toBe("110");
+  });
+
   it("mounts the transport bar, analysis panel, and annotation layer into the desktop shell", () => {
     render(<App />);
 
