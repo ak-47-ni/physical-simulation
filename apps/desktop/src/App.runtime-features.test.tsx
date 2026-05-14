@@ -468,6 +468,51 @@ describe("App runtime features", () => {
     expect(screen.getByText("0.02 s")).toBeDefined();
   });
 
+  it("moves existing annotations together with the stage when the workspace is panned", () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^ink$/i }));
+    const surface = screen.getByTestId("annotation-layer-surface");
+    fireEvent(
+      surface,
+      new MouseEvent("pointerdown", { bubbles: true, clientX: 20, clientY: 24, button: 0 }),
+    );
+    fireEvent(
+      surface,
+      new MouseEvent("pointermove", { bubbles: true, clientX: 40, clientY: 36, button: 0 }),
+    );
+    fireEvent(
+      surface,
+      new MouseEvent("pointerup", { bubbles: true, clientX: 40, clientY: 36, button: 0 }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /cancel ink/i }));
+
+    expect(screen.getByTestId("annotation-layer-viewport").getAttribute("transform")).toBe(
+      "translate(0 0)",
+    );
+
+    fireEvent.mouseDown(screen.getByTestId("workspace-stage"), {
+      button: 2,
+      clientX: 160,
+      clientY: 180,
+    });
+    fireEvent.mouseMove(window, {
+      clientX: 210,
+      clientY: 225,
+    });
+    fireEvent.mouseUp(window, {
+      clientX: 210,
+      clientY: 225,
+    });
+
+    expect(screen.getByTestId("annotation-layer-viewport").getAttribute("transform")).toBe(
+      "translate(50 45)",
+    );
+    expect(screen.getByTestId("annotation-stroke-0").getAttribute("points")).toBe(
+      "20,24 40,36 40,36",
+    );
+  });
+
   it("shows runtime analysis guidance before samples and updates the summary after stepping", async () => {
     render(<App />);
 

@@ -833,6 +833,53 @@ describe("PropertyPanel", () => {
     expect(screen.queryByLabelText("Show trajectories")).toBeNull();
   });
 
+  it("shows the selected-ball height readout card when runtime geometry is available", () => {
+    render(
+      <PropertyPanel
+        display={createSceneDisplaySettings()}
+        onDeleteSelectedEntity={() => undefined}
+        onDuplicateSelectedEntity={() => undefined}
+        onUpdateDisplaySetting={() => undefined}
+        onUpdateSelectedEntityLabel={() => undefined}
+        onUpdateSelectedEntityPhysics={() => undefined}
+        onUpdateSelectedEntityPosition={() => undefined}
+        onUpdateSelectedEntityRadius={() => undefined}
+        onUpdateSelectedEntitySize={() => undefined}
+        scenePhysics={TEST_SCENE_PHYSICS}
+        selectedEntity={{
+          id: "ball-1",
+          kind: "ball",
+          label: "Ball 1",
+          x: 1.32,
+          y: 1.76,
+          radius: 0.24,
+          mass: 1,
+          friction: 0,
+          restitution: 1,
+          locked: false,
+          velocityX: 0,
+          velocityY: 0,
+        }}
+        selectedHeightReadout={{
+          centerDrop: 0.967846,
+          currentCenter: { x: 4.41, y: 2.407846 },
+          currentSurfacePoint: { x: 4.41, y: 2.44 },
+          offsetGap: 0.032154,
+          selectedEntityId: "ball-1",
+          startCenter: { x: 1.57, y: 1.44 },
+          startSurfacePoint: { x: 1.45, y: 1.232154 },
+          surfaceDrop: 1,
+        }}
+        visibleSections={["selection"]}
+      />,
+    );
+
+    expect(screen.getByText("Height readout")).toBeDefined();
+    expect(screen.getByTestId("property-height-readout-surface-drop").textContent).toBe("1 m");
+    expect(screen.getByTestId("property-height-readout-center-drop").textContent).toBe("0.97 m");
+    expect(screen.getByTestId("property-height-readout-offset-gap").textContent).toBe("0.03 m");
+  });
+
   it("disables property inputs while authoring is locked but keeps actions visible", () => {
     render(
       <PropertyPanel

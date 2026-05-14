@@ -15,6 +15,7 @@ use crate::solver::{RuntimeBodyShape, RuntimeBodyState};
 const LINEAR_GUIDE_ATTACH_NORMAL_TOLERANCE: f64 = 0.08;
 const LINEAR_GUIDE_ATTACH_LONGITUDINAL_TOLERANCE: f64 = 0.08;
 const LINEAR_GUIDE_MIN_TANGENTIAL_SPEED: f64 = 1e-4;
+const LINEAR_GUIDE_MIN_TANGENTIAL_ACCELERATION: f64 = 1e-6;
 const LINEAR_GUIDE_ATTACH_OUTWARD_NORMAL_SPEED_EPSILON: f64 = 1e-6;
 const GUIDE_TERMINAL_HANDOFF_DEADBAND_MIN_LENGTH: f64 = 1e-3;
 const GUIDE_TERMINAL_HANDOFF_DEADBAND_BODY_RADIUS_FACTOR: f64 = 0.01;
@@ -248,6 +249,7 @@ fn find_linear_guide_attachment<'a>(
         let progress = offset.dot(linear.direction);
         let normal_offset = offset.dot(linear.surface_normal);
         let tangential_speed = body.velocity.dot(linear.direction);
+        let tangential_acceleration = body.acceleration.dot(linear.direction);
         let normal_speed = body.velocity.dot(linear.surface_normal);
 
         if progress < -LINEAR_GUIDE_ATTACH_LONGITUDINAL_TOLERANCE
@@ -258,7 +260,8 @@ fn find_linear_guide_attachment<'a>(
                 tangential_speed,
             )
             || (normal_offset - radius).abs() > LINEAR_GUIDE_ATTACH_NORMAL_TOLERANCE
-            || tangential_speed.abs() <= LINEAR_GUIDE_MIN_TANGENTIAL_SPEED
+            || (tangential_speed.abs() <= LINEAR_GUIDE_MIN_TANGENTIAL_SPEED
+                && tangential_acceleration.abs() <= LINEAR_GUIDE_MIN_TANGENTIAL_ACCELERATION)
             || normal_speed > LINEAR_GUIDE_ATTACH_OUTWARD_NORMAL_SPEED_EPSILON
         {
             return None;

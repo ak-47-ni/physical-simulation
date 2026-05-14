@@ -11,6 +11,13 @@ import { normalizeAuthoredPositionForCommit } from "./authoringDomain";
 const LEGACY_LENGTH_UNIT = "cm";
 const LEGACY_MASS_UNIT = "kg";
 const DUPLICATE_OFFSET = 24;
+const HIGH_PRECISION_POSITION_DECIMALS_IN_METERS = 4;
+
+function positionPrecisionForEntity(entity: EditorSceneEntity): number | undefined {
+  return entity.kind === "board" || entity.kind === "arc-track"
+    ? HIGH_PRECISION_POSITION_DECIMALS_IN_METERS
+    : undefined;
+}
 
 export function canPlaceAuthoringCandidate(
   candidate: EditorSceneEntity,
@@ -53,7 +60,11 @@ export function normalizeAuthoringEntityPositionForCommit<T extends EditorSceneE
   if (entity.kind === "arc-track") {
     return createRepositionedEntity(
       entity,
-      normalizeAuthoredPositionForCommit(entity.center, lengthUnit),
+      normalizeAuthoredPositionForCommit(
+        entity.center,
+        lengthUnit,
+        positionPrecisionForEntity(entity),
+      ),
     );
   }
 
@@ -65,6 +76,7 @@ export function normalizeAuthoringEntityPositionForCommit<T extends EditorSceneE
         y: entity.y,
       },
       lengthUnit,
+      positionPrecisionForEntity(entity),
     ),
   );
 }

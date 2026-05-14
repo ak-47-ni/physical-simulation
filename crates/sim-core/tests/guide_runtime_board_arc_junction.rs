@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, f64::consts::FRAC_PI_6};
 
 use serde_json::json;
 use sim_core::arc_track::{
@@ -33,11 +33,21 @@ fn ball(id: &str, position: Vector2, radius: f64, initial_velocity: Vector2) -> 
 }
 
 fn board(id: &str, center: Vector2, width: f64, height: f64) -> EntityDefinition {
+    rotated_board(id, center, width, height, 0.0)
+}
+
+fn rotated_board(
+    id: &str,
+    center: Vector2,
+    width: f64,
+    height: f64,
+    rotation_radians: f64,
+) -> EntityDefinition {
     EntityDefinition {
         id: id.to_string(),
         shape: ShapeDefinition::Block { width, height },
         position: center,
-        rotation_radians: 0.0,
+        rotation_radians,
         initial_velocity: Vector2::ZERO,
         mass: 0.0,
         is_static: true,
@@ -74,12 +84,14 @@ fn board_endpoint_frame(
     center: Vector2,
     width: f64,
     height: f64,
+    rotation_radians: f64,
     endpoint: ArcTrackAnchorEndpoint,
 ) -> (Vector2, Vector2, Vector2) {
-    let axis_x = vector2(1.0, 0.0);
-    let top_center = center.add(vector2(0.0, -height * 0.5));
+    let axis_x = vector2(1.0, 0.0).rotated(rotation_radians);
+    let axis_y = axis_x.perp();
+    let top_center = center.add(axis_y.scale(-height * 0.5));
     let half_width_offset = axis_x.scale(width * 0.5);
-    let surface_normal = vector2(0.0, -1.0);
+    let surface_normal = axis_y.scale(-1.0);
 
     match endpoint {
         ArcTrackAnchorEndpoint::Start => (
@@ -136,6 +148,7 @@ fn runtime_for_board_arc_scene(
         board_center,
         board_width,
         board_height,
+        0.0,
         ArcTrackAnchorEndpoint::End,
     );
     let arc_track = anchored_arc_track_entity(
@@ -211,7 +224,7 @@ fn runtime_from_desktop_payload(
 fn guide_runtime_board_top_hands_off_to_connected_arc_segment() {
     let board_center = vector2(0.0, 0.0);
     let (_, tangent, surface_normal) =
-        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+        board_endpoint_frame(board_center, 4.0, 0.5, 0.0, ArcTrackAnchorEndpoint::End);
     let mut runtime = runtime_for_board_arc_scene(
         vector2(1.25, -0.25).add(surface_normal.scale(0.4)),
         tangent.scale(1.6),
@@ -244,7 +257,7 @@ fn guide_runtime_board_top_hands_off_to_connected_arc_segment() {
 fn guide_runtime_board_to_arc_handoff_starts_at_junction_before_advancing_arc() {
     let board_center = vector2(0.0, 0.0);
     let (_, tangent, surface_normal) =
-        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+        board_endpoint_frame(board_center, 4.0, 0.5, 0.0, ArcTrackAnchorEndpoint::End);
     let mut runtime = runtime_for_board_arc_scene(
         vector2(1.95, -0.25).add(surface_normal.scale(0.4)),
         tangent.scale(10.0),
@@ -443,6 +456,704 @@ fn guide_runtime_desktop_payload_board_to_arc_handoff_has_no_large_frame_delta()
     }
 
     panic!("desktop payload ball should enter the arc guide");
+}
+
+#[test]
+fn guide_runtime_smooth_arc_hands_off_from_tilted_board_to_second_horizontal_board() {
+    let ramp_center = vector2(0.0, 0.0);
+    let ramp_width = 4.0;
+    let ramp_height = 0.5;
+    let ramp_rotation = FRAC_PI_6;
+    let ball_radius = 0.24;
+    let initial_speed: f64 = 2.0;
+    let arc_radius = 1.2;
+    let flat_width = 4.0;
+    let flat_height = 0.5;
+    let (ramp_endpoint, ramp_tangent, ramp_surface_normal) = board_endpoint_frame(
+        ramp_center,
+        ramp_width,
+        ramp_height,
+        ramp_rotation,
+        ArcTrackAnchorEndpoint::End,
+    );
+    let arc_track = anchored_arc_track_entity(
+        "smooth-arc",
+        ramp_endpoint,
+        ramp_tangent,
+        arc_radius,
+        30.0,
+        ArcTrackEntryEndpoint::Start,
+    );
+    let flat_start_surface = arc_track
+        .position
+        .add(vector2(0.0, 1.0).scale(contact_path_radius(
+            arc_radius,
+            DEFAULT_ARC_TRACK_THICKNESS,
+            ArcTrackSide::Inside,
+        )));
+    let flat_center = flat_start_surface.add(vector2(flat_width * 0.5, flat_height * 0.5));
+    let initial_ball_position = ramp_endpoint
+        .sub(ramp_tangent.scale(0.75))
+        .add(ramp_surface_normal.scale(ball_radius));
+    let compiled = compile_scene_with_arc_track_metadata(
+        &CompileSceneRequest {
+            entities: vec![
+                ball(
+                    "ball",
+                    initial_ball_position,
+                    ball_radius,
+                    ramp_tangent.scale(initial_speed),
+                ),
+                rotated_board(
+                    "ramp-board",
+                    ramp_center,
+                    ramp_width,
+                    ramp_height,
+                    ramp_rotation,
+                ),
+                board("flat-board", flat_center, flat_width, flat_height),
+                arc_track,
+            ],
+            constraints: vec![],
+            force_sources: vec![ForceSourceDefinition::Gravity {
+                id: "gravity".to_string(),
+                acceleration: Vector2::ZERO,
+            }],
+            analyzers: vec![],
+        },
+        &HashMap::from([(
+            "smooth-arc".to_string(),
+            ArcTrackEntityCompileMetadata {
+                anchor: Some(CompiledArcTrackAnchor {
+                    entity_id: "ramp-board".to_string(),
+                    entity_kind: ArcTrackAnchorEntityKind::Board,
+                    endpoint: ArcTrackAnchorEndpoint::End,
+                }),
+                entry_endpoint: Some(ArcTrackEntryEndpoint::Start),
+            },
+        )]),
+    )
+    .expect("scene should compile");
+    let mut runtime = RuntimeScene::new(compiled, 1.0 / 60.0);
+    let mut saw_arc_guide = false;
+
+    for _ in 0..240 {
+        let frame = runtime.step();
+        let ball_frame = payload_frame(&frame, "ball");
+
+        match runtime.guide_state("ball") {
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if segment_id == "guide:smooth-arc:arc" =>
+            {
+                saw_arc_guide = true;
+            }
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if saw_arc_guide && segment_id == "guide:flat-board:top" =>
+            {
+                let speed = ball_frame.velocity.length();
+
+                assert!(
+                    (speed - initial_speed).abs() < 1e-6,
+                    "ideal smooth arc should preserve speed magnitude; initial={initial_speed:.6} returned={speed:.6}"
+                );
+                assert!(
+                    ball_frame.velocity.x > 0.0 && ball_frame.velocity.y.abs() < 1e-6,
+                    "ideal smooth arc should rotate velocity onto the horizontal board, got velocity=({:.6}, {:.6})",
+                    ball_frame.velocity.x,
+                    ball_frame.velocity.y,
+                );
+                return;
+            }
+            RuntimeGuideState::Free if saw_arc_guide => {
+                panic!(
+                    "ball should hand off from the smooth arc to the second board without detaching"
+                );
+            }
+            RuntimeGuideState::Free | RuntimeGuideState::OnGuide { .. } => {}
+        }
+    }
+
+    panic!("ball should travel from the tilted board through the smooth arc onto the second board");
+}
+
+#[test]
+fn guide_runtime_desktop_payload_smooth_arc_hands_off_to_second_board() {
+    let ramp_center = vector2(0.0, 0.0);
+    let ramp_width = 4.0;
+    let ramp_height = 0.5;
+    let ramp_rotation = FRAC_PI_6;
+    let ball_radius = 0.24;
+    let initial_speed: f64 = 2.0;
+    let arc_radius = 1.2;
+    let flat_width = 4.0;
+    let flat_height = 0.5;
+    let (ramp_endpoint, ramp_tangent, ramp_surface_normal) = board_endpoint_frame(
+        ramp_center,
+        ramp_width,
+        ramp_height,
+        ramp_rotation,
+        ArcTrackAnchorEndpoint::End,
+    );
+    let arc_track = anchored_arc_track_entity(
+        "smooth-arc",
+        ramp_endpoint,
+        ramp_tangent,
+        arc_radius,
+        30.0,
+        ArcTrackEntryEndpoint::Start,
+    );
+    let ShapeDefinition::ArcTrack {
+        radius,
+        central_angle_degrees,
+        thickness,
+    } = arc_track.shape
+    else {
+        panic!("fixture arc track should use an arc track shape");
+    };
+    let desktop_contact_radius = contact_path_radius(radius, thickness, ArcTrackSide::Inside);
+    let desktop_bisector_rotation_degrees =
+        arc_track.rotation_radians.to_degrees() + central_angle_degrees * 0.5;
+    let flat_start_surface = arc_track
+        .position
+        .add(vector2(0.0, 1.0).scale(desktop_contact_radius));
+    let flat_center = flat_start_surface.add(vector2(flat_width * 0.5, flat_height * 0.5));
+    let initial_ball_position = ramp_endpoint
+        .sub(ramp_tangent.scale(0.75))
+        .add(ramp_surface_normal.scale(ball_radius));
+    let mut runtime = runtime_from_desktop_payload(
+        json!({
+            "scene": {
+                "schemaVersion": 1,
+                "entities": [
+                    {
+                        "id": "ball",
+                        "kind": "ball",
+                        "x": initial_ball_position.x - ball_radius,
+                        "y": initial_ball_position.y - ball_radius,
+                        "radius": ball_radius,
+                        "velocityX": ramp_tangent.x * initial_speed,
+                        "velocityY": ramp_tangent.y * initial_speed,
+                        "mass": 1.0,
+                        "friction": 0.0,
+                        "restitution": 0.0,
+                        "locked": false
+                    },
+                    {
+                        "id": "ramp-board",
+                        "kind": "board",
+                        "x": ramp_center.x - ramp_width * 0.5,
+                        "y": ramp_center.y - ramp_height * 0.5,
+                        "width": ramp_width,
+                        "height": ramp_height,
+                        "rotationRadians": ramp_rotation,
+                        "locked": true,
+                        "friction": 0.0
+                    },
+                    {
+                        "id": "flat-board",
+                        "kind": "board",
+                        "x": flat_center.x - flat_width * 0.5,
+                        "y": flat_center.y - flat_height * 0.5,
+                        "width": flat_width,
+                        "height": flat_height,
+                        "rotationRadians": 0.0,
+                        "locked": true,
+                        "friction": 0.0
+                    },
+                    {
+                        "id": "smooth-arc",
+                        "kind": "arc-track",
+                        "anchorEntityId": "ramp-board",
+                        "anchorEntityKind": "board",
+                        "anchorEndpoint": "end",
+                        "center": { "x": arc_track.position.x, "y": arc_track.position.y },
+                        "entryEndpoint": "start",
+                        "radius": desktop_contact_radius,
+                        "rotationDegrees": desktop_bisector_rotation_degrees,
+                        "sweepAngleDegrees": central_angle_degrees,
+                        "thickness": thickness
+                    }
+                ],
+                "constraints": [],
+                "forceSources": [
+                    {
+                        "id": "gravity",
+                        "kind": "gravity",
+                        "acceleration": { "x": 0.0, "y": 0.0 }
+                    }
+                ],
+                "analyzers": [],
+                "annotations": []
+            },
+            "dirtyScopes": [],
+            "rebuildRequired": false
+        }),
+        1.0 / 60.0,
+    );
+    let mut previous_frame = runtime.current_frame();
+    let mut saw_arc_guide = false;
+
+    for _ in 0..240 {
+        let frame = runtime.step();
+        let previous_ball = payload_frame(&previous_frame, "ball");
+        let ball = payload_frame(&frame, "ball");
+
+        match runtime.guide_state("ball") {
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if segment_id == "guide:smooth-arc:arc" =>
+            {
+                saw_arc_guide = true;
+            }
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if saw_arc_guide && segment_id == "guide:flat-board:top" =>
+            {
+                let frame_delta = ball.position.sub(previous_ball.position).length();
+                let speed = ball.velocity.length();
+
+                assert!(
+                    frame_delta < 0.08,
+                    "desktop payload smooth arc handoff should not jump, delta={frame_delta:.6}"
+                );
+                assert!(
+                    (speed - initial_speed).abs() < 1e-6,
+                    "desktop payload smooth arc should preserve speed magnitude; initial={initial_speed:.6} returned={speed:.6}"
+                );
+                assert!(
+                    ball.velocity.x > 0.0 && ball.velocity.y.abs() < 1e-6,
+                    "desktop payload smooth arc should rotate velocity onto the horizontal board, got velocity=({:.6}, {:.6})",
+                    ball.velocity.x,
+                    ball.velocity.y,
+                );
+                return;
+            }
+            RuntimeGuideState::Free if saw_arc_guide => {
+                panic!(
+                    "desktop payload ball should hand off from the smooth arc to the second board"
+                );
+            }
+            RuntimeGuideState::Free | RuntimeGuideState::OnGuide { .. } => {}
+        }
+
+        previous_frame = frame;
+    }
+
+    panic!("desktop payload ball should travel through the smooth arc onto the second board");
+}
+
+#[test]
+fn guide_runtime_auto_generated_smooth_arc_hands_off_between_board_tangent_points() {
+    let junction = vector2(0.0, 0.0);
+    let ramp_width = 4.0;
+    let board_height = 0.2;
+    let ramp_rotation = FRAC_PI_6;
+    let flat_width = 4.0;
+    let ball_radius = 0.24;
+    let initial_speed: f64 = 2.0;
+    let tangent_inset = 0.22;
+    let ramp_tangent = vector2(1.0, 0.0).rotated(ramp_rotation);
+    let flat_travel_tangent = vector2(1.0, 0.0);
+    let turn_angle_radians = ramp_tangent
+        .dot(flat_travel_tangent)
+        .clamp(-1.0, 1.0)
+        .acos();
+    let contact_radius = tangent_inset / (turn_angle_radians * 0.5).tan();
+    let turn_sign = ramp_tangent.cross(flat_travel_tangent).signum();
+    let ramp_tangent_point = junction.sub(ramp_tangent.scale(tangent_inset));
+    let flat_tangent_point = junction.add(flat_travel_tangent.scale(tangent_inset));
+    let arc_center = ramp_tangent_point
+        .add(ramp_tangent.perp().scale(turn_sign * contact_radius))
+        .add(flat_tangent_point.add(flat_travel_tangent.perp().scale(turn_sign * contact_radius)))
+        .scale(0.5);
+    let ramp_start_radial = ramp_tangent_point.sub(arc_center).normalized();
+    let flat_end_radial = flat_tangent_point.sub(arc_center).normalized();
+    let start_angle_radians =
+        angle_radians_for_position(ramp_start_radial).expect("start radial should define angle");
+    let end_angle_radians =
+        angle_radians_for_position(flat_end_radial).expect("end radial should define angle");
+    let mut sweep_angle_degrees = (end_angle_radians - start_angle_radians).to_degrees();
+
+    while sweep_angle_degrees <= 0.0 {
+        sweep_angle_degrees += 360.0;
+    }
+
+    let rotation_degrees = start_angle_radians.to_degrees() + sweep_angle_degrees * 0.5;
+    let ramp_axis_y = ramp_tangent.perp();
+    let ramp_center = junction
+        .add(ramp_axis_y.scale(board_height * 0.5))
+        .sub(ramp_tangent.scale(ramp_width * 0.5));
+    let flat_center = junction
+        .add(vector2(0.0, board_height * 0.5))
+        .add(vector2(flat_width * 0.5, 0.0));
+    let ramp_surface_normal = ramp_axis_y.scale(-1.0);
+    let initial_ball_position = ramp_tangent_point
+        .sub(ramp_tangent.scale(0.55))
+        .add(ramp_surface_normal.scale(ball_radius));
+    let mut runtime = runtime_from_desktop_payload(
+        json!({
+            "scene": {
+                "schemaVersion": 1,
+                "entities": [
+                    {
+                        "id": "ball",
+                        "kind": "ball",
+                        "x": initial_ball_position.x - ball_radius,
+                        "y": initial_ball_position.y - ball_radius,
+                        "radius": ball_radius,
+                        "velocityX": ramp_tangent.x * initial_speed,
+                        "velocityY": ramp_tangent.y * initial_speed,
+                        "mass": 1.0,
+                        "friction": 0.0,
+                        "restitution": 0.0,
+                        "locked": false
+                    },
+                    {
+                        "id": "ramp-board",
+                        "kind": "board",
+                        "x": ramp_center.x - ramp_width * 0.5,
+                        "y": ramp_center.y - board_height * 0.5,
+                        "width": ramp_width,
+                        "height": board_height,
+                        "rotationRadians": ramp_rotation,
+                        "locked": true,
+                        "friction": 0.0
+                    },
+                    {
+                        "id": "flat-board",
+                        "kind": "board",
+                        "x": flat_center.x - flat_width * 0.5,
+                        "y": flat_center.y - board_height * 0.5,
+                        "width": flat_width,
+                        "height": board_height,
+                        "rotationRadians": 0.0,
+                        "locked": true,
+                        "friction": 0.0
+                    },
+                    {
+                        "id": "smooth-arc",
+                        "kind": "arc-track",
+                        "autoGenerated": true,
+                        "anchorEntityId": "ramp-board",
+                        "anchorEntityKind": "board",
+                        "anchorEndpoint": "end",
+                        "center": { "x": arc_center.x, "y": arc_center.y },
+                        "entryEndpoint": "start",
+                        "radius": contact_radius,
+                        "rotationDegrees": rotation_degrees,
+                        "sweepAngleDegrees": sweep_angle_degrees,
+                        "thickness": DEFAULT_ARC_TRACK_THICKNESS
+                    }
+                ],
+                "constraints": [],
+                "forceSources": [
+                    {
+                        "id": "gravity",
+                        "kind": "gravity",
+                        "acceleration": { "x": 0.0, "y": 0.0 }
+                    }
+                ],
+                "analyzers": [],
+                "annotations": []
+            },
+            "dirtyScopes": [],
+            "rebuildRequired": false
+        }),
+        1.0 / 60.0,
+    );
+    let mut saw_arc = false;
+
+    for _ in 0..180 {
+        let frame = runtime.step();
+        let ball = payload_frame(&frame, "ball");
+
+        match runtime.guide_state("ball") {
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if segment_id == "guide:smooth-arc:arc" =>
+            {
+                saw_arc = true;
+            }
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if saw_arc && segment_id == "guide:flat-board:top" =>
+            {
+                let speed = ball.velocity.length();
+
+                assert!(
+                    (speed - initial_speed).abs() < 1e-6,
+                    "auto smooth arc should preserve ideal speed magnitude; initial={initial_speed:.6} returned={speed:.6}"
+                );
+                assert!(
+                    ball.velocity.x > 0.0 && ball.velocity.y.abs() < 1e-6,
+                    "auto smooth arc should rotate velocity onto the horizontal board, got velocity=({:.6}, {:.6})",
+                    ball.velocity.x,
+                    ball.velocity.y,
+                );
+                return;
+            }
+            RuntimeGuideState::Free if saw_arc => {
+                panic!("auto smooth arc should hand off to the second board without detaching");
+            }
+            RuntimeGuideState::Free | RuntimeGuideState::OnGuide { .. } => {}
+        }
+    }
+
+    panic!("ball should travel across the auto-generated smooth arc into the second board");
+}
+
+#[test]
+fn guide_runtime_auto_generated_smooth_arc_keeps_direction_and_speed_continuous_under_gravity() {
+    let junction = vector2(0.0, 0.0);
+    let ramp_width = 4.0;
+    let board_height = 0.2;
+    let ramp_rotation = FRAC_PI_6;
+    let flat_width = 4.0;
+    let ball_radius = 0.24;
+    let initial_speed: f64 = 0.8;
+    let tangent_inset = 0.22;
+    let ramp_tangent = vector2(1.0, 0.0).rotated(ramp_rotation);
+    let flat_travel_tangent = vector2(1.0, 0.0);
+    let turn_angle_radians = ramp_tangent
+        .dot(flat_travel_tangent)
+        .clamp(-1.0, 1.0)
+        .acos();
+    let contact_radius = tangent_inset / (turn_angle_radians * 0.5).tan();
+    let turn_sign = ramp_tangent.cross(flat_travel_tangent).signum();
+    let ramp_tangent_point = junction.sub(ramp_tangent.scale(tangent_inset));
+    let flat_tangent_point = junction.add(flat_travel_tangent.scale(tangent_inset));
+    let arc_center = ramp_tangent_point
+        .add(ramp_tangent.perp().scale(turn_sign * contact_radius))
+        .add(flat_tangent_point.add(flat_travel_tangent.perp().scale(turn_sign * contact_radius)))
+        .scale(0.5);
+    let ramp_start_radial = ramp_tangent_point.sub(arc_center).normalized();
+    let flat_end_radial = flat_tangent_point.sub(arc_center).normalized();
+    let start_angle_radians =
+        angle_radians_for_position(ramp_start_radial).expect("start radial should define angle");
+    let end_angle_radians =
+        angle_radians_for_position(flat_end_radial).expect("end radial should define angle");
+    let mut sweep_angle_degrees = (end_angle_radians - start_angle_radians).to_degrees();
+
+    while sweep_angle_degrees <= 0.0 {
+        sweep_angle_degrees += 360.0;
+    }
+
+    let rotation_degrees = start_angle_radians.to_degrees() + sweep_angle_degrees * 0.5;
+    let ramp_axis_y = ramp_tangent.perp();
+    let ramp_center = junction
+        .add(ramp_axis_y.scale(board_height * 0.5))
+        .sub(ramp_tangent.scale(ramp_width * 0.5));
+    let flat_center = junction
+        .add(vector2(0.0, board_height * 0.5))
+        .add(vector2(flat_width * 0.5, 0.0));
+    let ramp_surface_normal = ramp_axis_y.scale(-1.0);
+    let initial_ball_position = ramp_tangent_point
+        .sub(ramp_tangent.scale(0.65))
+        .add(ramp_surface_normal.scale(ball_radius));
+    let mut runtime = runtime_from_desktop_payload(
+        json!({
+            "scene": {
+                "schemaVersion": 1,
+                "entities": [
+                    {
+                        "id": "ball",
+                        "kind": "ball",
+                        "x": initial_ball_position.x - ball_radius,
+                        "y": initial_ball_position.y - ball_radius,
+                        "radius": ball_radius,
+                        "velocityX": ramp_tangent.x * initial_speed,
+                        "velocityY": ramp_tangent.y * initial_speed,
+                        "mass": 1.0,
+                        "friction": 0.0,
+                        "restitution": 0.0,
+                        "locked": false
+                    },
+                    {
+                        "id": "ramp-board",
+                        "kind": "board",
+                        "x": ramp_center.x - ramp_width * 0.5,
+                        "y": ramp_center.y - board_height * 0.5,
+                        "width": ramp_width,
+                        "height": board_height,
+                        "rotationRadians": ramp_rotation,
+                        "locked": true,
+                        "friction": 0.0
+                    },
+                    {
+                        "id": "flat-board",
+                        "kind": "board",
+                        "x": flat_center.x - flat_width * 0.5,
+                        "y": flat_center.y - board_height * 0.5,
+                        "width": flat_width,
+                        "height": board_height,
+                        "rotationRadians": 0.0,
+                        "locked": true,
+                        "friction": 0.0
+                    },
+                    {
+                        "id": "smooth-arc",
+                        "kind": "arc-track",
+                        "autoGenerated": true,
+                        "anchorEntityId": "ramp-board",
+                        "anchorEntityKind": "board",
+                        "anchorEndpoint": "end",
+                        "center": { "x": arc_center.x, "y": arc_center.y },
+                        "entryEndpoint": "start",
+                        "radius": contact_radius,
+                        "rotationDegrees": rotation_degrees,
+                        "sweepAngleDegrees": sweep_angle_degrees,
+                        "thickness": DEFAULT_ARC_TRACK_THICKNESS
+                    }
+                ],
+                "constraints": [],
+                "forceSources": [
+                    {
+                        "id": "gravity",
+                        "kind": "gravity",
+                        "acceleration": { "x": 0.0, "y": 10.0 }
+                    }
+                ],
+                "analyzers": [],
+                "annotations": []
+            },
+            "dirtyScopes": [],
+            "rebuildRequired": false
+        }),
+        1.0 / 60.0,
+    );
+    let mut previous_speed = initial_speed;
+    let mut saw_ramp_guide = false;
+    let mut saw_arc = false;
+
+    for _ in 0..90 {
+        let frame = runtime.step();
+        let ball = payload_frame(&frame, "ball");
+        let speed = ball.velocity.length();
+
+        match runtime.guide_state("ball") {
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if segment_id == "guide:ramp-board:top" =>
+            {
+                saw_ramp_guide = true;
+                assert!(
+                    ball.velocity.normalized().dot(ramp_tangent) > 0.999,
+                    "ball velocity should stay tangent to the ramp before the arc at t={:.6}, velocity=({:.6}, {:.6})",
+                    frame.frame_number as f64 / 60.0,
+                    ball.velocity.x,
+                    ball.velocity.y
+                );
+            }
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if segment_id == "guide:smooth-arc:arc" =>
+            {
+                saw_arc = true;
+            }
+            RuntimeGuideState::OnGuide { ref segment_id, .. }
+                if saw_arc && segment_id == "guide:flat-board:top" =>
+            {
+                assert!(
+                    ball.velocity.x > 0.0 && ball.velocity.y.abs() < 1e-6,
+                    "ball velocity should be horizontal after the smooth arc, got ({:.6}, {:.6})",
+                    ball.velocity.x,
+                    ball.velocity.y
+                );
+                break;
+            }
+            RuntimeGuideState::Free if saw_arc => {
+                panic!("ball should not detach after entering the smooth arc");
+            }
+            RuntimeGuideState::Free | RuntimeGuideState::OnGuide { .. } => {}
+        }
+
+        assert!(
+            speed + 0.05 >= previous_speed,
+            "ideal smooth arc should not introduce a sudden speed drop at t={:.6}, previous={previous_speed:.6}, current={speed:.6}",
+            frame.frame_number as f64 / 60.0
+        );
+        previous_speed = speed;
+    }
+
+    assert!(
+        saw_ramp_guide,
+        "fixture should attach the ball to the ramp guide"
+    );
+    assert!(
+        saw_arc,
+        "fixture should carry the ball onto the auto smooth arc"
+    );
+}
+
+#[test]
+fn guide_runtime_stationary_ball_on_tilted_board_attaches_before_contact_jitter() {
+    let ramp_center = vector2(0.0, 0.0);
+    let ramp_width = 4.0;
+    let ramp_height = 0.2;
+    let ramp_rotation = FRAC_PI_6;
+    let ball_radius = 0.24;
+    let (ramp_endpoint, ramp_tangent, ramp_surface_normal) = board_endpoint_frame(
+        ramp_center,
+        ramp_width,
+        ramp_height,
+        ramp_rotation,
+        ArcTrackAnchorEndpoint::End,
+    );
+    let arc_track = anchored_arc_track_entity(
+        "smooth-arc",
+        ramp_endpoint,
+        ramp_tangent,
+        1.2,
+        30.0,
+        ArcTrackEntryEndpoint::Start,
+    );
+    let initial_ball_position = ramp_endpoint
+        .sub(ramp_tangent.scale(1.0))
+        .add(ramp_surface_normal.scale(ball_radius));
+    let compiled = compile_scene_with_arc_track_metadata(
+        &CompileSceneRequest {
+            entities: vec![
+                ball("ball", initial_ball_position, ball_radius, Vector2::ZERO),
+                rotated_board(
+                    "ramp-board",
+                    ramp_center,
+                    ramp_width,
+                    ramp_height,
+                    ramp_rotation,
+                ),
+                arc_track,
+            ],
+            constraints: vec![],
+            force_sources: vec![ForceSourceDefinition::Gravity {
+                id: "gravity".to_string(),
+                acceleration: vector2(0.0, 10.0),
+            }],
+            analyzers: vec![],
+        },
+        &HashMap::from([(
+            "smooth-arc".to_string(),
+            ArcTrackEntityCompileMetadata {
+                anchor: Some(CompiledArcTrackAnchor {
+                    entity_id: "ramp-board".to_string(),
+                    entity_kind: ArcTrackAnchorEntityKind::Board,
+                    endpoint: ArcTrackAnchorEndpoint::End,
+                }),
+                entry_endpoint: Some(ArcTrackEntryEndpoint::Start),
+            },
+        )]),
+    )
+    .expect("scene should compile");
+    let mut runtime = RuntimeScene::new(compiled, 1.0 / 60.0);
+    let frame = runtime.step();
+    let ball = payload_frame(&frame, "ball");
+
+    assert!(
+        matches!(
+            runtime.guide_state("ball"),
+            RuntimeGuideState::OnGuide { ref segment_id, .. } if segment_id == "guide:ramp-board:top"
+        ),
+        "stationary ball already on a tilted board should attach to the board guide before contact impulses jitter velocity"
+    );
+    assert!(
+        ball.velocity.normalized().dot(ramp_tangent) > 0.999,
+        "first-step velocity should follow the ramp tangent, got ({:.6}, {:.6})",
+        ball.velocity.x,
+        ball.velocity.y
+    );
 }
 
 #[test]
@@ -893,7 +1604,7 @@ fn guide_runtime_desktop_payload_arc_to_board_handoff_has_no_large_frame_delta()
 fn guide_runtime_wrong_direction_does_not_handoff_to_arc_segment() {
     let board_center = vector2(0.0, 0.0);
     let (_, tangent, surface_normal) =
-        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+        board_endpoint_frame(board_center, 4.0, 0.5, 0.0, ArcTrackAnchorEndpoint::End);
     let mut runtime = runtime_for_board_arc_scene(
         vector2(1.9, -0.25).add(surface_normal.scale(0.4)),
         tangent.scale(-1.0),
@@ -914,7 +1625,7 @@ fn guide_runtime_wrong_direction_does_not_handoff_to_arc_segment() {
 fn guide_runtime_free_ball_moving_away_from_board_does_not_snap_to_board_guide() {
     let board_center = vector2(0.0, 0.0);
     let (_, tangent, surface_normal) =
-        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+        board_endpoint_frame(board_center, 4.0, 0.5, 0.0, ArcTrackAnchorEndpoint::End);
     let initial_position = vector2(1.0, -0.25).add(surface_normal.scale(0.4));
     let initial_velocity = tangent.scale(0.6).add(surface_normal.scale(0.8));
     let mut runtime = runtime_for_board_arc_scene(initial_position, initial_velocity, 0.025);
@@ -931,7 +1642,7 @@ fn guide_runtime_free_ball_moving_away_from_board_does_not_snap_to_board_guide()
 fn guide_runtime_board_arc_handoff_result_is_substep_invariant() {
     let board_center = vector2(0.0, 0.0);
     let (_, tangent, surface_normal) =
-        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+        board_endpoint_frame(board_center, 4.0, 0.5, 0.0, ArcTrackAnchorEndpoint::End);
     let initial_position = vector2(1.25, -0.25).add(surface_normal.scale(0.4));
     let initial_velocity = tangent.scale(1.6);
 
@@ -955,7 +1666,7 @@ fn guide_runtime_board_arc_handoff_result_is_substep_invariant() {
 fn guide_runtime_terminal_zone_handoff_does_not_pre_switch_before_reaching_the_junction() {
     let board_center = vector2(0.0, 0.0);
     let (_, tangent, surface_normal) =
-        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+        board_endpoint_frame(board_center, 4.0, 0.5, 0.0, ArcTrackAnchorEndpoint::End);
     let mut runtime = runtime_for_board_arc_scene(
         vector2(1.985, -0.25).add(surface_normal.scale(0.4)),
         tangent.scale(0.2),
@@ -977,7 +1688,7 @@ fn guide_runtime_terminal_zone_handoff_does_not_pre_switch_before_reaching_the_j
 fn guide_runtime_arc_turning_point_reverses_back_to_board_without_detaching() {
     let board_center = vector2(0.0, 0.0);
     let (_, tangent, surface_normal) =
-        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+        board_endpoint_frame(board_center, 4.0, 0.5, 0.0, ArcTrackAnchorEndpoint::End);
     let mut runtime = runtime_for_board_arc_scene(
         vector2(1.25, -0.25).add(surface_normal.scale(0.4)),
         tangent.scale(0.8),
@@ -1036,7 +1747,7 @@ fn guide_runtime_arc_turning_point_reverses_back_to_board_without_detaching() {
 fn guide_runtime_arc_to_board_handoff_starts_at_junction_before_advancing_board() {
     let board_center = vector2(0.0, 0.0);
     let (_, tangent, surface_normal) =
-        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+        board_endpoint_frame(board_center, 4.0, 0.5, 0.0, ArcTrackAnchorEndpoint::End);
     let mut runtime = runtime_for_board_arc_scene(
         vector2(1.25, -0.25).add(surface_normal.scale(0.4)),
         tangent.scale(0.8),
@@ -1089,7 +1800,7 @@ fn guide_runtime_arc_to_board_handoff_starts_at_junction_before_advancing_board(
 fn guide_runtime_arc_return_to_same_board_preserves_entry_speed() {
     let board_center = vector2(0.0, 0.0);
     let (_, tangent, surface_normal) =
-        board_endpoint_frame(board_center, 4.0, 0.5, ArcTrackAnchorEndpoint::End);
+        board_endpoint_frame(board_center, 4.0, 0.5, 0.0, ArcTrackAnchorEndpoint::End);
     let initial_speed: f64 = 2.0;
     let mut runtime = runtime_for_board_arc_scene(
         vector2(1.25, -0.25).add(surface_normal.scale(0.4)),

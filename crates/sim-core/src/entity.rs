@@ -92,6 +92,19 @@ impl ShapeDefinition {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CollisionBehavior {
+    RigidBoundary,
+    PointMass,
+}
+
+impl Default for CollisionBehavior {
+    fn default() -> Self {
+        Self::RigidBoundary
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EntityDefinition {
     pub id: String,
     pub shape: ShapeDefinition,
@@ -134,6 +147,7 @@ pub struct CompiledEntity {
     pub is_static: bool,
     pub friction_coefficient: f64,
     pub restitution_coefficient: f64,
+    pub collision_behavior: CollisionBehavior,
 }
 
 fn cross(origin: Vector2, a: Vector2, b: Vector2) -> f64 {

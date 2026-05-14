@@ -94,6 +94,7 @@ const surfaceStyle: CSSProperties = {
 type AnnotationLayerProps = {
   state?: AnnotationLayerState;
   onStateChange?: (nextState: AnnotationLayerState) => void;
+  viewportOffsetPx?: Vector2;
 };
 
 export function createInitialAnnotationLayerState(): AnnotationLayerState {
@@ -115,6 +116,7 @@ export function AnnotationLayer(props: AnnotationLayerProps = {}) {
   const [isErasing, setIsErasing] = useState(false);
   const state = props.state ?? internalState;
   const { active, activeColor, strokes, tool, visible } = state;
+  const viewportOffsetPx = props.viewportOffsetPx ?? { x: 0, y: 0 };
 
   function updateState(nextState: AnnotationLayerState) {
     if (props.onStateChange) {
@@ -131,8 +133,8 @@ export function AnnotationLayer(props: AnnotationLayerProps = {}) {
     const clientY = Number.isFinite(event.clientY) ? event.clientY : 0;
 
     return {
-      x: Math.round(clientX - bounds.left),
-      y: Math.round(clientY - bounds.top),
+      x: Math.round(clientX - bounds.left - viewportOffsetPx.x),
+      y: Math.round(clientY - bounds.top - viewportOffsetPx.y),
     };
   }
 
@@ -417,29 +419,34 @@ export function AnnotationLayer(props: AnnotationLayerProps = {}) {
             aria-label={t("annotation.canvasLabel")}
             style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
           >
-            {strokes.map((stroke, index) => (
-              <polyline
-                key={stroke.id}
-                data-testid={`annotation-stroke-${index}`}
-                data-color={stroke.color}
-                points={stroke.points.map((point) => `${point.x},${point.y}`).join(" ")}
-                fill="none"
-                stroke={stroke.color}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="4"
-              />
-            ))}
-            {draftPoints ? (
-              <polyline
-                points={draftPoints.map((point) => `${point.x},${point.y}`).join(" ")}
-                fill="none"
-                stroke={activeColor}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="4"
-              />
-            ) : null}
+            <g
+              data-testid="annotation-layer-viewport"
+              transform={`translate(${viewportOffsetPx.x} ${viewportOffsetPx.y})`}
+            >
+              {strokes.map((stroke, index) => (
+                <polyline
+                  key={stroke.id}
+                  data-testid={`annotation-stroke-${index}`}
+                  data-color={stroke.color}
+                  points={stroke.points.map((point) => `${point.x},${point.y}`).join(" ")}
+                  fill="none"
+                  stroke={stroke.color}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="4"
+                />
+              ))}
+              {draftPoints ? (
+                <polyline
+                  points={draftPoints.map((point) => `${point.x},${point.y}`).join(" ")}
+                  fill="none"
+                  stroke={activeColor}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="4"
+                />
+              ) : null}
+            </g>
           </svg>
         ) : null}
       </div>

@@ -7,9 +7,13 @@ type Position = {
   y: number;
 };
 
-export function quantizeSceneLengthForStorage(value: number, lengthUnit: LengthUnit): number {
+export function quantizeSceneLengthForStorage(
+  value: number,
+  lengthUnit: LengthUnit,
+  precisionDecimalsInMeters = STORAGE_PRECISION_DECIMALS_IN_METERS,
+): number {
   const meters = lengthUnit === "m" ? value : value / 100;
-  const quantizedMeters = Number(meters.toFixed(STORAGE_PRECISION_DECIMALS_IN_METERS));
+  const quantizedMeters = Number(meters.toFixed(precisionDecimalsInMeters));
 
   return Number((lengthUnit === "m" ? quantizedMeters : quantizedMeters * 100).toFixed(6));
 }
@@ -17,10 +21,11 @@ export function quantizeSceneLengthForStorage(value: number, lengthUnit: LengthU
 export function quantizePositionForStorage(
   position: Position,
   lengthUnit: LengthUnit,
+  precisionDecimalsInMeters = STORAGE_PRECISION_DECIMALS_IN_METERS,
 ): Position {
   return {
-    x: quantizeSceneLengthForStorage(position.x, lengthUnit),
-    y: quantizeSceneLengthForStorage(position.y, lengthUnit),
+    x: quantizeSceneLengthForStorage(position.x, lengthUnit, precisionDecimalsInMeters),
+    y: quantizeSceneLengthForStorage(position.y, lengthUnit, precisionDecimalsInMeters),
   };
 }
 
@@ -38,6 +43,9 @@ export function clampPositionToFirstQuadrant(position: Position): Position {
 export function normalizeAuthoredPositionForCommit(
   position: Position,
   lengthUnit: LengthUnit,
+  precisionDecimalsInMeters = STORAGE_PRECISION_DECIMALS_IN_METERS,
 ): Position {
-  return clampPositionToFirstQuadrant(quantizePositionForStorage(position, lengthUnit));
+  return clampPositionToFirstQuadrant(
+    quantizePositionForStorage(position, lengthUnit, precisionDecimalsInMeters),
+  );
 }

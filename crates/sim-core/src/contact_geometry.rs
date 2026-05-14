@@ -314,6 +314,7 @@ mod tests {
             inverse_inertia: 0.0,
             friction_coefficient: 0.0,
             restitution_coefficient: 0.0,
+            collision_behavior: crate::entity::CollisionBehavior::RigidBoundary,
             is_static: false,
         }
     }

@@ -18,6 +18,7 @@ import {
 } from "../state/createBoardAnchoredArcTrackConstraint";
 import type { EditorConstraint, LibraryConstraintKind } from "../state/editorConstraints";
 import type { EditorSceneEntity } from "../state/editorStore";
+import type { SelectedBallHeightReadout } from "../state/selectedHeightReadout";
 import {
   createArcTrackGuideGeometry,
   createArcTrackProfileGeometry,
@@ -110,6 +111,7 @@ type WorkspaceCanvasProps = {
     entityId: string;
     points: Array<{ timeSeconds: number; x: number; y: number }>;
   }>;
+  selectedHeightReadout?: SelectedBallHeightReadout | null;
   showArcTrackJunctionDebug?: boolean;
   stageOverlay?: ReactNode;
   state: import("../state/editorStore").EditorState;
@@ -165,6 +167,7 @@ const WORKSPACE_ZOOM_MIN_PIXELS_PER_METER = 25;
 const WORKSPACE_ZOOM_MAX_PIXELS_PER_METER = 400;
 const WORKSPACE_ZOOM_STEP = 1.1;
 const WORKSPACE_GRID_BASE_SIZE_PX = 24;
+const PARTICLE_DISPLAY_RADIUS_PX = 16;
 
 const toolbarStyle: CSSProperties = {
   display: "flex",
@@ -239,6 +242,16 @@ function getArcTrackMass(entity: ArcTrackBodyEntity): number {
   return entity.mass ?? 0;
 }
 
+function isParticleEntity(entity: WorkspaceSceneEntity | ArcTrackBodyEntity): boolean {
+  return !isArcTrackEntity(entity) && entity.kind === "ball" && entity.id.startsWith("particle-");
+}
+
+function getBallDisplayRadius(entity: Extract<WorkspaceSceneEntity, { kind: "ball" }>): number {
+  return isParticleEntity(entity)
+    ? Math.max(entity.radius, PARTICLE_DISPLAY_RADIUS_PX)
+    : entity.radius;
+}
+
 function getEntityVisualStyle(
   entity: WorkspaceSceneEntity | ArcTrackBodyEntity,
   isSelected: boolean,
@@ -311,10 +324,15 @@ function getEntityVisualStyle(
   };
 
   if (entity.kind === "ball") {
+    const displayRadius = getBallDisplayRadius(entity);
+    const radiusDelta = displayRadius - entity.radius;
+
     return {
       ...baseStyle,
-      width: `${entity.radius * 2}px`,
-      height: `${entity.radius * 2}px`,
+      left: `${entity.x - radiusDelta}px`,
+      top: `${entity.y - radiusDelta}px`,
+      width: `${displayRadius * 2}px`,
+      height: `${displayRadius * 2}px`,
       borderRadius: "999px",
     };
   }
@@ -516,7 +534,7 @@ function createBodyDragPreviewStyle(
     position: "absolute",
     left: `${preview.screenPosition.x}px`,
     top: `${preview.screenPosition.y}px`,
-    borderRadius: bodyKind === "ball" ? "999px" : "0px",
+    borderRadius: bodyKind === "ball" || bodyKind === "particle" ? "999px" : "0px",
     border: blocked
       ? "1px dashed rgba(185, 28, 28, 0.6)"
       : "1px dashed rgba(36, 87, 166, 0.55)",
@@ -746,6 +764,63 @@ function formatPlacementDistanceLabel(value: number, lengthUnit: UnitViewport["l
   return `${formatted}${lengthUnit}`;
 }
 
+function createHeightReadoutSegmentStyle(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  color: string,
+  dashed: boolean,
+): CSSProperties {
+  const line = createConstraintLineGeometry(start, end);
+
+  return {
+    position: "absolute",
+    left: `${start.x}px`,
+    top: `${start.y}px`,
+    width: `${line.length}px`,
+    height: 0,
+    borderTop: `2px ${dashed ? "dashed" : "solid"} ${color}`,
+    transform: `rotate(${line.angleDegrees}deg)`,
+    transformOrigin: "0 50%",
+    pointerEvents: "none",
+    zIndex: 5,
+  };
+}
+
+function createHeightReadoutLabelStyle(
+  anchor: { x: number; y: number },
+  color: string,
+  side: "left" | "right",
+): CSSProperties {
+  return {
+    position: "absolute",
+    left: `${anchor.x + (side === "left" ? -18 : 18)}px`,
+    top: `${anchor.y}px`,
+    border: `1px solid ${color}2b`,
+    borderRadius: "999px",
+    background: "rgba(255, 255, 255, 0.96)",
+    boxShadow: "0 8px 20px rgba(17, 37, 64, 0.14)",
+    color,
+    fontSize: "11px",
+    fontVariantNumeric: "tabular-nums",
+    fontWeight: 700,
+    lineHeight: 1,
+    padding: "5px 8px",
+    pointerEvents: "none",
+    transform: `translate(${side === "left" ? "-100%" : "0"}, -50%)`,
+    whiteSpace: "nowrap",
+    zIndex: 6,
+  };
+}
+
+function formatHeightReadoutLabel(value: number, lengthUnit: UnitViewport["lengthUnit"]): string {
+  const formatted = value
+    .toFixed(2)
+    .replace(/\.00$/, "")
+    .replace(/(\.\d)0$/, "$1");
+
+  return `${formatted}${lengthUnit}`;
+}
+
 function createRuntimeTrajectoryPolylinePoints(
   points: Array<{ x: number; y: number }>,
   viewport: UnitViewport,
@@ -871,6 +946,8 @@ function formatBodyKindLabel(
   t: ReturnType<typeof useI18n>["t"],
 ): string {
   switch (bodyKind) {
+    case "particle":
+      return t("library.item.particle");
     case "ball":
       return t("library.item.ball");
     case "block":
@@ -916,6 +993,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     onViewportOffsetChange,
     selectedRuntimeVelocityVector = null,
     selectedRuntimeTrajectories = [],
+    selectedHeightReadout = null,
     showArcTrackJunctionDebug = false,
     stageOverlay = null,
     state,
@@ -1247,6 +1325,23 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
     state.selectedEntityId,
     showArcTrackJunctionDebug,
   );
+  const selectedHeightReadoutOverlay =
+    selectedHeightReadout && selectedHeightReadout.selectedEntityId === state.selectedEntityId
+      ? {
+          centerDrop: selectedHeightReadout.centerDrop,
+          currentCenter: projectAuthoringPointToScreen(selectedHeightReadout.currentCenter, viewport),
+          currentSurfacePoint: projectAuthoringPointToScreen(
+            selectedHeightReadout.currentSurfacePoint,
+            viewport,
+          ),
+          startCenter: projectAuthoringPointToScreen(selectedHeightReadout.startCenter, viewport),
+          startSurfacePoint: projectAuthoringPointToScreen(
+            selectedHeightReadout.startSurfacePoint,
+            viewport,
+          ),
+          surfaceDrop: selectedHeightReadout.surfaceDrop,
+        }
+      : null;
 
   function handleConstraintClick(
     event: MouseEvent<HTMLButtonElement>,
@@ -1672,6 +1767,91 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
           );
         })}
 
+        {selectedHeightReadoutOverlay ? (
+          <>
+            <div data-testid="workspace-selected-height-readout-surface">
+              <div
+                style={createHeightReadoutSegmentStyle(
+                  selectedHeightReadoutOverlay.startSurfacePoint,
+                  selectedHeightReadoutOverlay.currentSurfacePoint,
+                  "#12755d",
+                  false,
+                )}
+              />
+              <span
+                data-testid="workspace-selected-height-readout-surface-label"
+                style={createHeightReadoutLabelStyle(
+                  {
+                    x:
+                      (selectedHeightReadoutOverlay.startSurfacePoint.x +
+                        selectedHeightReadoutOverlay.currentSurfacePoint.x) /
+                      2,
+                    y:
+                      (selectedHeightReadoutOverlay.startSurfacePoint.y +
+                        selectedHeightReadoutOverlay.currentSurfacePoint.y) /
+                      2,
+                  },
+                  "#12755d",
+                  "left",
+                )}
+              >
+                {formatHeightReadoutLabel(
+                  selectedHeightReadoutOverlay.surfaceDrop,
+                  viewport.lengthUnit,
+                )}
+              </span>
+            </div>
+            <div data-testid="workspace-selected-height-readout-center">
+              <div
+                style={createHeightReadoutSegmentStyle(
+                  selectedHeightReadoutOverlay.startCenter,
+                  selectedHeightReadoutOverlay.currentCenter,
+                  "#2457a6",
+                  false,
+                )}
+              />
+              <div
+                style={createHeightReadoutSegmentStyle(
+                  selectedHeightReadoutOverlay.startSurfacePoint,
+                  selectedHeightReadoutOverlay.startCenter,
+                  "#7b8ba5",
+                  true,
+                )}
+              />
+              <div
+                style={createHeightReadoutSegmentStyle(
+                  selectedHeightReadoutOverlay.currentSurfacePoint,
+                  selectedHeightReadoutOverlay.currentCenter,
+                  "#7b8ba5",
+                  true,
+                )}
+              />
+              <span
+                data-testid="workspace-selected-height-readout-center-label"
+                style={createHeightReadoutLabelStyle(
+                  {
+                    x:
+                      (selectedHeightReadoutOverlay.startCenter.x +
+                        selectedHeightReadoutOverlay.currentCenter.x) /
+                      2,
+                    y:
+                      (selectedHeightReadoutOverlay.startCenter.y +
+                        selectedHeightReadoutOverlay.currentCenter.y) /
+                      2,
+                  },
+                  "#2457a6",
+                  "right",
+                )}
+              >
+                {formatHeightReadoutLabel(
+                  selectedHeightReadoutOverlay.centerDrop,
+                  viewport.lengthUnit,
+                )}
+              </span>
+            </div>
+          </>
+        ) : null}
+
         {selectedArcTrackJunctionDebugSurface ? (
           <div
             data-anchor-endpoint={selectedArcTrackJunctionDebugSurface.anchorEndpoint}
@@ -1945,6 +2125,7 @@ export function WorkspaceCanvas(props: WorkspaceCanvasProps) {
               aria-label={t("workspace.selectItem", { label: entity.label })}
               data-contact-target={String(contactTargetEntityId === entity.id)}
               data-locked={String(entity.locked)}
+              data-physical-radius={entity.kind === "ball" ? String(entity.radius) : undefined}
               data-selected={String(state.selectedEntityId === entity.id)}
               data-testid={`scene-entity-${entity.id}`}
               type="button"

@@ -14,7 +14,7 @@ use crate::arc_track::{
     effective_center_radius,
 };
 use crate::constraint::{ArcTrackSide, CompiledConstraint};
-use crate::entity::Vector2;
+use crate::entity::{CollisionBehavior, Vector2};
 
 pub use angular_dynamics::inverse_inertia_for_body;
 
@@ -74,6 +74,7 @@ pub struct RuntimeBodyState {
     pub inverse_inertia: f64,
     pub friction_coefficient: f64,
     pub restitution_coefficient: f64,
+    pub collision_behavior: CollisionBehavior,
     pub is_static: bool,
 }
 
@@ -717,6 +718,10 @@ fn resolve_contact_pair(
         return false;
     }
 
+    if is_point_mass_collision(body_a, body_b) {
+        return resolve_point_mass_contact_pair(body_a, body_b, contact.normal);
+    }
+
     let point = contact.point;
     let normal = contact.normal;
     let relative_velocity = angular_dynamics::velocity_at_point(body_a, point)
@@ -769,6 +774,56 @@ fn resolve_contact_pair(
     if rollback_seconds > f64::EPSILON {
         advance_body_after_contact(body_a, rollback_seconds);
         advance_body_after_contact(body_b, rollback_seconds);
+    }
+
+    true
+}
+
+fn is_point_mass_collision(body_a: &RuntimeBodyState, body_b: &RuntimeBodyState) -> bool {
+    body_a.collision_behavior == CollisionBehavior::PointMass
+        || body_b.collision_behavior == CollisionBehavior::PointMass
+}
+
+fn resolve_point_mass_contact_pair(
+    body_a: &mut RuntimeBodyState,
+    body_b: &mut RuntimeBodyState,
+    contact_normal: Vector2,
+) -> bool {
+    let inverse_mass_a = inverse_mass(body_a);
+    let inverse_mass_b = inverse_mass(body_b);
+
+    if inverse_mass_a + inverse_mass_b <= f64::EPSILON {
+        return false;
+    }
+
+    let relative_velocity = body_a.velocity.sub(body_b.velocity);
+    let contact_normal_velocity = relative_velocity.dot(contact_normal);
+
+    if contact_normal_velocity >= 0.0 {
+        return false;
+    }
+
+    let relative_speed = relative_velocity.length();
+
+    if relative_speed <= f64::EPSILON {
+        return false;
+    }
+
+    let collision_axis = relative_velocity.scale(-1.0 / relative_speed);
+    let normal_velocity = relative_velocity.dot(collision_axis);
+    let restitution = body_a
+        .restitution_coefficient
+        .max(body_b.restitution_coefficient);
+    let impulse_magnitude =
+        -((1.0 + restitution) * normal_velocity) / (inverse_mass_a + inverse_mass_b);
+    let impulse = collision_axis.scale(impulse_magnitude);
+
+    if inverse_mass_a > f64::EPSILON {
+        body_a.velocity = body_a.velocity.add(impulse.scale(inverse_mass_a));
+    }
+
+    if inverse_mass_b > f64::EPSILON {
+        body_b.velocity = body_b.velocity.sub(impulse.scale(inverse_mass_b));
     }
 
     true

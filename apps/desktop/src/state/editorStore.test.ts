@@ -11,11 +11,12 @@ import {
   type LibraryBodyKind,
 } from "./editorStore";
 
-const ELASTIC_BODY_KINDS: LibraryBodyKind[] = ["ball", "block", "board", "polygon"];
+const ELASTIC_BODY_KINDS: LibraryBodyKind[] = ["particle", "ball", "block", "board", "polygon"];
 
 describe("editorStore", () => {
   it("publishes rigid-boundary library body kinds for authoring", () => {
     expect(RIGID_BOUNDARY_LIBRARY_BODY_KINDS).toEqual([
+      "particle",
       "ball",
       "block",
       "board",
@@ -68,6 +69,7 @@ describe("editorStore", () => {
   });
 
   it("uses board-only non-zero default friction for new library bodies", () => {
+    expect(createPlacedBodyEntity([], "particle", { x: 12, y: 18 }).friction).toBe(0);
     expect(createPlacedBodyEntity([], "ball", { x: 12, y: 18 }).friction).toBe(0);
     expect(createPlacedBodyEntity([], "block", { x: 12, y: 18 }).friction).toBe(0);
     expect(createPlacedBodyEntity([], "board", { x: 12, y: 18 }).friction).toBe(0.42);
@@ -111,6 +113,23 @@ describe("editorStore", () => {
       centralAngleDegrees: 90,
       rotationDegrees: 0,
       thickness: 18,
+    });
+  });
+
+  it("creates point-mass particles as tiny collidable ball bodies", () => {
+    const entity = createPlacedBodyEntity([], "particle", { x: 12, y: 18 });
+
+    expect(entity).toMatchObject({
+      id: "particle-1",
+      kind: "ball",
+      label: "Particle 1",
+      x: 12,
+      y: 18,
+      radius: 4,
+      mass: 1,
+      friction: 0,
+      restitution: 1,
+      locked: false,
     });
   });
 

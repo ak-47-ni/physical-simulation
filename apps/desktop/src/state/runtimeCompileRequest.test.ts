@@ -294,6 +294,35 @@ describe("runtimeCompileRequest", () => {
     expect(emptyRequest.scene.analyzers).toEqual([]);
   });
 
+  it("marks particle-authored balls with point-mass collision behavior while keeping their physical radius", () => {
+    const request = createRuntimeCompileRequestFromEditorState({
+      entities: [
+        {
+          id: "particle-1",
+          kind: "ball",
+          label: "Particle 1",
+          x: 1,
+          y: 2,
+          radius: 0.04,
+          mass: 1,
+          friction: 0,
+          restitution: 1,
+          locked: false,
+          velocityX: 3,
+          velocityY: 0,
+        },
+      ],
+    });
+    const particle = request.scene.entities[0];
+
+    expect(particle).toMatchObject({
+      id: "particle-1",
+      kind: "ball",
+      radius: 0.04,
+      collisionBehavior: "point-mass",
+    });
+  });
+
   it("normalizes authored unit-aware values back to SI in the runtime compile payload", () => {
     const entities = createInitialSceneEntities().map((entity, index) =>
       index === 0

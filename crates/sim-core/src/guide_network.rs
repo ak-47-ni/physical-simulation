@@ -8,6 +8,8 @@ use crate::entity::{CompiledEntity, CompiledShape, Vector2};
 const GUIDE_NODE_POSITION_EPSILON: f64 = 1e-6;
 const GUIDE_JUNCTION_POSITION_TOLERANCE: f64 = 1e-5;
 const GUIDE_JUNCTION_TANGENT_ALIGNMENT: f64 = 0.999;
+const GUIDE_FREE_ENDPOINT_POSITION_TOLERANCE: f64 = 0.05;
+const GUIDE_FREE_ENDPOINT_TANGENT_ALIGNMENT: f64 = 0.995;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompiledGuideNetwork {
@@ -216,7 +218,240 @@ pub fn compile_guide_network(
         }
     }
 
+    connect_matching_board_endpoints_to_arc_endpoints(&mut network, entities, &all_arc_tracks);
+
     network
+}
+
+fn connect_matching_board_endpoints_to_arc_endpoints(
+    network: &mut CompiledGuideNetwork,
+    entities: &[CompiledEntity],
+    arc_tracks: &[CompiledArcTrack],
+) {
+    for arc_track in arc_tracks {
+        if arc_track
+            .anchor
+            .as_ref()
+            .is_some_and(|anchor| anchor.entity_kind != ArcTrackAnchorEntityKind::Board)
+        {
+            continue;
+        }
+
+        for arc_endpoint in capture_policy_endpoints(ArcTrackCapturePolicy::Either) {
+            let arc_geometry = endpoint_geometry(
+                arc_track.center,
+                arc_track.contact_path_radius(),
+                arc_track.start_angle_radians,
+                arc_track.end_angle_radians,
+                arc_track.side,
+                arc_endpoint,
+            );
+            let arc_guide_endpoint = guide_endpoint_for_arc_endpoint(arc_endpoint);
+
+            for entity in entities {
+                if entity.is_static && matches!(entity.shape, CompiledShape::Block { .. }) {
+                    connect_matching_board_endpoint_to_arc_endpoint(
+                        network,
+                        entity,
+                        arc_track,
+                        arc_geometry,
+                        arc_guide_endpoint,
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn connect_matching_board_endpoint_to_arc_endpoint(
+    network: &mut CompiledGuideNetwork,
+    entity: &CompiledEntity,
+    arc_track: &CompiledArcTrack,
+    arc_geometry: crate::arc_track::ArcTrackEndpointGeometry,
+    arc_guide_endpoint: GuideSegmentEndpoint,
+) {
+    for board_endpoint in [ArcTrackAnchorEndpoint::Start, ArcTrackAnchorEndpoint::End] {
+        let Some(board_geometry) = box_geometry_for_anchor(entity, board_endpoint) else {
+            continue;
+        };
+
+        if board_geometry.position.sub(arc_geometry.position).length()
+            > GUIDE_FREE_ENDPOINT_POSITION_TOLERANCE
+            || board_geometry.tangent.dot(arc_geometry.tangent)
+                < GUIDE_FREE_ENDPOINT_TANGENT_ALIGNMENT
+        {
+            continue;
+        }
+
+        let Some(board_segment_id) =
+            add_linear_anchor_guide_segment(network, entity, board_endpoint)
+        else {
+            continue;
+        };
+        let Some(board_guide_endpoint) =
+            guide_endpoint_for_board_geometry(network, &board_segment_id, board_geometry.position)
+        else {
+            continue;
+        };
+
+        align_arc_motion_side_to_anchor(
+            network,
+            arc_guide_segment_id(&arc_track.id).as_str(),
+            arc_track,
+            match arc_guide_endpoint {
+                GuideSegmentEndpoint::Start => ArcTrackEntryEndpoint::Start,
+                GuideSegmentEndpoint::End => ArcTrackEntryEndpoint::End,
+            },
+            board_geometry.surface_normal,
+        );
+
+        push_connection_once(
+            network,
+            CompiledGuideConnection {
+                from_segment_id: board_segment_id.clone(),
+                from_endpoint: board_guide_endpoint,
+                to_segment_id: arc_guide_segment_id(&arc_track.id),
+                to_endpoint: arc_guide_endpoint,
+            },
+        );
+        push_connection_once(
+            network,
+            CompiledGuideConnection {
+                from_segment_id: arc_guide_segment_id(&arc_track.id),
+                from_endpoint: arc_guide_endpoint,
+                to_segment_id: board_segment_id,
+                to_endpoint: board_guide_endpoint,
+            },
+        );
+    }
+
+    connect_matching_board_top_tangent_to_arc_endpoint(
+        network,
+        entity,
+        arc_track,
+        arc_geometry,
+        arc_guide_endpoint,
+    );
+}
+
+fn connect_matching_board_top_tangent_to_arc_endpoint(
+    network: &mut CompiledGuideNetwork,
+    entity: &CompiledEntity,
+    arc_track: &CompiledArcTrack,
+    arc_geometry: crate::arc_track::ArcTrackEndpointGeometry,
+    arc_guide_endpoint: GuideSegmentEndpoint,
+) {
+    let Some(surface) = board_top_surface_geometry(entity) else {
+        return;
+    };
+    let progress = arc_geometry
+        .position
+        .sub(surface.start)
+        .dot(surface.direction);
+
+    if progress < -GUIDE_FREE_ENDPOINT_POSITION_TOLERANCE
+        || progress > surface.length + GUIDE_FREE_ENDPOINT_POSITION_TOLERANCE
+    {
+        return;
+    }
+
+    let clamped_progress = progress.clamp(0.0, surface.length);
+    let closest_point = surface.start.add(surface.direction.scale(clamped_progress));
+
+    if closest_point.sub(arc_geometry.position).length() > GUIDE_FREE_ENDPOINT_POSITION_TOLERANCE {
+        return;
+    }
+
+    let board_endpoint = if clamped_progress <= surface.length * 0.5 {
+        ArcTrackAnchorEndpoint::Start
+    } else {
+        ArcTrackAnchorEndpoint::End
+    };
+    let board_tangent = match board_endpoint {
+        ArcTrackAnchorEndpoint::Start => surface.direction.scale(-1.0),
+        ArcTrackAnchorEndpoint::End => surface.direction,
+    };
+
+    if board_tangent.dot(arc_geometry.tangent) < GUIDE_FREE_ENDPOINT_TANGENT_ALIGNMENT {
+        return;
+    }
+
+    let Some(board_segment_id) = upsert_linear_board_top_segment_for_tangent_point(
+        network,
+        entity,
+        &surface,
+        board_endpoint,
+        closest_point,
+    ) else {
+        return;
+    };
+    let board_guide_endpoint = match board_endpoint {
+        ArcTrackAnchorEndpoint::Start => GuideSegmentEndpoint::Start,
+        ArcTrackAnchorEndpoint::End => GuideSegmentEndpoint::End,
+    };
+    let board_node_id = node_id_for_position(closest_point);
+
+    align_arc_junction_to_node(
+        network,
+        arc_guide_segment_id(&arc_track.id).as_str(),
+        arc_guide_endpoint,
+        &board_node_id,
+    );
+    align_arc_motion_side_to_anchor(
+        network,
+        arc_guide_segment_id(&arc_track.id).as_str(),
+        arc_track,
+        match arc_guide_endpoint {
+            GuideSegmentEndpoint::Start => ArcTrackEntryEndpoint::Start,
+            GuideSegmentEndpoint::End => ArcTrackEntryEndpoint::End,
+        },
+        surface.surface_normal,
+    );
+
+    push_connection_once(
+        network,
+        CompiledGuideConnection {
+            from_segment_id: board_segment_id.clone(),
+            from_endpoint: board_guide_endpoint,
+            to_segment_id: arc_guide_segment_id(&arc_track.id),
+            to_endpoint: arc_guide_endpoint,
+        },
+    );
+    push_connection_once(
+        network,
+        CompiledGuideConnection {
+            from_segment_id: arc_guide_segment_id(&arc_track.id),
+            from_endpoint: arc_guide_endpoint,
+            to_segment_id: board_segment_id,
+            to_endpoint: board_guide_endpoint,
+        },
+    );
+}
+
+fn guide_endpoint_for_arc_endpoint(endpoint: ArcTrackEntryEndpoint) -> GuideSegmentEndpoint {
+    match endpoint {
+        ArcTrackEntryEndpoint::Start => GuideSegmentEndpoint::Start,
+        ArcTrackEntryEndpoint::End => GuideSegmentEndpoint::End,
+    }
+}
+
+fn guide_endpoint_for_board_geometry(
+    network: &CompiledGuideNetwork,
+    segment_id: &str,
+    position: Vector2,
+) -> Option<GuideSegmentEndpoint> {
+    let node_id = node_id_for_position(position);
+    let Some(CompiledGuideSegment::Linear(linear)) = network.segment(segment_id) else {
+        return None;
+    };
+
+    if linear.start_node_id == node_id {
+        Some(GuideSegmentEndpoint::Start)
+    } else if linear.end_node_id == node_id {
+        Some(GuideSegmentEndpoint::End)
+    } else {
+        None
+    }
 }
 
 fn align_arc_junction_to_node(
@@ -369,6 +604,90 @@ fn add_linear_anchor_guide_segment(
             length,
             surface_normal: surface_normal.normalized(),
         }));
+
+    Some(id)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct BoardTopSurfaceGeometry {
+    start: Vector2,
+    end: Vector2,
+    direction: Vector2,
+    length: f64,
+    surface_normal: Vector2,
+}
+
+fn board_top_surface_geometry(entity: &CompiledEntity) -> Option<BoardTopSurfaceGeometry> {
+    let start_geometry = box_geometry_for_anchor(entity, ArcTrackAnchorEndpoint::Start)?;
+    let end_geometry = box_geometry_for_anchor(entity, ArcTrackAnchorEndpoint::End)?;
+    let start = start_geometry.position;
+    let end = end_geometry.position;
+    let offset = end.sub(start);
+    let length = offset.length();
+
+    if length <= f64::EPSILON {
+        return None;
+    }
+
+    Some(BoardTopSurfaceGeometry {
+        start,
+        end,
+        direction: offset.scale(1.0 / length),
+        length,
+        surface_normal: end_geometry.surface_normal.normalized(),
+    })
+}
+
+fn upsert_linear_board_top_segment_for_tangent_point(
+    network: &mut CompiledGuideNetwork,
+    entity: &CompiledEntity,
+    surface: &BoardTopSurfaceGeometry,
+    endpoint: ArcTrackAnchorEndpoint,
+    tangent_point: Vector2,
+) -> Option<String> {
+    let id = board_top_guide_segment_id(&entity.id);
+    let existing = network.segment(&id).cloned();
+    let (start, end) = match (existing, endpoint) {
+        (Some(CompiledGuideSegment::Linear(linear)), ArcTrackAnchorEndpoint::Start) => {
+            (tangent_point, linear.end)
+        }
+        (Some(CompiledGuideSegment::Linear(linear)), ArcTrackAnchorEndpoint::End) => {
+            (linear.start, tangent_point)
+        }
+        (Some(CompiledGuideSegment::Arc(_)), _) => return None,
+        (None, ArcTrackAnchorEndpoint::Start) => (tangent_point, surface.end),
+        (None, ArcTrackAnchorEndpoint::End) => (surface.start, tangent_point),
+    };
+    let offset = end.sub(start);
+    let length = offset.length();
+
+    if length <= f64::EPSILON {
+        return None;
+    }
+
+    let start_node_id = ensure_node(network, start);
+    let end_node_id = ensure_node(network, end);
+    let segment = CompiledGuideSegment::Linear(LinearGuideSegment {
+        id: id.clone(),
+        source_entity_id: entity.id.clone(),
+        start_node_id,
+        end_node_id,
+        start,
+        end,
+        direction: offset.scale(1.0 / length),
+        length,
+        surface_normal: surface.surface_normal,
+    });
+
+    if let Some(index) = network
+        .segments
+        .iter()
+        .position(|segment| segment.id() == id)
+    {
+        network.segments[index] = segment;
+    } else {
+        network.segments.push(segment);
+    }
 
     Some(id)
 }

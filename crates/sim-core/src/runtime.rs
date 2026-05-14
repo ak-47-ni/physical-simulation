@@ -95,6 +95,7 @@ impl RuntimeScene {
                 ),
                 friction_coefficient: entity.friction_coefficient,
                 restitution_coefficient: entity.restitution_coefficient,
+                collision_behavior: entity.collision_behavior,
                 is_static: entity.is_static,
             })
             .collect::<Vec<_>>();

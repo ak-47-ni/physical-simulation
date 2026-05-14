@@ -80,6 +80,19 @@ fn ball(
     }
 }
 
+fn point_mass_ball(
+    id: &str,
+    position: Vector2,
+    radius: f64,
+    initial_velocity: Vector2,
+    mass: f64,
+) -> EntityDefinition {
+    EntityDefinition {
+        mass,
+        ..ball(id, position, radius, initial_velocity, 1.0)
+    }
+}
+
 fn runtime_for_scene(entities: Vec<EntityDefinition>) -> RuntimeScene {
     runtime_for_scene_with_gravity(entities, vector2(0.0, -9.81))
 }
@@ -748,5 +761,93 @@ fn mechanics_regression_off_center_impact_still_rotates_a_dynamic_block() {
         block.rotation.abs() > 1e-3,
         "expected true off-center impact to keep rotating the block, got rotation={}",
         block.rotation
+    );
+}
+
+#[test]
+fn mechanics_regression_point_mass_collision_ignores_contact_point_and_exchanges_momentum() {
+    let mut runtime = runtime_for_scene_with_gravity(
+        vec![
+            block(
+                "block",
+                vector2(4.0, 1.0),
+                (1.0, 1.0),
+                Vector2::ZERO,
+                false,
+                0.0,
+                1.0,
+            ),
+            point_mass_ball(
+                "particle-1",
+                vector2(1.0, 1.45),
+                0.05,
+                vector2(12.0, 0.0),
+                1.0,
+            ),
+        ],
+        Vector2::ZERO,
+    );
+
+    run_steps(&mut runtime, 16);
+    let block = runtime_entity(&runtime, "block");
+    let particle = runtime_entity(&runtime, "particle-1");
+
+    assert!(
+        block.velocity.x > 11.0,
+        "point-mass collision should transfer linear momentum to the block, got block_vx={}",
+        block.velocity.x
+    );
+    assert!(
+        particle.velocity.x.abs() < 0.5,
+        "point-mass collision should slow the equal-mass particle, got particle_vx={}",
+        particle.velocity.x
+    );
+    assert!(
+        block.rotation.abs() < 1e-6,
+        "point-mass collision should ignore contact point torque, got rotation={}",
+        block.rotation
+    );
+}
+
+#[test]
+fn mechanics_regression_point_mass_ball_collision_ignores_off_center_contact_normal() {
+    let mut runtime = runtime_for_scene_with_gravity_and_timestep(
+        vec![
+            ball("ball-1", vector2(3.91, 2.46), 0.24, Vector2::ZERO, 1.0),
+            point_mass_ball(
+                "particle-1",
+                vector2(1.6, 2.66),
+                0.04,
+                vector2(2.0, 0.0),
+                1.0,
+            ),
+        ],
+        Vector2::ZERO,
+        1.0 / 60.0,
+    );
+
+    run_steps(&mut runtime, 80);
+    let ball = runtime_entity(&runtime, "ball-1");
+    let particle = runtime_entity(&runtime, "particle-1");
+
+    assert!(
+        ball.velocity.x > 1.9,
+        "point-mass impact should transfer horizontal momentum to the ball, got ball_vx={}",
+        ball.velocity.x
+    );
+    assert!(
+        ball.velocity.y.abs() <= 1e-6,
+        "point-mass impact should ignore off-center contact normal, got ball_vy={}",
+        ball.velocity.y
+    );
+    assert!(
+        particle.velocity.x.abs() <= 0.1,
+        "equal-mass point-mass impact should leave the particle nearly stopped, got particle_vx={}",
+        particle.velocity.x
+    );
+    assert!(
+        particle.velocity.y.abs() <= 1e-6,
+        "point-mass impact should not create vertical particle velocity, got particle_vy={}",
+        particle.velocity.y
     );
 }

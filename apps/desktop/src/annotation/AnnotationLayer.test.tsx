@@ -183,4 +183,67 @@ describe("AnnotationLayer", () => {
 
     expect(nextStates.at(-1)?.active).toBe(false);
   });
+
+  it("translates strokes with viewport offset and stores new points relative to the scene", () => {
+    const nextStates: AnnotationLayerState[] = [];
+
+    const { rerender } = render(
+      <AnnotationLayer
+        state={{
+          strokes: [],
+          visible: true,
+          activeColor: "#000000",
+          active: true,
+          tool: "ink",
+        }}
+        viewportOffsetPx={{ x: 40, y: 15 }}
+        onStateChange={(nextState) => {
+          nextStates.push(nextState);
+        }}
+      />,
+    );
+
+    const surface = screen.getByTestId("annotation-layer-surface");
+    fireEvent(
+      surface,
+      new MouseEvent("pointerdown", { bubbles: true, clientX: 50, clientY: 30, button: 0 }),
+    );
+    fireEvent(
+      surface,
+      new MouseEvent("pointermove", { bubbles: true, clientX: 70, clientY: 50, button: 0 }),
+    );
+    fireEvent(
+      surface,
+      new MouseEvent("pointerup", { bubbles: true, clientX: 70, clientY: 50, button: 0 }),
+    );
+
+    expect(nextStates.at(-1)?.strokes[0]?.points).toEqual([
+      { x: 10, y: 15 },
+      { x: 30, y: 35 },
+      { x: 30, y: 35 },
+    ]);
+
+    rerender(
+      <AnnotationLayer
+        state={{
+          strokes: nextStates.at(-1)?.strokes ?? [],
+          visible: true,
+          activeColor: "#000000",
+          active: false,
+          tool: "ink",
+        }}
+        viewportOffsetPx={{ x: 60, y: 25 }}
+        onStateChange={(nextState) => {
+          nextStates.push(nextState);
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("annotation-layer-viewport").getAttribute("transform")).toBe(
+      "translate(60 25)",
+    );
+    expect(screen.getByTestId("annotation-stroke-0").getAttribute("points")).toBe(
+      "10,15 30,35 30,35",
+    );
+  });
 });

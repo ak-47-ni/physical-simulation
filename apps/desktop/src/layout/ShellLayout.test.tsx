@@ -26,7 +26,7 @@ describe("ShellLayout", () => {
     expect(brandRow.style.display).toBe("flex");
     expect(brandRow.textContent).toContain("PHYSICS SANDBOX");
     expect(brandRow.textContent).toContain("Desktop editor");
-    expect(brandRow.textContent).toContain("Version 1.0.47");
+    expect(brandRow.textContent).toContain("Version 1.0.56");
     expect(brandRow.textContent).toContain("Build and review classroom physics scenes.");
   });
 

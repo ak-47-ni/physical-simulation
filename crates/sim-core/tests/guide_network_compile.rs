@@ -292,3 +292,80 @@ fn guide_network_compile_arc_guides_use_contact_path_radius_instead_of_centerlin
         CompiledGuideSegment::Linear(_) => panic!("arc-track should compile as arc guide"),
     }
 }
+
+#[test]
+fn guide_network_compile_links_arc_track_to_interior_board_tangent_point() {
+    let board_center = vector2(0.0, 0.0);
+    let board_width = 4.0;
+    let board_height = 0.5;
+    let top_right_interior = vector2(1.78, -0.25);
+    let contact_path_radius = 1.25;
+    let centerline_radius = contact_path_radius + 0.09;
+    let radial = vector2(0.0, -1.0);
+    let entry_angle_radians =
+        angle_radians_for_position(radial).expect("radial should define angle");
+    let arc_track = arc_track_entity(
+        "smooth-arc",
+        top_right_interior.sub(radial.scale(contact_path_radius)),
+        centerline_radius,
+        45.0,
+        (entry_angle_radians - 45.0_f64.to_radians()).to_degrees(),
+    );
+    let compiled = compile_scene_with_arc_track_metadata(
+        &CompileSceneRequest {
+            entities: vec![
+                board("board", board_center, board_width, board_height),
+                arc_track,
+            ],
+            constraints: vec![],
+            force_sources: vec![ForceSourceDefinition::Gravity {
+                id: "gravity".to_string(),
+                acceleration: vector2(0.0, -9.81),
+            }],
+            analyzers: vec![],
+        },
+        &HashMap::from([(
+            "smooth-arc".to_string(),
+            ArcTrackEntityCompileMetadata {
+                anchor: None,
+                entry_endpoint: Some(ArcTrackEntryEndpoint::End),
+            },
+        )]),
+    )
+    .expect("scene should compile");
+
+    let board_segment = compiled
+        .guide_network
+        .segment("guide:board:top")
+        .expect("board top guide should compile when an arc touches its top surface");
+    let arc_segment = compiled
+        .guide_network
+        .segment("guide:smooth-arc:arc")
+        .expect("arc-track guide should compile");
+
+    let board_end_node = match board_segment {
+        CompiledGuideSegment::Linear(linear) => {
+            assert_eq!(linear.start, vector2(-2.0, -0.25));
+            assert!(
+                linear.end.sub(top_right_interior).length() < 1e-9,
+                "board guide should be trimmed to the interior tangent point, got end=({:.6}, {:.6})",
+                linear.end.x,
+                linear.end.y
+            );
+            linear.end_node_id.as_str()
+        }
+        CompiledGuideSegment::Arc(_) => panic!("board top should compile as linear guide"),
+    };
+    let arc_end_node = match arc_segment {
+        CompiledGuideSegment::Arc(arc) => arc.end_node_id.as_str(),
+        CompiledGuideSegment::Linear(_) => panic!("arc-track should compile as arc guide"),
+    };
+
+    assert_eq!(board_end_node, arc_end_node);
+    assert_eq!(
+        compiled
+            .guide_network
+            .successors_from("guide:board:top", GuideSegmentEndpoint::End),
+        vec!["guide:smooth-arc:arc"]
+    );
+}

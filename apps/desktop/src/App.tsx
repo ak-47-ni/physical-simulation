@@ -69,6 +69,7 @@ import {
   canPlaceAuthoringCandidate,
   convertLegacyCreatedEntityToSceneUnits,
   findRepositionedAuthoringEntity,
+  normalizeAuthoringEntityPositionForCommit,
   replaceEntityInCollection,
   resolveAuthoringPlacementForCommit,
 } from "./state/authoringPlacementGuards";
@@ -82,11 +83,17 @@ import {
   resolveAuthoringPlacement,
   type AuthoringPlacementPreview,
 } from "./state/authoringContactSnap";
+import {
+  createManagedSmoothArcPreview,
+  reconcileManagedSmoothArcEntities,
+  resolveManagedSmoothArcBoardSnap,
+} from "./state/managedSmoothArc";
 import { createMockRuntimeBridgePort } from "./state/runtimeBridge";
 import { createDesktopRuntimeBridgePort } from "./state/desktopRuntimeBridgePort";
 import { createRuntimeCompileRequestFromEditorState } from "./state/runtimeCompileRequest";
 import { createRuntimePreviewFrame, createRuntimePreviewTrajectorySamples } from "./state/runtimePreview";
 import { quantizeArcTrackRadiusForLengthUnit } from "./state/sceneUnits";
+import { createSelectedBallHeightReadout } from "./state/selectedHeightReadout";
 import { runtimeVelocityToAuthoring } from "./state/velocitySemantics";
 import { createSceneAuthoringSettings, type SceneAuthoringSettings } from "./state/sceneAuthoringSettings";
 import { useDualPlaybackController } from "./state/useDualPlaybackController";
@@ -621,7 +628,7 @@ export function App() {
     });
 
     setConstraints(importedState.constraints);
-    setEntities(reconcileAnchoredArcTrackEntities(importedState.entities));
+    setEntities(reconcileGuideEntities(importedState.entities));
     setSceneSettings(createSceneAuthoringSettings(payload.authoring));
     setDisplaySettings(createSceneDisplaySettings(payload.display));
     setEditorState((current) => ({
@@ -843,7 +850,7 @@ export function App() {
     }
 
     setEntities((current) =>
-      reconcileAnchoredArcTrackEntities(replaceEntityInCollection(current, nextEntity)),
+      reconcileGuideEntities(replaceEntityInCollection(current, nextEntity)),
     );
     handleSelectEntity(entityId);
 
@@ -857,11 +864,27 @@ export function App() {
       return;
     }
 
+    const resolvedPosition =
+      entity?.kind === "board"
+        ? (() => {
+            const snappedBoard = resolveManagedSmoothArcBoardSnap({
+              board: {
+                ...entity,
+                x: position.x,
+                y: position.y,
+              },
+              entities,
+            });
+
+            return snappedBoard ? { x: snappedBoard.x, y: snappedBoard.y } : position;
+          })()
+        : position;
+
     setPendingEntityDragPlacement({
       entityId,
-      position,
+      position: resolvedPosition,
     });
-    repositionEntityExactly(entityId, position);
+    repositionEntityExactly(entityId, resolvedPosition);
   }
 
   function createPlacedEntityCandidate(
@@ -924,6 +947,17 @@ export function App() {
     });
   }
 
+  function reconcileGuideEntities(
+    catalog: EditorSceneEntity[],
+    options: { createManagedSmoothArc?: boolean; requiredEntityId?: string } = {},
+  ) {
+    return reconcileManagedSmoothArcEntities({
+      createMissing: options.createManagedSmoothArc,
+      entities: reconcileAnchoredArcTrackEntities(catalog),
+      requiredEntityId: options.requiredEntityId,
+    });
+  }
+
   function resolveArcTrackPlacementPreview(position: { x: number; y: number }) {
     const baseEntity = createArcTrackBaseEntity(position);
     const anchorTarget = resolveArcTrackAnchorTarget({
@@ -957,7 +991,7 @@ export function App() {
     }
 
     setEntities((current) =>
-      reconcileAnchoredArcTrackEntities(
+      reconcileGuideEntities(
         current.map((entity) =>
           entity.id === editorState.selectedEntityId ? updater(entity) : entity,
         ),
@@ -1072,7 +1106,10 @@ export function App() {
       entities
         .filter(
           (entity): entity is ArcTrackEntity =>
-            entity.kind === "arc-track" && entity.anchorEntityId === deletedEntityId,
+            entity.kind === "arc-track" &&
+            (entity.anchorEntityId === deletedEntityId ||
+              entity.managedConnection?.sourceEntityId === deletedEntityId ||
+              entity.managedConnection?.targetEntityId === deletedEntityId),
         )
         .map((entity) => entity.id),
     );
@@ -1137,6 +1174,12 @@ export function App() {
           showTrajectory: visibleTrajectoryEntityIds.has(selectedEntity.id),
         }
       : null;
+  const selectedHeightReadout = createSelectedBallHeightReadout({
+    entities,
+    lengthUnit: sceneSettings.lengthUnit,
+    runtimeFrame: visibleRuntimeFrame,
+    selectedEntity,
+  });
   const visibleRuntimeTrajectories =
     playbackResultState === "ready"
       ? Array.from(visibleTrajectoryEntityIds)
@@ -1224,12 +1267,56 @@ export function App() {
             x: pendingEntityDragPlacement.position.x,
             y: pendingEntityDragPlacement.position.y,
           };
+          const directResolution =
+            currentEntity.kind === "board"
+              ? resolveAuthoringPlacement({
+                  candidate,
+                  entities,
+                  ignoreEntityId: currentEntity.id,
+                  maxSnapDistance: 0,
+                })
+              : null;
+          const directManagedSmoothArcPreview =
+            directResolution?.status !== "blocked" && directResolution?.entity.kind === "board"
+              ? createManagedSmoothArcPreview({
+                  entities: replaceEntityInCollection(entities, directResolution.entity),
+                  requiredEntityId: directResolution.entity.id,
+                })
+              : null;
+
+          if (directManagedSmoothArcPreview) {
+            return {
+              contactWithEntityId:
+                directManagedSmoothArcPreview.managedConnection?.targetEntityId ??
+                directManagedSmoothArcPreview.anchorEntityId,
+              entity: directManagedSmoothArcPreview,
+              status: "snap" as const,
+            };
+          }
+
           const resolution = resolveAuthoringPlacement({
             candidate,
             entities,
             ignoreEntityId: currentEntity.id,
             maxSnapDistance: authoringSnapDistance,
           });
+          const managedSmoothArcPreview =
+            resolution.status !== "blocked" && resolution.entity.kind === "board"
+              ? createManagedSmoothArcPreview({
+                  entities: replaceEntityInCollection(entities, resolution.entity),
+                  requiredEntityId: resolution.entity.id,
+                })
+              : null;
+
+          if (managedSmoothArcPreview) {
+            return {
+              contactWithEntityId:
+                managedSmoothArcPreview.managedConnection?.targetEntityId ??
+                managedSmoothArcPreview.anchorEntityId,
+              entity: managedSmoothArcPreview,
+              status: "snap" as const,
+            };
+          }
 
           return createAuthoringPlacementPreview(candidate, resolution);
         })()
@@ -1287,6 +1374,61 @@ export function App() {
         x: currentPlacement.position.x,
         y: currentPlacement.position.y,
       };
+      const pendingManagedSmoothArc =
+        authoringPlacementPreview?.entity.kind === "arc-track" &&
+        authoringPlacementPreview.entity.autoGenerated
+          ? authoringPlacementPreview.entity
+          : null;
+
+      if (currentEntity.kind === "board" && pendingManagedSmoothArc) {
+        const committedEntity = normalizeAuthoringEntityPositionForCommit(
+          candidate,
+          sceneSettings.lengthUnit,
+        );
+
+        setEntities((current) => [
+          ...replaceEntityInCollection(current, committedEntity).filter(
+            (entity) => entity.id !== pendingManagedSmoothArc.id,
+          ),
+          pendingManagedSmoothArc,
+        ]);
+        setPendingEntityDragPlacement(null);
+        return;
+      }
+
+      const directResolution =
+        currentEntity.kind === "board"
+          ? resolveAuthoringPlacement({
+              candidate,
+              entities,
+              ignoreEntityId: currentEntity.id,
+              maxSnapDistance: 0,
+            })
+          : null;
+      const directManagedSmoothArcPreview =
+        directResolution?.status !== "blocked" && directResolution?.entity.kind === "board"
+          ? createManagedSmoothArcPreview({
+              entities: replaceEntityInCollection(entities, directResolution.entity),
+              requiredEntityId: directResolution.entity.id,
+            })
+          : null;
+
+      if (directResolution?.status !== "blocked" && directManagedSmoothArcPreview) {
+        const committedEntity = normalizeAuthoringEntityPositionForCommit(
+          directResolution.entity,
+          sceneSettings.lengthUnit,
+        );
+
+        setEntities((current) =>
+          reconcileGuideEntities(replaceEntityInCollection(current, committedEntity), {
+            createManagedSmoothArc: true,
+            requiredEntityId: committedEntity.id,
+          }),
+        );
+        setPendingEntityDragPlacement(null);
+        return;
+      }
+
       const resolution = resolveAuthoringPlacementForCommit({
         candidate,
         entities,
@@ -1297,9 +1439,10 @@ export function App() {
 
       if (resolution.status !== "blocked") {
         setEntities((current) =>
-          reconcileAnchoredArcTrackEntities(
-            replaceEntityInCollection(current, resolution.entity),
-          ),
+          reconcileGuideEntities(replaceEntityInCollection(current, resolution.entity), {
+            createManagedSmoothArc: resolution.entity.kind === "board",
+            requiredEntityId: resolution.entity.id,
+          }),
         );
       }
 
@@ -1311,7 +1454,14 @@ export function App() {
     return () => {
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [authoringLocked, authoringSnapDistance, entities, pendingEntityDragPlacement]);
+  }, [
+    authoringLocked,
+    authoringPlacementPreview,
+    authoringSnapDistance,
+    entities,
+    pendingEntityDragPlacement,
+    sceneSettings.lengthUnit,
+  ]);
 
   function handleDuplicateSelectedEntity() {
     if (!selectedEntity) {
@@ -1398,7 +1548,7 @@ export function App() {
     }
 
     setEntities((current) =>
-      reconcileAnchoredArcTrackEntities(replaceEntityInCollection(current, resolution.entity)),
+      reconcileGuideEntities(replaceEntityInCollection(current, resolution.entity)),
     );
   }
 
@@ -1892,6 +2042,7 @@ export function App() {
                       scenePhysics={scenePhysicsState}
                       selectedConstraint={selectedConstraint}
                       selectedEntity={selectedEntity}
+                      selectedHeightReadout={selectedHeightReadout}
                       selectedMotionAnalysis={selectedMotionAnalysis}
                       visibleSections={["selection"]}
                     />
@@ -2022,9 +2173,14 @@ export function App() {
                   : null
               }
               selectedRuntimeTrajectories={visibleRuntimeTrajectories}
+              selectedHeightReadout={selectedHeightReadout}
               state={editorState}
               stageOverlay={
-                <AnnotationLayer state={annotationState} onStateChange={setAnnotationState} />
+                <AnnotationLayer
+                  state={annotationState}
+                  viewportOffsetPx={workspaceViewport.offsetPx}
+                  onStateChange={setAnnotationState}
+                />
               }
               libraryDragSession={libraryDragSession}
               viewport={workspaceViewport}

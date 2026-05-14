@@ -310,5 +310,10 @@ fn compile_entity(entity: &EntityDefinition) -> Result<CompiledSceneItem, SceneC
         is_static: entity.is_static,
         friction_coefficient: entity.friction_coefficient,
         restitution_coefficient: entity.restitution_coefficient,
+        collision_behavior: if entity.id.starts_with("particle-") {
+            crate::entity::CollisionBehavior::PointMass
+        } else {
+            crate::entity::CollisionBehavior::RigidBoundary
+        },
     }))
 }

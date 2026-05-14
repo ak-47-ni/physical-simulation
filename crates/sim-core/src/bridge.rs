@@ -876,6 +876,7 @@ impl SceneForceSourcePayload {
 pub struct SceneEntityPayload {
     pub id: String,
     pub kind: String,
+    pub auto_generated: Option<bool>,
     pub anchor_entity_id: Option<String>,
     pub anchor_entity_kind: Option<String>,
     pub anchor_endpoint: Option<String>,
@@ -897,6 +898,7 @@ pub struct SceneEntityPayload {
     pub mass: Option<f64>,
     pub friction: Option<f64>,
     pub restitution: Option<f64>,
+    pub collision_behavior: Option<String>,
     pub locked: Option<bool>,
     pub velocity_x: Option<f64>,
     pub velocity_y: Option<f64>,
@@ -908,17 +910,23 @@ impl SceneEntityPayload {
             return None;
         }
 
-        let anchor = match (
-            self.anchor_entity_id.as_deref(),
-            self.anchor_entity_kind.as_deref(),
-            self.anchor_endpoint.as_deref(),
-        ) {
-            (Some(entity_id), Some(entity_kind), Some(endpoint)) => Some(CompiledArcTrackAnchor {
-                entity_id: entity_id.to_string(),
-                entity_kind: parse_arc_track_anchor_entity_kind(entity_kind)?,
-                endpoint: parse_arc_track_anchor_endpoint(endpoint)?,
-            }),
-            _ => None,
+        let anchor = if self.auto_generated == Some(true) {
+            None
+        } else {
+            match (
+                self.anchor_entity_id.as_deref(),
+                self.anchor_entity_kind.as_deref(),
+                self.anchor_endpoint.as_deref(),
+            ) {
+                (Some(entity_id), Some(entity_kind), Some(endpoint)) => {
+                    Some(CompiledArcTrackAnchor {
+                        entity_id: entity_id.to_string(),
+                        entity_kind: parse_arc_track_anchor_entity_kind(entity_kind)?,
+                        endpoint: parse_arc_track_anchor_endpoint(endpoint)?,
+                    })
+                }
+                _ => None,
+            }
         };
 
         Some((
@@ -937,6 +945,7 @@ impl SceneEntityPayload {
         let SceneEntityPayload {
             id,
             kind,
+            auto_generated: _auto_generated,
             anchor_entity_id,
             anchor_entity_kind,
             anchor_endpoint,
@@ -956,6 +965,7 @@ impl SceneEntityPayload {
             mass,
             friction,
             restitution,
+            collision_behavior: _collision_behavior,
             locked,
             velocity_x,
             velocity_y,

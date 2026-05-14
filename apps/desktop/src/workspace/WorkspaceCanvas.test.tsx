@@ -263,6 +263,35 @@ describe("WorkspaceCanvas", () => {
     ).toBeNull();
   });
 
+  it("renders particle-authored balls with a larger clickable display radius without changing the physical radius", () => {
+    const state = createInitialEditorState();
+
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings()}
+        entities={[
+          createBallEntityPx({
+            id: "particle-1",
+            label: "Particle 1",
+            radius: 4,
+          }),
+        ]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        state={state}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    const particle = screen.getByTestId("scene-entity-particle-1") as HTMLElement;
+
+    expect(particle.style.width).toBe("32px");
+    expect(particle.style.height).toBe("32px");
+    expect(particle.getAttribute("data-physical-radius")).toBe("4");
+  });
+
   it("shows no lock marker for movable entities", () => {
     const state = createInitialEditorState();
 
@@ -1370,6 +1399,47 @@ describe("WorkspaceCanvas", () => {
     );
 
     expect(screen.getByTestId("scene-selected-runtime-velocity-block-1")).toBeDefined();
+  });
+
+  it("renders selected height readout overlays for a tracked ball", () => {
+    render(
+      <WorkspaceCanvas
+        display={createDisplaySettings({
+          showVelocityVectors: false,
+        })}
+        displayEntities={[createBallEntityPx()]}
+        entities={[createBallEntityPx()]}
+        onCreateEntity={() => undefined}
+        onMoveEntity={() => undefined}
+        selectedHeightReadout={{
+          centerDrop: 0.97,
+          currentCenter: { x: 4.8, y: 2.2 },
+          currentSurfacePoint: { x: 4.8, y: 2.44 },
+          offsetGap: 0.03,
+          selectedEntityId: "ball-1",
+          startCenter: { x: 1.8, y: 1.232154 },
+          startSurfacePoint: { x: 1.8, y: 1.44 },
+          surfaceDrop: 1,
+        }}
+        state={{
+          ...createInitialEditorState(),
+          selectedEntityId: "ball-1",
+        }}
+        viewport={meterViewport}
+        onGridVisibleChange={() => undefined}
+        onSelectEntity={() => undefined}
+        onToolChange={() => undefined}
+      />,
+    );
+
+    expect(screen.getByTestId("workspace-selected-height-readout-surface")).toBeDefined();
+    expect(screen.getByTestId("workspace-selected-height-readout-center")).toBeDefined();
+    expect(screen.getByTestId("workspace-selected-height-readout-surface-label").textContent).toBe(
+      "1m",
+    );
+    expect(screen.getByTestId("workspace-selected-height-readout-center-label").textContent).toBe(
+      "0.97m",
+    );
   });
 
   it("keeps selection available and blocks constraint picks while authoring is locked", () => {

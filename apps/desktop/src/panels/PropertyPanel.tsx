@@ -10,6 +10,7 @@ import {
 } from "../state/createBoardAnchoredArcTrackConstraint";
 import type { EditorConstraint } from "../state/editorConstraints";
 import type { EditorEntityPhysics, EditorSceneEntity } from "../state/editorStore";
+import type { SelectedBallHeightReadout } from "../state/selectedHeightReadout";
 import {
   cartesianVelocityToPolar,
   polarVelocityToCartesian,
@@ -88,6 +89,7 @@ type PropertyPanelProps = {
   scenePhysics?: ScenePhysicsPanelState | null;
   selectedConstraint?: EditorConstraint | null;
   selectedEntity: EditorSceneEntity | null;
+  selectedHeightReadout?: SelectedBallHeightReadout | null;
   selectedMotionAnalysis?: SelectedMotionAnalysisState | null;
   visibleSections?: readonly PropertyPanelSection[];
 };
@@ -172,6 +174,15 @@ function ReadonlyField(props: { label: string; value: string }) {
       <strong style={{ color: "#17304f", fontSize: "14px" }}>{props.value}</strong>
     </div>
   );
+}
+
+function formatReadoutValue(value: number, unit: string): string {
+  const formatted = value
+    .toFixed(2)
+    .replace(/\.00$/, "")
+    .replace(/(\.\d)0$/, "$1");
+
+  return `${formatted} ${unit}`;
 }
 
 function PositionInput(props: {
@@ -367,6 +378,7 @@ export function PropertyPanel(props: PropertyPanelProps) {
     scenePhysics = null,
     selectedConstraint = null,
     selectedEntity,
+    selectedHeightReadout = null,
     selectedMotionAnalysis = null,
     visibleSections = DEFAULT_PROPERTY_PANEL_SECTIONS,
   } = props;
@@ -901,6 +913,57 @@ export function PropertyPanel(props: PropertyPanelProps) {
                         {t("property.motion.chartsUnavailable")}
                       </span>
                     ) : null}
+                  </div>
+                ) : null}
+                {selectedEntity.kind === "ball" && selectedHeightReadout && lengthUnitLabel ? (
+                  <div style={motionControlsStyle}>
+                    <strong style={{ color: "#17304f", fontSize: "13px" }}>
+                      {t("property.heightReadout.title")}
+                    </strong>
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: "10px",
+                        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      }}
+                    >
+                      <div style={{ display: "grid", gap: "4px" }}>
+                        <span style={{ color: "#6a7890", fontSize: "12px" }}>
+                          {t("property.heightReadout.surfaceDrop")}
+                        </span>
+                        <strong
+                          data-testid="property-height-readout-surface-drop"
+                          style={{ color: "#17304f", fontSize: "14px" }}
+                        >
+                          {formatReadoutValue(selectedHeightReadout.surfaceDrop, lengthUnitLabel)}
+                        </strong>
+                      </div>
+                      <div style={{ display: "grid", gap: "4px" }}>
+                        <span style={{ color: "#6a7890", fontSize: "12px" }}>
+                          {t("property.heightReadout.centerDrop")}
+                        </span>
+                        <strong
+                          data-testid="property-height-readout-center-drop"
+                          style={{ color: "#17304f", fontSize: "14px" }}
+                        >
+                          {formatReadoutValue(selectedHeightReadout.centerDrop, lengthUnitLabel)}
+                        </strong>
+                      </div>
+                      <div style={{ display: "grid", gap: "4px" }}>
+                        <span style={{ color: "#6a7890", fontSize: "12px" }}>
+                          {t("property.heightReadout.offsetGap")}
+                        </span>
+                        <strong
+                          data-testid="property-height-readout-offset-gap"
+                          style={{ color: "#17304f", fontSize: "14px" }}
+                        >
+                          {formatReadoutValue(selectedHeightReadout.offsetGap, lengthUnitLabel)}
+                        </strong>
+                      </div>
+                    </div>
+                    <span style={{ color: "#64748b", fontSize: "12px", lineHeight: 1.45 }}>
+                      {t("property.heightReadout.explainer")}
+                    </span>
                   </div>
                 ) : null}
               </>

@@ -19,6 +19,7 @@ type BodyLibraryItem = {
   id: LibraryBodyKind;
   labelKey:
     | "library.item.arcTrack"
+    | "library.item.particle"
     | "library.item.ball"
     | "library.item.block"
     | "library.item.board"
@@ -65,6 +66,7 @@ const bodyChipStyle: CSSProperties = {
 };
 
 const bodyItems: BodyLibraryItem[] = [
+  { id: "particle", labelKey: "library.item.particle" },
   { id: "ball", labelKey: "library.item.ball" },
   { id: "block", labelKey: "library.item.block" },
   { id: "board", labelKey: "library.item.board" },

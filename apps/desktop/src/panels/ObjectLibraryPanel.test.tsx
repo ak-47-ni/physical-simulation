@@ -65,6 +65,7 @@ describe("ObjectLibraryPanel", () => {
     );
 
     expect(screen.getByTestId("library-item-ball").getAttribute("data-selected")).toBe("false");
+    expect(screen.getByTestId("library-item-particle").getAttribute("data-selected")).toBe("false");
     expect(screen.getByTestId("library-item-block").getAttribute("data-selected")).toBe("false");
     expect(screen.getByTestId("library-item-board").getAttribute("data-selected")).toBe("false");
     expect(screen.getByTestId("library-item-polygon").getAttribute("data-selected")).toBe("false");
@@ -155,5 +156,44 @@ describe("ObjectLibraryPanel", () => {
       },
     ]);
     expect(selections).toEqual([]);
+  });
+
+  it("starts a particle body drag from the Bodies group", () => {
+    const drags: Array<{
+      bodyKind: string;
+      pointerClientPx: {
+        x: number;
+        y: number;
+      };
+    }> = [];
+
+    render(
+      <DragAwareObjectLibraryPanel
+        onSelectItem={() => undefined}
+        onStartBodyDrag={(session: {
+          bodyKind: string;
+          pointerClientPx: { x: number; y: number };
+        }) => {
+          drags.push(session);
+        }}
+        selectedItemId="spring"
+      />,
+    );
+
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Particle" }), {
+      button: 0,
+      clientX: 240,
+      clientY: 220,
+    });
+
+    expect(drags).toEqual([
+      {
+        bodyKind: "particle",
+        pointerClientPx: {
+          x: 240,
+          y: 220,
+        },
+      },
+    ]);
   });
 });
