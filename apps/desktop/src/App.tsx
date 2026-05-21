@@ -749,13 +749,13 @@ export function App() {
     setSceneDraftGenerating(false);
   }
 
-  function handleApplyGeneratedScene(mode: SceneDraftCompileMode) {
-    if (!generatedSceneDraft) {
+  function handleApplyGeneratedScene(mode: SceneDraftCompileMode, draft: SceneDraft | null = generatedSceneDraft) {
+    if (!draft) {
       return;
     }
 
     const compiled = compileSceneDraft({
-      draft: generatedSceneDraft,
+      draft,
       existingConstraints: constraints,
       existingEntities: entities,
       mode,
@@ -2205,8 +2205,8 @@ export function App() {
             onGenerateDraft={(prompt) => {
               void handleGenerateSceneDraft(prompt);
             }}
-            onInsert={() => handleApplyGeneratedScene("insert")}
-            onReplace={() => handleApplyGeneratedScene("replace")}
+            onInsert={(draft) => handleApplyGeneratedScene("insert", draft)}
+            onReplace={(draft) => handleApplyGeneratedScene("replace", draft)}
           />
         ) : null}
       </>

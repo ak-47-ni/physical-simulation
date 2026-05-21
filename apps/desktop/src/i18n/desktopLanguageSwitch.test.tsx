@@ -31,7 +31,7 @@ describe("desktop language switch acceptance", () => {
 
     renderDesktopApp();
 
-    expect(screen.getByText("Version 1.0.56")).toBeDefined();
+    expect(screen.getByText("Version 1.0.70")).toBeDefined();
   });
 
   it("defaults non-zh system locales to English", () => {
@@ -53,7 +53,7 @@ describe("desktop language switch acceptance", () => {
 
       expect(getLanguageSelect().value).toBe("zh-CN");
       expect(screen.getByRole("button", { name: "重置布局" })).toBeDefined();
-      expect(screen.getByText("版本 1.0.56")).toBeDefined();
+      expect(screen.getByText("版本 1.0.70")).toBeDefined();
     },
   );
 
@@ -90,7 +90,7 @@ describe("desktop language switch acceptance", () => {
     expect(screen.getByTestId("rigid-boundary-overlay").textContent).toContain(
       "刚体接触按实体边界计算",
     );
-    expect(screen.getByText("版本 1.0.56")).toBeDefined();
+    expect(screen.getByText("版本 1.0.70")).toBeDefined();
     expect(readStoredValues().some((value) => value?.includes("zh-CN"))).toBe(true);
 
     firstRender.unmount();
@@ -98,6 +98,6 @@ describe("desktop language switch acceptance", () => {
 
     expect(getLanguageSelect().value).toBe("zh-CN");
     expect(screen.getByRole("button", { name: "重置布局" })).toBeDefined();
-    expect(screen.getByText("版本 1.0.56")).toBeDefined();
+    expect(screen.getByText("版本 1.0.70")).toBeDefined();
   });
 });

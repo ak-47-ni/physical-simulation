@@ -20,7 +20,7 @@ const FIXED_STEP_SECONDS: f64 = 1.0 / 60.0;
 #[cfg(not(test))]
 const DEFAULT_RUNTIME_TRACE_PATH: &str = "/tmp/physics-sandbox-runtime-trace.jsonl";
 const RUNTIME_TRACE_SCHEMA_VERSION: u32 = 1;
-const DEFAULT_OPENAI_MODEL: &str = "gpt-5.4-mini";
+const DEFAULT_OPENAI_MODEL: &str = "gpt-5.5";
 const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 
 #[cfg(test)]
@@ -698,9 +698,11 @@ async fn request_openai_scene_draft(
     }
 
     let client = reqwest::Client::new();
+    let url = resolve_openai_responses_url(base_url)?;
     let response = client
-        .post(resolve_openai_responses_url(base_url)?)
+        .post(&url)
         .bearer_auth(api_key)
+        .header(reqwest::header::ACCEPT, "application/json")
         .json(&build_openai_scene_draft_request(model, prompt))
         .send()
         .await
@@ -712,10 +714,63 @@ async fn request_openai_scene_draft(
         .map_err(|error| format!("failed to read OpenAI response: {error}"))?;
 
     if !status.is_success() {
+        if should_retry_openai_scene_draft_without_schema(status) {
+            return request_openai_scene_draft_without_schema(
+                &client,
+                api_key,
+                model,
+                &url,
+                prompt,
+                status,
+                &body,
+            )
+            .await;
+        }
+
         return Err(format!("OpenAI scene generation failed ({status}): {body}"));
     }
 
     extract_openai_response_text(&body)
+}
+
+async fn request_openai_scene_draft_without_schema(
+    client: &reqwest::Client,
+    api_key: &str,
+    model: &str,
+    url: &str,
+    prompt: &str,
+    original_status: reqwest::StatusCode,
+    original_body: &str,
+) -> Result<String, String> {
+    let response = client
+        .post(url)
+        .bearer_auth(api_key)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .json(&build_openai_scene_draft_fallback_request(model, prompt))
+        .send()
+        .await
+        .map_err(|error| {
+            format!(
+                "OpenAI scene generation failed ({original_status}): {original_body}; fallback request failed: {error}"
+            )
+        })?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| format!("failed to read OpenAI fallback response: {error}"))?;
+
+    if !status.is_success() {
+        return Err(format!(
+            "OpenAI scene generation failed ({original_status}): {original_body}; fallback failed ({status}): {body}"
+        ));
+    }
+
+    extract_openai_response_text(&body)
+}
+
+fn should_retry_openai_scene_draft_without_schema(status: reqwest::StatusCode) -> bool {
+    status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS
 }
 
 fn resolve_openai_responses_url(base_url: &str) -> Result<String, String> {
@@ -752,7 +807,12 @@ fn build_openai_scene_draft_request(model: &str, prompt: &str) -> serde_json::Va
     serde_json::json!({
         "model": model,
         "instructions": build_scene_draft_system_prompt(),
-        "input": prompt,
+        "input": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
         "text": {
             "format": {
                 "type": "json_schema",
@@ -764,8 +824,24 @@ fn build_openai_scene_draft_request(model: &str, prompt: &str) -> serde_json::Va
     })
 }
 
+fn build_openai_scene_draft_fallback_request(model: &str, prompt: &str) -> serde_json::Value {
+    serde_json::json!({
+        "model": model,
+        "instructions": format!(
+            "{} Return exactly one valid JSON object. Do not include markdown fences, comments, prose, or trailing text. The object must contain title, locale, domain, gravity, entities, relationships, analyzers, assumptions, warnings, and unsupported. Use null for unknown optional fields.",
+            build_scene_draft_system_prompt()
+        ),
+        "input": [
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    })
+}
+
 fn build_scene_draft_system_prompt() -> &'static str {
-    "You convert Chinese high-school mechanics exam prompts into a JSON SceneDraft for a classroom physics sandbox. Only support mechanics scenes with balls, blocks, boards, springs, gravity, friction, and initial velocity. If diagram information is missing, make conservative assumptions and write them in assumptions. Do not solve the problem. Return only data matching the schema."
+    "You convert Chinese high-school mechanics exam prompts into a JSON SceneDraft for a classroom physics sandbox. Return only data matching the schema. Build a general scene model, not a solved answer. Use SI units in meters, kilograms, seconds, newtons. Supported entities are balls, blocks, boards, and arc-track circular rails. Use board.angleDegrees for inclined or horizontal rails; positive angles slope downward to the right in the canvas. If a prompt mentions ground, floor, 地面, 水平地面, or 水平面, represent it as an explicit locked horizontal board entity and reference that entity from place-on relationships; never reference an undeclared ground entity. Use board.height only for physical board thickness; never put an exam vertical drop h or altitude into board.height. If a prompt gives vertical height h on an incline with sin(theta), choose a board length at least h/sin(theta), keep board.height null or about 0.14, and place the released body near the high/start end. Use arc-track for every smooth circular arc, set radius, sweepAngleDegrees, angleDegrees as the arc mid-angle, friction 0 for smooth rails, and connect it with connect-endpoints relationships. Use connect-endpoints to express a continuous track chain such as incline -> arc -> horizontal track. Use place-on for a body initially on a board or track support. If a compressed tiny spring only releases stored energy, makes two bodies instantly separate, and is not attached after release, use energy-release with totalKineticEnergy and direction instead of creating any spring constraint. In energy-release, direction is entityA's release direction; entityB moves oppositely by momentum conservation. If a fixed spring with a free contact end is described, create a small locked block named as the fixed anchor and use contact-spring-end with anchor, target, gap, restLength, and stiffness. The gap is the initial distance between the moving target and the free spring end; restLength is the uncompressed spring length from fixed anchor to free end. If the prompt says x0, gap, 相距, 间距, or 自由端, do not connect the moving target directly with spring-between; use contact-spring-end instead. Use spring-between only for springs already attached to two bodies from the start. Smooth/light/massless rails or springs should be represented with zero friction and assumptions or warnings, not unsupported. Elastic head-on collisions should use restitution 1 on the colliding bodies. Put genuinely unsupported behavior in warnings while still building the closest usable scene."
 }
 
 fn scene_draft_json_schema() -> serde_json::Value {
@@ -806,10 +882,17 @@ fn scene_draft_json_schema() -> serde_json::Value {
                         "width",
                         "height",
                         "radius",
-                        "angleDegrees"
+                        "angleDegrees",
+                        "center",
+                        "sweepAngleDegrees",
+                        "thickness",
+                        "anchorEntity",
+                        "anchorEndpoint",
+                        "entryEndpoint",
+                        "side"
                     ],
                     "properties": {
-                        "kind": { "type": "string", "enum": ["ball", "block", "board"] },
+                        "kind": { "type": "string", "enum": ["arc-track", "ball", "block", "board"] },
                         "name": { "type": "string" },
                         "mass": { "type": ["number", "null"] },
                         "friction": { "type": ["number", "null"] },
@@ -828,7 +911,22 @@ fn scene_draft_json_schema() -> serde_json::Value {
                         "width": { "type": ["number", "null"] },
                         "height": { "type": ["number", "null"] },
                         "radius": { "type": ["number", "null"] },
-                        "angleDegrees": { "type": ["number", "null"] }
+                        "angleDegrees": { "type": ["number", "null"] },
+                        "center": {
+                            "type": ["object", "null"],
+                            "additionalProperties": false,
+                            "required": ["x", "y"],
+                            "properties": {
+                                "x": { "type": "number" },
+                                "y": { "type": "number" }
+                            }
+                        },
+                        "sweepAngleDegrees": { "type": ["number", "null"] },
+                        "thickness": { "type": ["number", "null"] },
+                        "anchorEntity": { "type": ["string", "null"] },
+                        "anchorEndpoint": { "type": ["string", "null"], "enum": ["start", "end", null] },
+                        "entryEndpoint": { "type": ["string", "null"], "enum": ["start", "end", null] },
+                        "side": { "type": ["string", "null"], "enum": ["inside", "outside", null] }
                     }
                 }
             },
@@ -858,6 +956,51 @@ fn scene_draft_json_schema() -> serde_json::Value {
                                 "restLength": { "type": ["number", "null"] },
                                 "stiffness": { "type": ["number", "null"] }
                             }
+                        },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["kind", "anchor", "target", "gap", "restLength", "stiffness"],
+                            "properties": {
+                                "kind": { "type": "string", "enum": ["contact-spring-end"] },
+                                "anchor": { "type": "string" },
+                                "target": { "type": "string" },
+                                "gap": { "type": ["number", "null"] },
+                                "restLength": { "type": ["number", "null"] },
+                                "stiffness": { "type": ["number", "null"] }
+                            }
+                        },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["kind", "entityA", "entityB", "totalKineticEnergy", "direction"],
+                            "properties": {
+                                "kind": { "type": "string", "enum": ["energy-release"] },
+                                "entityA": { "type": "string" },
+                                "entityB": { "type": "string" },
+                                "totalKineticEnergy": { "type": "number" },
+                                "direction": {
+                                    "type": ["object", "null"],
+                                    "additionalProperties": false,
+                                    "required": ["x", "y"],
+                                    "properties": {
+                                        "x": { "type": "number" },
+                                        "y": { "type": "number" }
+                                    }
+                                }
+                            }
+                        },
+                        {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["kind", "source", "sourceEndpoint", "target", "targetEndpoint"],
+                            "properties": {
+                                "kind": { "type": "string", "enum": ["connect-endpoints"] },
+                                "source": { "type": "string" },
+                                "sourceEndpoint": { "type": "string", "enum": ["start", "end"] },
+                                "target": { "type": "string" },
+                                "targetEndpoint": { "type": "string", "enum": ["start", "end"] }
+                            }
                         }
                     ]
                 }
@@ -882,17 +1025,50 @@ fn scene_draft_json_schema() -> serde_json::Value {
 }
 
 fn extract_openai_response_text(body: &str) -> Result<String, String> {
-    let value = serde_json::from_str::<serde_json::Value>(body)
-        .map_err(|error| format!("failed to parse OpenAI response JSON: {error}"))?;
+    let trimmed = body.trim();
 
-    if let Some(text) = value.get("output_text").and_then(serde_json::Value::as_str) {
-        return Ok(text.to_string());
+    if trimmed.is_empty() {
+        return Err("OpenAI response body was empty.".to_string());
     }
 
-    let output = value
-        .get("output")
+    if trimmed.lines().any(|line| {
+        let line = line.trim_start();
+
+        line.starts_with("data:") || line.starts_with("event:")
+    }) {
+        return extract_openai_sse_response_text(trimmed);
+    }
+
+    let value = serde_json::from_str::<serde_json::Value>(trimmed)
+        .map_err(|error| format!("failed to parse OpenAI response JSON: {error}"))?;
+
+    if looks_like_scene_draft_json(&value) {
+        return Ok(trimmed.to_string());
+    }
+
+    let text = extract_openai_response_text_value(&value)
+        .ok_or_else(|| "OpenAI response did not include generated text.".to_string())?;
+
+    normalize_openai_generated_scene_text(&text)
+}
+
+fn extract_openai_response_text_value(value: &serde_json::Value) -> Option<String> {
+    if let Some(text) = value.get("output_text").and_then(serde_json::Value::as_str) {
+        return Some(text.to_string());
+    }
+
+    if let Some(text) = value
+        .get("choices")
         .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| "OpenAI response did not include output.".to_string())?;
+        .and_then(|choices| choices.first())
+        .and_then(|choice| choice.get("message"))
+        .and_then(|message| message.get("content"))
+        .and_then(serde_json::Value::as_str)
+    {
+        return Some(text.to_string());
+    }
+
+    let output = value.get("output").and_then(serde_json::Value::as_array)?;
 
     for item in output {
         let Some(content) = item.get("content").and_then(serde_json::Value::as_array) else {
@@ -901,12 +1077,115 @@ fn extract_openai_response_text(body: &str) -> Result<String, String> {
 
         for content_item in content {
             if let Some(text) = content_item.get("text").and_then(serde_json::Value::as_str) {
-                return Ok(text.to_string());
+                return Some(text.to_string());
             }
         }
     }
 
-    Err("OpenAI response did not include generated text.".to_string())
+    None
+}
+
+fn extract_openai_sse_response_text(body: &str) -> Result<String, String> {
+    let mut text_delta = String::new();
+    let mut final_text: Option<String> = None;
+
+    for line in body.lines() {
+        let trimmed = line.trim();
+
+        if !trimmed.starts_with("data:") {
+            continue;
+        }
+
+        let data = trimmed.trim_start_matches("data:").trim();
+
+        if data.is_empty() || data == "[DONE]" {
+            continue;
+        }
+
+        let value = serde_json::from_str::<serde_json::Value>(data)
+            .map_err(|error| format!("failed to parse OpenAI streaming response JSON: {error}"))?;
+
+        if let Some(delta) = value.get("delta").and_then(serde_json::Value::as_str) {
+            text_delta.push_str(delta);
+            continue;
+        }
+
+        if let Some(delta) = value
+            .get("choices")
+            .and_then(serde_json::Value::as_array)
+            .and_then(|choices| choices.first())
+            .and_then(|choice| choice.get("delta"))
+            .and_then(|delta| delta.get("content"))
+            .and_then(serde_json::Value::as_str)
+        {
+            text_delta.push_str(delta);
+            continue;
+        }
+
+        if let Some(text) = extract_openai_response_text_value(&value) {
+            final_text = Some(text);
+            continue;
+        }
+
+        if let Some(text) = value
+            .get("response")
+            .and_then(extract_openai_response_text_value)
+        {
+            final_text = Some(text);
+        }
+    }
+
+    if !text_delta.is_empty() {
+        return normalize_openai_generated_scene_text(&text_delta);
+    }
+
+    let text = final_text
+        .ok_or_else(|| "OpenAI streaming response did not include generated text.".to_string())?;
+
+    normalize_openai_generated_scene_text(&text)
+}
+
+fn looks_like_scene_draft_json(value: &serde_json::Value) -> bool {
+    value.get("domain").and_then(serde_json::Value::as_str) == Some("mechanics")
+        && value
+            .get("entities")
+            .and_then(serde_json::Value::as_array)
+            .is_some()
+        && value
+            .get("relationships")
+            .and_then(serde_json::Value::as_array)
+            .is_some()
+}
+
+fn normalize_openai_generated_scene_text(text: &str) -> Result<String, String> {
+    let candidate = strip_json_code_fence(text.trim()).trim().to_string();
+
+    if candidate.is_empty() {
+        return Err("OpenAI generated text was empty.".to_string());
+    }
+
+    let value = serde_json::from_str::<serde_json::Value>(&candidate)
+        .map_err(|error| format!("OpenAI generated text was not valid SceneDraft JSON: {error}"))?;
+
+    if !looks_like_scene_draft_json(&value) {
+        return Err("OpenAI generated JSON did not match SceneDraft shape.".to_string());
+    }
+
+    Ok(candidate)
+}
+
+fn strip_json_code_fence(text: &str) -> &str {
+    let Some(without_opening) = text
+        .strip_prefix("```json")
+        .or_else(|| text.strip_prefix("```JSON"))
+        .or_else(|| text.strip_prefix("```"))
+    else {
+        return text;
+    };
+
+    without_opening
+        .strip_suffix("```")
+        .unwrap_or(without_opening)
 }
 
 fn format_scene_compile_error(error: SceneCompileError) -> String {
@@ -1023,8 +1302,8 @@ mod tests {
     use tauri::webview::InvokeRequest;
 
     use super::{
-        BridgeError, BridgeStatusSnapshot, build_desktop_app, format_bridge_error, run_desktop_app,
-        read_desktop_config_value, resolve_openai_responses_url, trim_env_value,
+        BridgeError, BridgeStatusSnapshot, build_desktop_app, format_bridge_error,
+        read_desktop_config_value, resolve_openai_responses_url, run_desktop_app, trim_env_value,
         write_export_text_contents,
     };
 
@@ -1046,7 +1325,7 @@ mod tests {
     }
 
     #[test]
-    fn build_openai_scene_draft_request_uses_top_level_instructions() {
+    fn build_openai_scene_draft_request_uses_top_level_instructions_and_message_input() {
         let request = super::build_openai_scene_draft_request("gpt-test", "测试题目");
 
         assert_eq!(request["model"], json!("gpt-test"));
@@ -1054,7 +1333,230 @@ mod tests {
             request["instructions"],
             json!(super::build_scene_draft_system_prompt())
         );
-        assert_eq!(request["input"], json!("测试题目"));
+        assert_eq!(
+            request["input"],
+            json!([
+                {
+                    "role": "user",
+                    "content": "测试题目"
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn build_openai_scene_draft_fallback_request_omits_strict_schema_format() {
+        let request = super::build_openai_scene_draft_fallback_request("gpt-test", "测试题目");
+
+        assert_eq!(request["model"], json!("gpt-test"));
+        assert!(request.get("text").is_none());
+        assert!(
+            request["instructions"]
+                .as_str()
+                .expect("instructions are text")
+                .contains("Return exactly one valid JSON object")
+        );
+        assert_eq!(
+            request["input"],
+            json!([
+                {
+                    "role": "user",
+                    "content": "测试题目"
+                }
+            ])
+        );
+    }
+
+    #[test]
+    fn scene_draft_prompt_requires_explicit_ground_board_entities() {
+        let prompt = super::build_scene_draft_system_prompt();
+
+        assert!(prompt.contains("represent it as an explicit locked horizontal board entity"));
+        assert!(prompt.contains("never reference an undeclared ground entity"));
+    }
+
+    #[test]
+    fn openai_scene_generation_retries_schema_request_on_server_errors_only() {
+        assert!(super::should_retry_openai_scene_draft_without_schema(
+            reqwest::StatusCode::INTERNAL_SERVER_ERROR
+        ));
+        assert!(super::should_retry_openai_scene_draft_without_schema(
+            reqwest::StatusCode::BAD_GATEWAY
+        ));
+        assert!(super::should_retry_openai_scene_draft_without_schema(
+            reqwest::StatusCode::TOO_MANY_REQUESTS
+        ));
+        assert!(!super::should_retry_openai_scene_draft_without_schema(
+            reqwest::StatusCode::UNAUTHORIZED
+        ));
+        assert!(!super::should_retry_openai_scene_draft_without_schema(
+            reqwest::StatusCode::BAD_REQUEST
+        ));
+    }
+
+    #[test]
+    fn scene_draft_json_schema_supports_arc_tracks_endpoint_connections_contact_springs_and_energy_release() {
+        let schema = super::scene_draft_json_schema();
+        let entity_kind_enum =
+            &schema["properties"]["entities"]["items"]["properties"]["kind"]["enum"];
+        let relationship_variants = schema["properties"]["relationships"]["items"]["anyOf"]
+            .as_array()
+            .expect("relationship variants are listed");
+
+        assert!(
+            entity_kind_enum
+                .as_array()
+                .expect("entity kind enum is listed")
+                .contains(&json!("arc-track"))
+        );
+        assert!(relationship_variants.iter().any(|variant| {
+            variant["properties"]["kind"]["enum"]
+                .as_array()
+                .is_some_and(|kinds| kinds.contains(&json!("connect-endpoints")))
+        }));
+        assert!(relationship_variants.iter().any(|variant| {
+            variant["properties"]["kind"]["enum"]
+                .as_array()
+                .is_some_and(|kinds| kinds.contains(&json!("contact-spring-end")))
+        }));
+        assert!(relationship_variants.iter().any(|variant| {
+            variant["properties"]["kind"]["enum"]
+                .as_array()
+                .is_some_and(|kinds| kinds.contains(&json!("energy-release")))
+        }));
+    }
+
+    #[test]
+    fn scene_draft_prompt_uses_energy_release_for_detached_micro_springs() {
+        let prompt = super::build_scene_draft_system_prompt();
+
+        assert!(prompt.contains("use energy-release"));
+        assert!(prompt.contains("instead of creating any spring constraint"));
+    }
+
+    fn sample_scene_draft_json() -> serde_json::Value {
+        json!({
+            "title": "放置木板",
+            "locale": "zh-CN",
+            "domain": "mechanics",
+            "gravity": 10,
+            "entities": [
+                {
+                    "kind": "board",
+                    "name": "木板",
+                    "mass": null,
+                    "friction": 0,
+                    "restitution": null,
+                    "locked": true,
+                    "initialVelocity": null,
+                    "length": 3,
+                    "width": null,
+                    "height": 0.12,
+                    "radius": null,
+                    "angleDegrees": 0
+                }
+            ],
+            "relationships": [],
+            "analyzers": [],
+            "assumptions": [],
+            "warnings": [],
+            "unsupported": []
+        })
+    }
+
+    #[test]
+    fn extract_openai_response_text_accepts_direct_scene_draft_json() {
+        let draft = sample_scene_draft_json();
+
+        assert_eq!(
+            super::extract_openai_response_text(&draft.to_string()).as_deref(),
+            Ok(draft.to_string().as_str())
+        );
+    }
+
+    #[test]
+    fn extract_openai_response_text_reads_responses_output_text() {
+        let draft = sample_scene_draft_json().to_string();
+        let response = json!({
+            "id": "resp_test",
+            "output_text": draft
+        });
+
+        assert_eq!(
+            super::extract_openai_response_text(&response.to_string()).as_deref(),
+            Ok(draft.as_str())
+        );
+    }
+
+    #[test]
+    fn extract_openai_response_text_strips_json_code_fence() {
+        let draft = sample_scene_draft_json().to_string();
+        let response = json!({
+            "output_text": format!("```json\n{draft}\n```")
+        });
+
+        assert_eq!(
+            super::extract_openai_response_text(&response.to_string()).as_deref(),
+            Ok(draft.as_str())
+        );
+    }
+
+    #[test]
+    fn extract_openai_response_text_reads_chat_completion_message_content() {
+        let draft = sample_scene_draft_json().to_string();
+        let response = json!({
+            "choices": [
+                {
+                    "message": {
+                        "content": draft
+                    }
+                }
+            ]
+        });
+
+        assert_eq!(
+            super::extract_openai_response_text(&response.to_string()).as_deref(),
+            Ok(draft.as_str())
+        );
+    }
+
+    #[test]
+    fn extract_openai_response_text_combines_streaming_deltas() {
+        let draft = sample_scene_draft_json().to_string();
+        let split = draft.len() / 2;
+        let body = format!(
+            "event: response.output_text.delta\n\
+             data: {{\"delta\":{}}}\n\n\
+             event: response.output_text.delta\n\
+             data: {{\"delta\":{}}}\n\n\
+             data: [DONE]\n",
+            serde_json::to_string(&draft[..split]).expect("first delta serializes"),
+            serde_json::to_string(&draft[split..]).expect("second delta serializes")
+        );
+
+        assert_eq!(
+            super::extract_openai_response_text(&body).as_deref(),
+            Ok(draft.as_str())
+        );
+    }
+
+    #[test]
+    fn extract_openai_response_text_rejects_empty_body() {
+        let error = super::extract_openai_response_text(" \n\t").expect_err("empty body rejects");
+
+        assert_eq!(error, "OpenAI response body was empty.");
+    }
+
+    #[test]
+    fn extract_openai_response_text_rejects_empty_generated_text() {
+        let response = json!({
+            "output_text": " \n\t"
+        });
+
+        let error = super::extract_openai_response_text(&response.to_string())
+            .expect_err("empty text rejects");
+
+        assert_eq!(error, "OpenAI generated text was empty.");
     }
 
     #[test]
@@ -1063,7 +1565,8 @@ mod tests {
         unsafe {
             std::env::set_var(key, "https://env.example.com/v1");
         }
-        let local_env = HashMap::from([(key.to_string(), "https://file.example.com/v1".to_string())]);
+        let local_env =
+            HashMap::from([(key.to_string(), "https://file.example.com/v1".to_string())]);
 
         assert_eq!(
             read_desktop_config_value(key, &local_env).as_deref(),

@@ -2,7 +2,7 @@
 
 课堂物理场景编辑与仿真工具，面向“搭建题目场景 -> 运行计算 -> 观察运动 -> 标注讲解”的桌面端工作流。
 
-当前桌面端版本：`1.0.56`
+当前桌面端版本：`1.0.70`
 
 ## 项目简介
 
@@ -190,7 +190,7 @@ pnpm --filter desktop run dev
 ```bash
 OPENAI_API_KEY=your-api-key
 OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-5.4-mini
+OPENAI_MODEL=gpt-5.5
 ```
 
 ### 支持的环境变量
@@ -199,7 +199,7 @@ OPENAI_MODEL=gpt-5.4-mini
 | --- | --- | --- |
 | `OPENAI_API_KEY` | 必需 | OpenAI 或兼容网关的 API Key |
 | `OPENAI_BASE_URL` | 可选 | 默认是 OpenAI 官方兼容基地址 |
-| `OPENAI_MODEL` | 可选 | 默认值为 `gpt-5.4-mini` |
+| `OPENAI_MODEL` | 可选 | 默认值为 `gpt-5.5` |
 
 说明：
 

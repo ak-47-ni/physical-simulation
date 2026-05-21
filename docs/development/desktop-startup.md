@@ -49,7 +49,7 @@ Example `.desktop.env`:
 ```bash
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-5.4-mini
+OPENAI_MODEL=gpt-5.5
 ```
 
 `OPENAI_BASE_URL` may be either a base URL such as `https://api.openai.com/v1` or a full Responses endpoint such as `https://gateway.example.com/v1/responses`.
