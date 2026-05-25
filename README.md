@@ -52,6 +52,12 @@ Physics Sandbox 是一个以中学/高中力学教学为导向的交互式物理
 - 生成“场景草稿 + 假设说明 + 物体列表 + 警告/限制”
 - 支持将草稿插入当前场景或替换当前场景
 - 通过 OpenAI 兼容接口在桌面端本地配置
+- 当 AI 调用失败且题干属于固定简单场景（自由落体、斜面木块、弹性碰撞、弹簧小车）时，会生成带警告说明的本地确定性降级草稿；复杂或未识别题干仍返回可恢复错误
+
+相关文档：
+
+- [开发者 AI 场景生成工作流](docs/development/ai-scene-generation.md)
+- [老师使用说明：AI 文本生成物理场景](docs/user/teacher-ai-scene-generation.md)
 
 ## 当前对象与约束
 
@@ -191,6 +197,8 @@ pnpm --filter desktop run dev
 OPENAI_API_KEY=your-api-key
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-5.5
+OPENAI_TEMPERATURE=0
+OPENAI_SCENE_CACHE_DIR=.cache/physics-sandbox/scene-drafts
 ```
 
 ### 支持的环境变量
@@ -200,10 +208,14 @@ OPENAI_MODEL=gpt-5.5
 | `OPENAI_API_KEY` | 必需 | OpenAI 或兼容网关的 API Key |
 | `OPENAI_BASE_URL` | 可选 | 默认是 OpenAI 官方兼容基地址 |
 | `OPENAI_MODEL` | 可选 | 默认值为 `gpt-5.5` |
+| `OPENAI_TEMPERATURE` | 可选 | 默认值为 `0`，允许范围 `0` 到 `2` |
+| `OPENAI_SCENE_CACHE_DIR` | 可选 | 启用文本转场景结果本地缓存；默认关闭 |
 
 说明：
 
 - `OPENAI_BASE_URL` 可以是基础地址，也可以是完整的 Responses 端点地址
+- `OPENAI_TEMPERATURE` 默认固定为 `0`，用于降低相同提示词输出漂移
+- `OPENAI_SCENE_CACHE_DIR` 只保存生成出的 scene draft，文件名使用 prompt/config hash，不保存 API Key
 - 环境变量优先级高于 `.desktop.env`
 - `.desktop.env` 只用于本地开发，不应提交真实值
 
@@ -219,6 +231,7 @@ OPENAI_MODEL=gpt-5.5
 | `pnpm desktop:build` | 构建桌面前端 |
 | `pnpm desktop:tauri:check` | 检查 Tauri Rust 端 |
 | `pnpm desktop:tauri:dev` | 直接用 Cargo 启动桌面壳 |
+| `pnpm real-provider-baseline` | 显式 opt-in 后运行真实 provider 场景生成基准 |
 | `./scripts/start-desktop.sh` | 推荐桌面启动方式 |
 
 ### 常用验证命令

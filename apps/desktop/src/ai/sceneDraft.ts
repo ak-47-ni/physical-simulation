@@ -79,10 +79,13 @@ export type SceneDraft = {
   gravity?: number;
   locale: "zh-CN";
   relationships: SceneDraftRelationship[];
+  schemaVersion: 1;
   title: string;
   unsupported: string[];
   warnings: string[];
 };
+
+export const SCENE_DRAFT_SCHEMA_VERSION = 1 as const;
 
 export class SceneDraftValidationError extends Error {
   constructor(message: string) {
@@ -156,10 +159,25 @@ export function validateSceneDraft(candidate: unknown): SceneDraft {
     gravity: readOptionalNumber(value.gravity, "gravity"),
     locale: value.locale === "zh-CN" ? "zh-CN" : "zh-CN",
     relationships,
+    schemaVersion: readSceneDraftSchemaVersion(value.schemaVersion),
     title: readOptionalString(value.title, "title") ?? "AI generated mechanics scene",
     unsupported: readStringArray(value.unsupported, "unsupported"),
     warnings,
   };
+}
+
+function readSceneDraftSchemaVersion(value: unknown): typeof SCENE_DRAFT_SCHEMA_VERSION {
+  if (value === undefined || value === null) {
+    return SCENE_DRAFT_SCHEMA_VERSION;
+  }
+
+  if (value !== SCENE_DRAFT_SCHEMA_VERSION) {
+    throw new SceneDraftValidationError(
+      `Scene draft schemaVersion must be ${SCENE_DRAFT_SCHEMA_VERSION}.`,
+    );
+  }
+
+  return SCENE_DRAFT_SCHEMA_VERSION;
 }
 
 function normalizeImplicitSupportEntities(input: {

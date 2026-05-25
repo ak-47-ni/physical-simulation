@@ -51,6 +51,12 @@ This is not a general CAD tool or a full-purpose physics-engine frontend. The de
 - Review and edit generated parameters before applying the draft
 - Insert the draft into the current scene or replace the current scene
 - Use an OpenAI-compatible API configured locally
+- If AI generation fails for a fixed simple prompt category (free fall, inclined block, elastic collision, or spring cart), the app creates a deterministic local fallback draft with a warning; complex or unrecognized prompts still return recoverable errors
+
+Related docs:
+
+- [AI scene generation developer workflow](docs/development/ai-scene-generation.md)
+- [Teacher guide: AI text-to-scene generation](docs/user/teacher-ai-scene-generation.md)
 
 ## Supported Objects and Constraints
 
@@ -180,6 +186,8 @@ Example:
 OPENAI_API_KEY=your-api-key
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-5.5
+OPENAI_TEMPERATURE=0
+OPENAI_SCENE_CACHE_DIR=.cache/physics-sandbox/scene-drafts
 ```
 
 Supported variables:
@@ -189,10 +197,14 @@ Supported variables:
 | `OPENAI_API_KEY` | Yes | OpenAI or compatible gateway API key |
 | `OPENAI_BASE_URL` | No | OpenAI-compatible base URL |
 | `OPENAI_MODEL` | No | Defaults to `gpt-5.5` |
+| `OPENAI_TEMPERATURE` | No | Defaults to `0`, accepts values from `0` to `2` |
+| `OPENAI_SCENE_CACHE_DIR` | No | Enables local text-to-scene result caching; disabled by default |
 
 Notes:
 
 - `OPENAI_BASE_URL` may be a base URL or a full Responses endpoint URL
+- `OPENAI_TEMPERATURE` defaults to `0` to reduce output drift for identical prompts
+- `OPENAI_SCENE_CACHE_DIR` stores generated scene drafts only; filenames use prompt/config hashes and do not store API keys
 - Process environment variables take precedence over `.desktop.env`
 - `.desktop.env` is for local development only and should not contain committed real values
 
@@ -206,6 +218,7 @@ Notes:
 | `pnpm desktop:build` | Build the desktop frontend |
 | `pnpm desktop:tauri:check` | Check the Tauri Rust side |
 | `pnpm desktop:tauri:dev` | Start the desktop shell through Cargo |
+| `pnpm real-provider-baseline` | Run the real-provider scene generation baseline after explicit opt-in |
 | `./scripts/start-desktop.sh` | Recommended desktop startup |
 
 Common verification commands:
@@ -318,4 +331,3 @@ Design and implementation records:
 ## Maintainer
 
 For project coordination, use `code_ljs@qq.com`.
-

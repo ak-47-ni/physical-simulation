@@ -61,6 +61,15 @@ const enMessages = {
   "aiScene.emptyUnsupported": "No unsupported content.",
   "aiScene.replace": "Replace current scene",
   "aiScene.insert": "Insert into current scene",
+  "aiScene.error.details": "Details:",
+  "aiScene.error.invalidJson":
+    "AI returned content that was not usable scene JSON. Try one simple experiment, such as free fall or an inclined block.",
+  "aiScene.error.provider":
+    "Couldn't generate a physics scene. Check the AI provider settings and try again.",
+  "aiScene.error.schemaInvalid":
+    "The generated result did not match the scene structure. Try a single mechanics experiment with clear objects and constraints.",
+  "aiScene.error.unavailable": "AI generation is unavailable. Restart the desktop app and try again.",
+  "aiScene.error.unknown": "Unable to generate scene draft.",
   "shell.pane.library": "Library",
   "shell.pane.libraryShort": "Lib",
   "shell.pane.inspector": "Inspector",
@@ -395,6 +404,14 @@ const zhCnMessages: MessageCatalog = {
   "aiScene.emptyUnsupported": "没有暂不支持内容。",
   "aiScene.replace": "替换当前场景",
   "aiScene.insert": "插入当前场景",
+  "aiScene.error.details": "详情：",
+  "aiScene.error.invalidJson":
+    "AI 返回的内容不是可用的场景 JSON。请改用一个简单实验重试，例如自由落体或斜面木块。",
+  "aiScene.error.provider": "无法生成物理场景。请检查 AI 服务配置后重试。",
+  "aiScene.error.schemaInvalid":
+    "生成结果不符合场景结构。请改用一个物体和约束更明确的简单力学实验重试。",
+  "aiScene.error.unavailable": "当前无法使用 AI 生成功能。请重启桌面应用后重试。",
+  "aiScene.error.unknown": "无法生成场景草稿。",
   "shell.pane.library": "对象库",
   "shell.pane.libraryShort": "对象库",
   "shell.pane.inspector": "属性面板",

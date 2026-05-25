@@ -22,6 +22,18 @@ const DEFAULT_RUNTIME_TRACE_PATH: &str = "/tmp/physics-sandbox-runtime-trace.jso
 const RUNTIME_TRACE_SCHEMA_VERSION: u32 = 1;
 const DEFAULT_OPENAI_MODEL: &str = "gpt-5.5";
 const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+const DEFAULT_OPENAI_TEMPERATURE: f64 = 0.0;
+const SCENE_DRAFT_SCHEMA_VERSION: u32 = 1;
+const SCENE_DRAFT_PROMPT_VERSION: u32 = 1;
+
+#[derive(Clone, Debug)]
+struct SceneGenerationConfig {
+    base_url: String,
+    model: String,
+    prompt_version: u32,
+    schema_version: u32,
+    temperature: f64,
+}
 
 #[cfg(test)]
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -626,8 +638,19 @@ async fn generate_scene_draft_with_env(prompt: String) -> Result<String, String>
         .unwrap_or_else(|_| DEFAULT_OPENAI_MODEL.to_string());
     let base_url = read_desktop_config_value("OPENAI_BASE_URL", &local_env)
         .unwrap_or_else(|_| DEFAULT_OPENAI_BASE_URL.to_string());
+    let temperature = parse_openai_temperature(
+        read_desktop_config_value("OPENAI_TEMPERATURE", &local_env)
+            .ok()
+            .as_deref(),
+    )?;
+    let config = build_scene_generation_config(model, base_url, temperature);
+    let cache_dir = read_openai_scene_cache_dir(
+        read_desktop_config_value("OPENAI_SCENE_CACHE_DIR", &local_env)
+            .ok()
+            .as_deref(),
+    );
 
-    request_openai_scene_draft(&api_key, &model, &base_url, &prompt).await
+    request_openai_scene_draft(&api_key, &config, cache_dir.as_deref(), &prompt).await
 }
 
 fn read_desktop_config_value(
@@ -687,23 +710,174 @@ fn trim_env_value(value: &str) -> String {
     trimmed.to_string()
 }
 
+fn parse_openai_temperature(value: Option<&str>) -> Result<f64, String> {
+    let Some(raw_value) = value else {
+        return Ok(DEFAULT_OPENAI_TEMPERATURE);
+    };
+    let trimmed = raw_value.trim();
+
+    if trimmed.is_empty() {
+        return Ok(DEFAULT_OPENAI_TEMPERATURE);
+    }
+
+    let temperature = trimmed
+        .parse::<f64>()
+        .map_err(|_| "OPENAI_TEMPERATURE must be a number between 0 and 2.".to_string())?;
+
+    if !(0.0..=2.0).contains(&temperature) {
+        return Err("OPENAI_TEMPERATURE must be between 0 and 2.".to_string());
+    }
+
+    Ok(temperature)
+}
+
+fn read_openai_scene_cache_dir(value: Option<&str>) -> Option<PathBuf> {
+    value
+        .map(str::trim)
+        .filter(|trimmed| !trimmed.is_empty())
+        .map(PathBuf::from)
+}
+
+fn build_scene_generation_config(
+    model: String,
+    base_url: String,
+    temperature: f64,
+) -> SceneGenerationConfig {
+    SceneGenerationConfig {
+        base_url,
+        model,
+        prompt_version: SCENE_DRAFT_PROMPT_VERSION,
+        schema_version: SCENE_DRAFT_SCHEMA_VERSION,
+        temperature,
+    }
+}
+
+fn build_scene_generation_cache_key(config: &SceneGenerationConfig, prompt: &str) -> String {
+    let config_fingerprint = stable_fnv1a64_hex(&format!(
+        "base_url={}\nmodel={}\ntemperature={:.6}\nschema_version={}\nprompt_version={}",
+        config.base_url.trim(),
+        config.model.trim(),
+        config.temperature,
+        config.schema_version,
+        config.prompt_version
+    ));
+    let prompt_fingerprint = stable_fnv1a64_hex(prompt.trim());
+
+    format!(
+        "scene-draft-v{}-prompt-v{}-{config_fingerprint}-{prompt_fingerprint}.json",
+        config.schema_version, config.prompt_version
+    )
+}
+
+fn stable_fnv1a64_hex(value: &str) -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+
+    for byte in value.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+
+    format!("{hash:016x}")
+}
+
+fn read_scene_generation_cache_entry(
+    cache_dir: &Path,
+    cache_key: &str,
+) -> Result<Option<String>, String> {
+    let cache_path = scene_generation_cache_entry_path(cache_dir, cache_key)?;
+
+    match fs::read_to_string(cache_path) {
+        Ok(contents) if is_valid_scene_generation_cache_entry(&contents) => Ok(Some(contents)),
+        Ok(_) => Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("failed to read scene generation cache: {error}")),
+    }
+}
+
+fn is_valid_scene_generation_cache_entry(contents: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(contents)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("schemaVersion")
+                .and_then(serde_json::Value::as_u64)
+        })
+        == Some(u64::from(SCENE_DRAFT_SCHEMA_VERSION))
+}
+
+fn write_scene_generation_cache_entry(
+    cache_dir: &Path,
+    cache_key: &str,
+    contents: &str,
+) -> Result<(), String> {
+    if !is_valid_scene_generation_cache_entry(contents) {
+        return Ok(());
+    }
+
+    let cache_path = scene_generation_cache_entry_path(cache_dir, cache_key)?;
+
+    fs::create_dir_all(cache_dir)
+        .map_err(|error| format!("failed to create scene generation cache directory: {error}"))?;
+    fs::write(cache_path, contents)
+        .map_err(|error| format!("failed to write scene generation cache: {error}"))
+}
+
+fn scene_generation_cache_entry_path(cache_dir: &Path, cache_key: &str) -> Result<PathBuf, String> {
+    if cache_key.is_empty()
+        || cache_key.contains('/')
+        || cache_key.contains('\\')
+        || cache_key.contains("..")
+        || !cache_key.ends_with(".json")
+    {
+        return Err("invalid scene generation cache key.".to_string());
+    }
+
+    Ok(cache_dir.join(cache_key))
+}
+
 async fn request_openai_scene_draft(
     api_key: &str,
-    model: &str,
-    base_url: &str,
+    config: &SceneGenerationConfig,
+    cache_dir: Option<&Path>,
     prompt: &str,
 ) -> Result<String, String> {
     if prompt.trim().is_empty() {
         return Err("Prompt is empty.".to_string());
     }
 
+    let cache_key = build_scene_generation_cache_key(config, prompt);
+
+    if let Some(cache_dir) = cache_dir {
+        if let Some(cached_draft) = read_scene_generation_cache_entry(cache_dir, &cache_key)? {
+            return Ok(cached_draft);
+        }
+    }
+
+    let generated_draft = request_openai_scene_draft_uncached(api_key, config, prompt).await?;
+
+    if let Some(cache_dir) = cache_dir {
+        write_scene_generation_cache_entry(cache_dir, &cache_key, &generated_draft)?;
+    }
+
+    Ok(generated_draft)
+}
+
+async fn request_openai_scene_draft_uncached(
+    api_key: &str,
+    config: &SceneGenerationConfig,
+    prompt: &str,
+) -> Result<String, String> {
     let client = reqwest::Client::new();
-    let url = resolve_openai_responses_url(base_url)?;
+    let url = resolve_openai_responses_url(&config.base_url)?;
     let response = client
         .post(&url)
         .bearer_auth(api_key)
         .header(reqwest::header::ACCEPT, "application/json")
-        .json(&build_openai_scene_draft_request(model, prompt))
+        .json(&build_openai_scene_draft_request(
+            &config.model,
+            config.temperature,
+            prompt,
+        ))
         .send()
         .await
         .map_err(|error| format!("failed to call OpenAI: {error}"))?;
@@ -716,13 +890,7 @@ async fn request_openai_scene_draft(
     if !status.is_success() {
         if should_retry_openai_scene_draft_without_schema(status) {
             return request_openai_scene_draft_without_schema(
-                &client,
-                api_key,
-                model,
-                &url,
-                prompt,
-                status,
-                &body,
+                &client, api_key, config, &url, prompt, status, &body,
             )
             .await;
         }
@@ -736,7 +904,7 @@ async fn request_openai_scene_draft(
 async fn request_openai_scene_draft_without_schema(
     client: &reqwest::Client,
     api_key: &str,
-    model: &str,
+    config: &SceneGenerationConfig,
     url: &str,
     prompt: &str,
     original_status: reqwest::StatusCode,
@@ -746,7 +914,11 @@ async fn request_openai_scene_draft_without_schema(
         .post(url)
         .bearer_auth(api_key)
         .header(reqwest::header::ACCEPT, "application/json")
-        .json(&build_openai_scene_draft_fallback_request(model, prompt))
+        .json(&build_openai_scene_draft_fallback_request(
+            &config.model,
+            config.temperature,
+            prompt,
+        ))
         .send()
         .await
         .map_err(|error| {
@@ -771,6 +943,80 @@ async fn request_openai_scene_draft_without_schema(
 
 fn should_retry_openai_scene_draft_without_schema(status: reqwest::StatusCode) -> bool {
     status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+}
+
+fn fixed_scene_generation_baseline_prompts() -> &'static [&'static str] {
+    &[
+        "生成一个小球自由落体实验场景",
+        "生成一个斜面上木块下滑的实验场景",
+        "生成两个小球发生弹性碰撞的场景",
+        "生成一个弹簧连接小车的简谐运动场景",
+    ]
+}
+
+fn build_real_provider_baseline_artifact_record(
+    prompt: &str,
+    config: &SceneGenerationConfig,
+    result: Result<String, String>,
+) -> serde_json::Value {
+    match result {
+        Ok(draft_text) => match serde_json::from_str::<serde_json::Value>(&draft_text) {
+            Ok(draft) => serde_json::json!({
+                "baseUrlHost": read_base_url_host(&config.base_url),
+                "firstDraft": draft,
+                "error": null,
+                "model": config.model,
+                "ok": true,
+                "prompt": prompt,
+                "promptVersion": config.prompt_version,
+                "schemaVersion": config.schema_version,
+                "temperature": config.temperature
+            }),
+            Err(error) => serde_json::json!({
+                "baseUrlHost": read_base_url_host(&config.base_url),
+                "firstDraft": null,
+                "error": format!("provider returned non-JSON draft: {error}"),
+                "model": config.model,
+                "ok": false,
+                "prompt": prompt,
+                "promptVersion": config.prompt_version,
+                "schemaVersion": config.schema_version,
+                "temperature": config.temperature
+            }),
+        },
+        Err(error) => serde_json::json!({
+            "baseUrlHost": read_base_url_host(&config.base_url),
+            "firstDraft": null,
+            "error": sanitize_provider_error(&error),
+            "model": config.model,
+            "ok": false,
+            "prompt": prompt,
+            "promptVersion": config.prompt_version,
+            "schemaVersion": config.schema_version,
+            "temperature": config.temperature
+        }),
+    }
+}
+
+fn read_base_url_host(base_url: &str) -> String {
+    reqwest::Url::parse(base_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_string))
+        .unwrap_or_else(|| "invalid-url".to_string())
+}
+
+fn sanitize_provider_error(error: &str) -> String {
+    error
+        .split_whitespace()
+        .map(|part| {
+            if part.starts_with("sk-") {
+                "[REDACTED]"
+            } else {
+                part
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn resolve_openai_responses_url(base_url: &str) -> Result<String, String> {
@@ -803,9 +1049,14 @@ fn base_url_has_no_path(trimmed_url: &str) -> bool {
     !rest.contains('/')
 }
 
-fn build_openai_scene_draft_request(model: &str, prompt: &str) -> serde_json::Value {
+fn build_openai_scene_draft_request(
+    model: &str,
+    temperature: f64,
+    prompt: &str,
+) -> serde_json::Value {
     serde_json::json!({
         "model": model,
+        "temperature": temperature,
         "instructions": build_scene_draft_system_prompt(),
         "input": [
             {
@@ -824,12 +1075,18 @@ fn build_openai_scene_draft_request(model: &str, prompt: &str) -> serde_json::Va
     })
 }
 
-fn build_openai_scene_draft_fallback_request(model: &str, prompt: &str) -> serde_json::Value {
+fn build_openai_scene_draft_fallback_request(
+    model: &str,
+    temperature: f64,
+    prompt: &str,
+) -> serde_json::Value {
     serde_json::json!({
         "model": model,
+        "temperature": temperature,
         "instructions": format!(
-            "{} Return exactly one valid JSON object. Do not include markdown fences, comments, prose, or trailing text. The object must contain title, locale, domain, gravity, entities, relationships, analyzers, assumptions, warnings, and unsupported. Use null for unknown optional fields.",
-            build_scene_draft_system_prompt()
+            "{} Return exactly one valid JSON object. Do not include markdown fences, comments, prose, or trailing text. The object must contain schemaVersion: {}, title, locale, domain, gravity, entities, relationships, analyzers, assumptions, warnings, and unsupported. Use null for unknown optional fields.",
+            build_scene_draft_system_prompt(),
+            SCENE_DRAFT_SCHEMA_VERSION
         ),
         "input": [
             {
@@ -849,6 +1106,7 @@ fn scene_draft_json_schema() -> serde_json::Value {
         "type": "object",
         "additionalProperties": false,
         "required": [
+            "schemaVersion",
             "title",
             "locale",
             "domain",
@@ -861,6 +1119,7 @@ fn scene_draft_json_schema() -> serde_json::Value {
             "unsupported"
         ],
         "properties": {
+            "schemaVersion": { "const": SCENE_DRAFT_SCHEMA_VERSION },
             "title": { "type": "string" },
             "locale": { "type": "string", "enum": ["zh-CN"] },
             "domain": { "type": "string", "enum": ["mechanics"] },
@@ -1326,9 +1585,10 @@ mod tests {
 
     #[test]
     fn build_openai_scene_draft_request_uses_top_level_instructions_and_message_input() {
-        let request = super::build_openai_scene_draft_request("gpt-test", "测试题目");
+        let request = super::build_openai_scene_draft_request("gpt-test", 0.0, "测试题目");
 
         assert_eq!(request["model"], json!("gpt-test"));
+        assert_eq!(request["temperature"], json!(0.0));
         assert_eq!(
             request["instructions"],
             json!(super::build_scene_draft_system_prompt())
@@ -1346,15 +1606,22 @@ mod tests {
 
     #[test]
     fn build_openai_scene_draft_fallback_request_omits_strict_schema_format() {
-        let request = super::build_openai_scene_draft_fallback_request("gpt-test", "测试题目");
+        let request = super::build_openai_scene_draft_fallback_request("gpt-test", 0.0, "测试题目");
 
         assert_eq!(request["model"], json!("gpt-test"));
+        assert_eq!(request["temperature"], json!(0.0));
         assert!(request.get("text").is_none());
         assert!(
             request["instructions"]
                 .as_str()
                 .expect("instructions are text")
                 .contains("Return exactly one valid JSON object")
+        );
+        assert!(
+            request["instructions"]
+                .as_str()
+                .expect("instructions are text")
+                .contains("schemaVersion")
         );
         assert_eq!(
             request["input"],
@@ -1373,6 +1640,269 @@ mod tests {
 
         assert!(prompt.contains("represent it as an explicit locked horizontal board entity"));
         assert!(prompt.contains("never reference an undeclared ground entity"));
+    }
+
+    #[test]
+    fn read_openai_temperature_defaults_to_zero_and_rejects_invalid_values() {
+        assert_eq!(super::parse_openai_temperature(None).unwrap(), 0.0);
+        assert_eq!(super::parse_openai_temperature(Some("0.2")).unwrap(), 0.2);
+        assert!(super::parse_openai_temperature(Some("-0.1")).is_err());
+        assert!(super::parse_openai_temperature(Some("not-a-number")).is_err());
+    }
+
+    #[test]
+    fn read_openai_scene_cache_dir_ignores_missing_or_blank_values() {
+        assert_eq!(super::read_openai_scene_cache_dir(None), None);
+        assert_eq!(super::read_openai_scene_cache_dir(Some("   ")), None);
+        assert_eq!(
+            super::read_openai_scene_cache_dir(Some(" /tmp/physics-cache ")),
+            Some(PathBuf::from("/tmp/physics-cache"))
+        );
+    }
+
+    #[test]
+    fn real_provider_baseline_artifact_metadata_uses_safe_host_and_fixed_prompts() {
+        let prompts = super::fixed_scene_generation_baseline_prompts();
+        let config = super::SceneGenerationConfig {
+            base_url: "https://api.openai.example/v1".to_string(),
+            model: "gpt-test".to_string(),
+            prompt_version: 1,
+            schema_version: 1,
+            temperature: 0.0,
+        };
+        let record = super::build_real_provider_baseline_artifact_record(
+            prompts[0],
+            &config,
+            Ok("{\"schemaVersion\":1}".to_string()),
+        );
+
+        assert_eq!(prompts.len(), 4);
+        assert_eq!(prompts[0], "生成一个小球自由落体实验场景");
+        assert_eq!(record["baseUrlHost"], json!("api.openai.example"));
+        assert_eq!(record["model"], json!("gpt-test"));
+        assert_eq!(record["ok"], json!(true));
+        assert_eq!(record["firstDraft"], json!({"schemaVersion": 1}));
+        assert!(record.get("apiKey").is_none());
+    }
+
+    #[test]
+    #[ignore = "requires PHYSICS_SANDBOX_REAL_PROVIDER_BASELINE=1 and a configured OPENAI_API_KEY"]
+    fn openai_real_provider_fixed_prompts_write_draft_artifact() {
+        if std::env::var("PHYSICS_SANDBOX_REAL_PROVIDER_BASELINE").as_deref() != Ok("1") {
+            panic!("set PHYSICS_SANDBOX_REAL_PROVIDER_BASELINE=1 to run this real-provider test");
+        }
+
+        let output_path = std::env::var("PHYSICS_SANDBOX_REAL_PROVIDER_ARTIFACT_PATH")
+            .expect("set PHYSICS_SANDBOX_REAL_PROVIDER_ARTIFACT_PATH to write the artifact");
+        let local_env = super::read_desktop_env_file();
+        let api_key = super::read_desktop_config_value("OPENAI_API_KEY", &local_env)
+            .expect("OPENAI_API_KEY is not configured");
+        let model = super::read_desktop_config_value("OPENAI_MODEL", &local_env)
+            .unwrap_or_else(|_| super::DEFAULT_OPENAI_MODEL.to_string());
+        let base_url = super::read_desktop_config_value("OPENAI_BASE_URL", &local_env)
+            .unwrap_or_else(|_| super::DEFAULT_OPENAI_BASE_URL.to_string());
+        let temperature = super::parse_openai_temperature(
+            super::read_desktop_config_value("OPENAI_TEMPERATURE", &local_env)
+                .ok()
+                .as_deref(),
+        )
+        .expect("OPENAI_TEMPERATURE must be valid");
+        let cache_dir = super::read_openai_scene_cache_dir(
+            super::read_desktop_config_value("OPENAI_SCENE_CACHE_DIR", &local_env)
+                .ok()
+                .as_deref(),
+        );
+        let config = super::build_scene_generation_config(model, base_url, temperature);
+        let repeat = std::env::var("PHYSICS_SANDBOX_REAL_PROVIDER_REPEAT").as_deref() == Ok("1");
+        let records = super::fixed_scene_generation_baseline_prompts()
+            .iter()
+            .map(|prompt| {
+                let first_result =
+                    tauri::async_runtime::block_on(super::request_openai_scene_draft(
+                        &api_key,
+                        &config,
+                        cache_dir.as_deref(),
+                        prompt,
+                    ));
+                let mut record = super::build_real_provider_baseline_artifact_record(
+                    prompt,
+                    &config,
+                    first_result,
+                );
+
+                if repeat {
+                    let second_result =
+                        tauri::async_runtime::block_on(super::request_openai_scene_draft(
+                            &api_key,
+                            &config,
+                            cache_dir.as_deref(),
+                            prompt,
+                        ));
+                    let second_record = super::build_real_provider_baseline_artifact_record(
+                        prompt,
+                        &config,
+                        second_result,
+                    );
+
+                    if let Some(record_object) = record.as_object_mut() {
+                        record_object.insert(
+                            "secondDraft".to_string(),
+                            second_record
+                                .get("firstDraft")
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Null),
+                        );
+                        record_object.insert(
+                            "secondError".to_string(),
+                            second_record
+                                .get("error")
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Null),
+                        );
+                    }
+                }
+
+                record
+            })
+            .collect::<Vec<_>>();
+        let generated_at_unix_seconds = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time is after Unix epoch")
+            .as_secs();
+        let artifact = json!({
+            "generatedAtUnixSeconds": generated_at_unix_seconds,
+            "metadata": {
+                "baseUrlHost": super::read_base_url_host(&config.base_url),
+                "model": config.model,
+                "promptVersion": config.prompt_version,
+                "schemaVersion": config.schema_version,
+                "temperature": config.temperature
+            },
+            "results": records
+        });
+        let output_path = PathBuf::from(output_path);
+
+        if let Some(parent) = output_path.parent() {
+            fs::create_dir_all(parent).expect("artifact parent directory can be created");
+        }
+
+        fs::write(
+            output_path,
+            format!(
+                "{}\n",
+                serde_json::to_string_pretty(&artifact).expect("artifact serializes")
+            ),
+        )
+        .expect("artifact can be written");
+    }
+
+    #[test]
+    fn scene_generation_cache_key_changes_with_prompt_and_generation_config() {
+        let config = super::SceneGenerationConfig {
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-test".to_string(),
+            prompt_version: 1,
+            schema_version: 1,
+            temperature: 0.0,
+        };
+        let same_key = super::build_scene_generation_cache_key(&config, "生成小球自由落体");
+        let repeated_key = super::build_scene_generation_cache_key(&config, "生成小球自由落体");
+        let different_prompt_key =
+            super::build_scene_generation_cache_key(&config, "生成斜面木块下滑");
+        let different_model_key = super::build_scene_generation_cache_key(
+            &super::SceneGenerationConfig {
+                model: "gpt-other".to_string(),
+                ..config.clone()
+            },
+            "生成小球自由落体",
+        );
+
+        assert_eq!(same_key, repeated_key);
+        assert_ne!(same_key, different_prompt_key);
+        assert_ne!(same_key, different_model_key);
+        assert!(same_key.starts_with("scene-draft-v1-prompt-v1-"));
+        assert!(same_key.ends_with(".json"));
+    }
+
+    #[test]
+    fn scene_generation_cache_round_trips_with_safe_cache_keys() {
+        let cache_dir = std::env::temp_dir().join(format!(
+            "physics-sandbox-scene-cache-test-{}",
+            std::process::id()
+        ));
+        let cache_key = "scene-draft-v1-prompt-v1-test.json";
+        let draft =
+            "{\"schemaVersion\":1,\"domain\":\"mechanics\",\"entities\":[],\"relationships\":[]}";
+
+        let missing = super::read_scene_generation_cache_entry(&cache_dir, cache_key)
+            .expect("missing cache read is not fatal");
+        assert_eq!(missing, None);
+
+        super::write_scene_generation_cache_entry(&cache_dir, cache_key, draft)
+            .expect("cache write succeeds");
+        let cached = super::read_scene_generation_cache_entry(&cache_dir, cache_key)
+            .expect("cache read succeeds");
+
+        assert_eq!(cached.as_deref(), Some(draft));
+        assert!(super::read_scene_generation_cache_entry(&cache_dir, "../escape.json").is_err());
+        assert!(
+            super::write_scene_generation_cache_entry(&cache_dir, "bad/key.json", draft).is_err()
+        );
+
+        let _ = std::fs::remove_dir_all(cache_dir);
+    }
+
+    #[test]
+    fn scene_generation_cache_ignores_invalid_or_mismatched_schema_entries() {
+        let cache_dir = std::env::temp_dir().join(format!(
+            "physics-sandbox-scene-cache-invalid-test-{}",
+            std::process::id()
+        ));
+        let invalid_cache_key = "scene-draft-v1-prompt-v1-invalid.json";
+        let mismatched_cache_key = "scene-draft-v1-prompt-v1-mismatched.json";
+        let invalid_cache_path =
+            super::scene_generation_cache_entry_path(&cache_dir, invalid_cache_key)
+                .expect("invalid cache fixture path is safe");
+        let mismatched_cache_path =
+            super::scene_generation_cache_entry_path(&cache_dir, mismatched_cache_key)
+                .expect("mismatched cache fixture path is safe");
+
+        fs::create_dir_all(&cache_dir).expect("cache fixture directory can be created");
+        fs::write(invalid_cache_path, "not-json").expect("invalid fixture can be written");
+        fs::write(mismatched_cache_path, "{\"schemaVersion\":2}")
+            .expect("mismatched fixture can be written");
+
+        assert_eq!(
+            super::read_scene_generation_cache_entry(&cache_dir, invalid_cache_key)
+                .expect("invalid cache read is recoverable"),
+            None
+        );
+        assert_eq!(
+            super::read_scene_generation_cache_entry(&cache_dir, mismatched_cache_key)
+                .expect("schema-mismatched cache read is recoverable"),
+            None
+        );
+
+        let _ = std::fs::remove_dir_all(cache_dir);
+    }
+
+    #[test]
+    fn scene_generation_cache_does_not_persist_invalid_entries() {
+        let cache_dir = std::env::temp_dir().join(format!(
+            "physics-sandbox-scene-cache-write-invalid-test-{}",
+            std::process::id()
+        ));
+        let invalid_cache_key = "scene-draft-v1-prompt-v1-invalid-write.json";
+        let invalid_cache_path =
+            super::scene_generation_cache_entry_path(&cache_dir, invalid_cache_key)
+                .expect("invalid cache fixture path is safe");
+
+        super::write_scene_generation_cache_entry(&cache_dir, invalid_cache_key, "not-json")
+            .expect("invalid cache writes are recoverable no-ops");
+
+        assert!(!invalid_cache_path.exists());
+
+        let _ = std::fs::remove_dir_all(cache_dir);
     }
 
     #[test]
@@ -1395,14 +1925,20 @@ mod tests {
     }
 
     #[test]
-    fn scene_draft_json_schema_supports_arc_tracks_endpoint_connections_contact_springs_and_energy_release() {
+    fn scene_draft_json_schema_supports_arc_tracks_endpoint_connections_contact_springs_and_energy_release()
+     {
         let schema = super::scene_draft_json_schema();
         let entity_kind_enum =
             &schema["properties"]["entities"]["items"]["properties"]["kind"]["enum"];
+        let required = schema["required"]
+            .as_array()
+            .expect("required fields are listed");
         let relationship_variants = schema["properties"]["relationships"]["items"]["anyOf"]
             .as_array()
             .expect("relationship variants are listed");
 
+        assert_eq!(schema["properties"]["schemaVersion"]["const"], json!(1));
+        assert!(required.contains(&json!("schemaVersion")));
         assert!(
             entity_kind_enum
                 .as_array()

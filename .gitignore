@@ -8,5 +8,7 @@ worktrees/
 .coordination/
 apps/desktop/src-tauri/gen/
 .desktop-vite.log
+.desktop-launch.log
+.desktop-tauri.log
 .desktop.env
 .playwright-mcp/

@@ -4,6 +4,7 @@ import { AnalysisPanel } from "./analysis/AnalysisPanel";
 import { createSelectedMotionSamples } from "./analysis/selectedMotionSeries";
 import { AnnotationLayer, createInitialAnnotationLayerState } from "./annotation/AnnotationLayer";
 import { desktopAppVersion } from "./app-meta";
+import { readSceneGenerationUserMessage } from "./ai/sceneGenerationErrorMessage";
 import { compileSceneDraft, type SceneDraftCompileMode } from "./ai/sceneDraftCompiler";
 import { generateSceneDraftFromText } from "./ai/textToSceneClient";
 import type { SceneDraft } from "./ai/sceneDraft";
@@ -474,6 +475,7 @@ function createAnchoredArcTrackEntity(input: {
 }
 
 export function App() {
+  const { t } = useI18n();
   const initialAuthoringState = createInitialAuthoringState();
   const [editorState, setEditorState] = useState(createInitialEditorState);
   const [constraints, setConstraints] = useState<EditorConstraint[]>(initialAuthoringState.constraints);
@@ -734,9 +736,7 @@ export function App() {
     try {
       setGeneratedSceneDraft(await generateSceneDraftFromText({ prompt }));
     } catch (error) {
-      setSceneDraftErrorMessage(
-        error instanceof Error ? error.message : "Unable to generate scene draft.",
-      );
+      setSceneDraftErrorMessage(readSceneGenerationUserMessage(error, t));
     } finally {
       setSceneDraftGenerating(false);
     }

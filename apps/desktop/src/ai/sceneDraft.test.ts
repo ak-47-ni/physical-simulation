@@ -3,6 +3,21 @@ import { describe, expect, it } from "vitest";
 import { validateSceneDraft } from "./sceneDraft";
 
 describe("validateSceneDraft", () => {
+  it("defaults legacy drafts to the current SceneDraft schema version", () => {
+    const draft = validateSceneDraft({
+      title: "版本默认值",
+      locale: "zh-CN",
+      domain: "mechanics",
+      entities: [],
+      relationships: [],
+      assumptions: [],
+      warnings: [],
+      unsupported: [],
+    });
+
+    expect(draft.schemaVersion).toBe(1);
+  });
+
   it("normalizes a valid rough-board block mechanics draft", () => {
     const draft = validateSceneDraft({
       title: "粗糙水平面上滑块减速",

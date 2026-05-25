@@ -8,7 +8,9 @@
     "desktop:dev": "pnpm --filter desktop run dev",
     "desktop:tauri:check": "cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml",
     "desktop:tauri:dev": "cargo run --manifest-path apps/desktop/src-tauri/Cargo.toml",
+    "real-provider-baseline": "node scripts/real-provider-baseline.mjs",
     "test:coord": "vitest run scripts/coord.test.mjs",
+    "test:real-provider-baseline": "vitest run scripts/real-provider-baseline.test.mjs",
     "test": "pnpm -r test"
   },
   "devDependencies": {

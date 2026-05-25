@@ -50,9 +50,13 @@ Example `.desktop.env`:
 OPENAI_API_KEY=your-openai-api-key
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-5.5
+OPENAI_TEMPERATURE=0
+OPENAI_SCENE_CACHE_DIR=.cache/physics-sandbox/scene-drafts
 ```
 
 `OPENAI_BASE_URL` may be either a base URL such as `https://api.openai.com/v1` or a full Responses endpoint such as `https://gateway.example.com/v1/responses`.
+`OPENAI_TEMPERATURE` is optional, defaults to `0`, and accepts values from `0` to `2`.
+`OPENAI_SCENE_CACHE_DIR` is optional and enables local generated-draft caching for repeatable text-to-scene runs.
 
 Priority order:
 
