@@ -17,8 +17,6 @@ use sim_core::runtime::RuntimeFramePayload;
 use sim_core::scene::SceneCompileError;
 
 const FIXED_STEP_SECONDS: f64 = 1.0 / 60.0;
-#[cfg(not(test))]
-const DEFAULT_RUNTIME_TRACE_PATH: &str = "/tmp/physics-sandbox-runtime-trace.jsonl";
 const RUNTIME_TRACE_SCHEMA_VERSION: u32 = 1;
 const DEFAULT_OPENAI_MODEL: &str = "gpt-5.5";
 const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
@@ -271,7 +269,7 @@ fn default_runtime_trace_path() -> PathBuf {
 
     #[cfg(not(test))]
     {
-        PathBuf::from(DEFAULT_RUNTIME_TRACE_PATH)
+        std::env::temp_dir().join("physics-sandbox-runtime-trace.jsonl")
     }
 }
 
