@@ -1,4 +1,6 @@
 import { validateSceneDraft, type SceneDraft } from "./sceneDraft";
+import { createSceneSemanticContext, hasSceneSemanticMatch } from "./sceneSemanticKb";
+import { createSceneDraftFromSemanticText } from "./semanticTextToScene";
 
 export type SceneDraftFallbackKind =
   | "elastic-collision"
@@ -14,41 +16,77 @@ export function createSceneDraftFallbackFromText(
   prompt: string,
   options: CreateSceneDraftFallbackOptions,
 ): SceneDraft | null {
-  const fallbackKind = readSceneDraftFallbackKind(prompt);
+  const semanticContext = createSceneSemanticContext(prompt);
+  const semanticFirstDraft = shouldPreferSemanticFallback(prompt, semanticContext)
+    ? createSceneDraftFromSemanticText(prompt)
+    : null;
 
-  if (!fallbackKind) {
-    return null;
+  if (semanticFirstDraft) {
+    return withSemanticFallbackReason(semanticFirstDraft, options.reason);
   }
 
+  const fallbackKind = readSceneDraftFallbackKind(prompt);
+
+  if (fallbackKind) {
+    return validateSceneDraft({
+      ...createFallbackCandidate(fallbackKind),
+      warnings: [`${options.reason}，已使用本地确定性模板生成草稿。`],
+    });
+  }
+
+  const semanticDraft = createSceneDraftFromSemanticText(prompt);
+
+  return semanticDraft ? withSemanticFallbackReason(semanticDraft, options.reason) : null;
+}
+
+function shouldPreferSemanticFallback(prompt: string, semanticContext: ReturnType<typeof createSceneSemanticContext>) {
+  return (
+    /(两个|两块|两辆|2个|2块|2辆)/.test(prompt.replace(/\s+/g, "")) &&
+    hasSceneSemanticMatch(semanticContext, "relationship.spring_between")
+  );
+}
+
+function withSemanticFallbackReason(draft: SceneDraft, reason: string): SceneDraft {
   return validateSceneDraft({
-    ...createFallbackCandidate(fallbackKind),
-    warnings: [`${options.reason}，已使用本地确定性模板生成草稿。`],
+    ...draft,
+    warnings: [
+      ...draft.warnings.filter((warning) => warning !== "已使用本地语义规则生成受限场景草稿。"),
+      `${reason}，已使用本地语义规则生成受限场景草稿。`,
+    ],
   });
 }
 
 export function readSceneDraftFallbackKind(prompt: string): SceneDraftFallbackKind | null {
   const normalizedPrompt = prompt.replace(/\s+/g, "");
+  const semanticContext = createSceneSemanticContext(prompt);
+  const hasBall = hasSceneSemanticMatch(semanticContext, "entity.ball");
+  const hasBlock = hasSceneSemanticMatch(semanticContext, "entity.block");
+  const hasIncline = hasSceneSemanticMatch(semanticContext, "support.incline");
+  const hasFreeFall = hasSceneSemanticMatch(semanticContext, "template.free_fall");
+  const hasElasticCollision = hasSceneSemanticMatch(semanticContext, "template.elastic_collision");
+  const hasSpringCart = hasSceneSemanticMatch(semanticContext, "template.spring_cart");
+  const hasArcBridge = hasSceneSemanticMatch(semanticContext, "pattern.smooth_arc_bridge");
 
-  if (/自由落体|落体/.test(normalizedPrompt) && /球/.test(normalizedPrompt)) {
+  if (hasFreeFall && hasBall) {
     return "free-fall";
   }
 
-  if (/斜面/.test(normalizedPrompt) && /(木块|滑块|物块)/.test(normalizedPrompt)) {
+  if (hasIncline && hasBlock && !hasArcBridge && /(下滑|滑下|滑动|释放)/.test(normalizedPrompt)) {
     return "incline-block";
   }
 
-  if (/碰撞/.test(normalizedPrompt) && /(弹性|完全弹性)/.test(normalizedPrompt) && /球/.test(normalizedPrompt)) {
+  if (hasElasticCollision && hasBall) {
     return "elastic-collision";
   }
 
-  if (/弹簧/.test(normalizedPrompt) && /(小车|滑块|物块)/.test(normalizedPrompt)) {
+  if (hasSpringCart && hasBlock) {
     return "spring-cart";
   }
 
   return null;
 }
 
-function createFallbackCandidate(kind: SceneDraftFallbackKind): unknown {
+function createFallbackCandidate(kind: SceneDraftFallbackKind): Record<string, unknown> {
   switch (kind) {
     case "free-fall":
       return {

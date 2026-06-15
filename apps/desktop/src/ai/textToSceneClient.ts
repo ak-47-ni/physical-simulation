@@ -1,5 +1,7 @@
 import { SceneDraftValidationError, validateSceneDraft, type SceneDraft } from "./sceneDraft";
 import { createSceneDraftFallbackFromText } from "./sceneDraftFallback";
+import { extractSceneIntent } from "./sceneIntent";
+import { createSceneSemanticContext } from "./sceneSemanticKb";
 
 type DesktopInvoke = <T>(
   command: string,
@@ -57,6 +59,7 @@ export async function generateSceneDraftFromText(
 
   const rawDraft = await invoke<unknown>("generate_scene_draft", {
     prompt: input.prompt,
+    semanticContext: createProviderSemanticContext(input.prompt),
   }).catch((error: unknown) => {
     const fallbackDraft = createSceneDraftFallbackFromText(input.prompt, {
       reason: "AI 服务生成失败",
@@ -96,6 +99,27 @@ export async function generateSceneDraftFromText(
 
     throw error;
   }
+}
+
+function createProviderSemanticContext(prompt: string): Record<string, unknown> {
+  const semanticContext = createSceneSemanticContext(prompt);
+  const sceneIntent = extractSceneIntent({ prompt, semanticContext });
+
+  return {
+    ...semanticContext,
+    sceneIntent: {
+      ...sceneIntent,
+      supportedScope: {
+        entities: ["ball", "block", "board", "arc-track"],
+        relationships: [
+          "place-on",
+          "spring-between",
+          "contact-spring-end",
+          "connect-endpoints",
+        ],
+      },
+    },
+  };
 }
 
 function readDraftCandidate(value: unknown): unknown {
